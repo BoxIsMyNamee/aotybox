@@ -42,12 +42,17 @@ actor AOTYAPI {
 
     // MARK: - Endpoints
 
-    func releases(page: Int = 1) async throws -> [AlbumBlock] {
+    func releases(page: Int = 1, singles: Bool = false) async throws -> [AlbumBlock] {
+        if singles { return try await device(page > 1 ? "/releases/singles/\(page)/" : "/releases/singles/", .blocks, AlbumListResponse.self).albums }
         if Self.usesDevice { return try await device(page > 1 ? "/releases/\(page)/" : "/releases/", .blocks, AlbumListResponse.self).albums }
         return try await get("/releases", ["page": "\(page)"], as: AlbumListResponse.self).albums
     }
 
-    func thisWeek(page: Int = 1) async throws -> [AlbumBlock] {
+    func thisWeek(page: Int = 1, singles: Bool = false) async throws -> [AlbumBlock] {
+        if singles {
+            let path = page > 1 ? "/releases/this-week/singles/\(page)/" : "/releases/this-week/singles/"
+            return try await device(path, .blocks, AlbumListResponse.self).albums
+        }
         if Self.usesDevice {
             let path = page > 1 ? "/releases/this-week/\(page)/" : "/releases/this-week/"
             return try await device(path, .blocks, AlbumListResponse.self).albums
@@ -55,7 +60,8 @@ actor AOTYAPI {
         return try await get("/releases/this-week", ["page": "\(page)"], as: AlbumListResponse.self).albums
     }
 
-    func upcoming(page: Int = 1) async throws -> [AlbumBlock] {
+    func upcoming(page: Int = 1, singles: Bool = false) async throws -> [AlbumBlock] {
+        if singles { return try await device(page > 1 ? "/upcoming/singles/\(page)/" : "/upcoming/singles/", .blocks, AlbumListResponse.self).albums }
         if Self.usesDevice { return try await device(page > 1 ? "/upcoming/\(page)/" : "/upcoming/", .blocks, AlbumListResponse.self).albums }
         return try await get("/upcoming", ["page": "\(page)"], as: AlbumListResponse.self).albums
     }
@@ -92,8 +98,9 @@ actor AOTYAPI {
         try await device("/user/\(username)/", .profile, Profile.self)
     }
 
-    func userRatings(username: String, page: Int) async throws -> [AlbumBlock] {
-        let path = "/user/\(username)/ratings/" + (page > 1 ? "\(page)/" : "")
+    /// type: nil for AOTY's default (albums), or "single", "ep", "mixtape", …
+    func userRatings(username: String, page: Int, type: String? = nil) async throws -> [AlbumBlock] {
+        let path = "/user/\(username)/ratings/" + (type.map { "\($0)/" } ?? "") + (page > 1 ? "\(page)/" : "")
         return try await device(path, .blocks, AlbumListResponse.self).albums
     }
 

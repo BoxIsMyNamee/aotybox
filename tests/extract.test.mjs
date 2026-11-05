@@ -9,6 +9,8 @@ const pages = [
   ["blocks", "/releases/this-week/"],
   ["blocks", "/releases/"],
   ["blocks", "/upcoming/"],
+  ["blocks", "/releases/singles/"],
+  ["blocks", "/releases/this-week/singles/"],
   ["chart", "/ratings/6-highest-rated/2025/1"],
   ["chart", "/ratings/user-highest-rated/2025/1"],
   ["album", "/album/2915-outkast-aquemini.php"],

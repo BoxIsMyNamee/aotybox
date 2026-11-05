@@ -5,6 +5,7 @@ struct ProfileView: View {
     @AppStorage("profileUsername") private var savedUsername = ""
     @AppStorage("profileUsernameOverride") private var overrideUsername = ""
     @State private var showChange = false
+    @State private var singles = false
     @State private var typedName = ""
     @State private var username: String?
     @State private var meAvatar: String?
@@ -103,8 +104,21 @@ struct ProfileView: View {
 
             if let error, ratings.isEmpty { Section { Text(error).font(.footnote).foregroundStyle(.red) } }
 
+            Section {
+                Picker("Type", selection: $singles) {
+                    Text("Albums").tag(false)
+                    Text("Singles").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .listRowBackground(Color.clear)
+            }
+
+            if ratings.isEmpty && !loading && error == nil {
+                Section { Text(singles ? "No rated singles yet." : "No ratings yet.").foregroundStyle(.secondary) }
+            }
+
             if !ratings.isEmpty {
-                Section("Recent Ratings") {
+                Section(singles ? "Rated Singles" : "Recent Ratings") {
                     ForEach(ratings) { a in
                         NavigationLink(value: a) {
                             HStack {
@@ -115,7 +129,7 @@ struct ProfileView: View {
                         .onAppear { if a == ratings.last { Task { await loadMoreRatings(user) } } }
                     }
                 }
-            } else if let albums = profile?.albums, !albums.isEmpty {
+            } else if !singles, let albums = profile?.albums, !albums.isEmpty {
                 Section("On Your Profile") {
                     ForEach(albums) { a in NavigationLink(value: a) { AlbumRow(a) } }
                 }
@@ -127,6 +141,7 @@ struct ProfileView: View {
         }
         .listStyle(.insetGrouped)
         .refreshable { await load(user) }
+        .onChange(of: singles) { Task { await loadRatings(user) } }
         .overlay { if loading && profile == nil { ProgressView() } }
     }
 
@@ -157,16 +172,24 @@ struct ProfileView: View {
     private func load(_ user: String) async {
         loading = true; defer { loading = false }
         async let p = try? AOTYAPI.shared.profile(username: user)
-        do {
-            ratings = try await AOTYAPI.shared.userRatings(username: user, page: 1)
-            ratingsPage = 1; moreRatings = true
-        } catch { self.error = error.localizedDescription }
+        await loadRatings(user)
         profile = await p
+    }
+
+    private func loadRatings(_ user: String) async {
+        error = nil
+        do {
+            ratings = try await AOTYAPI.shared.userRatings(username: user, page: 1, type: singles ? "single" : nil)
+            ratingsPage = 1; moreRatings = true
+        } catch {
+            ratings = []
+            self.error = error.localizedDescription
+        }
     }
 
     private func loadMoreRatings(_ user: String) async {
         guard moreRatings, !loading else { return }
-        if let next = try? await AOTYAPI.shared.userRatings(username: user, page: ratingsPage + 1) {
+        if let next = try? await AOTYAPI.shared.userRatings(username: user, page: ratingsPage + 1, type: singles ? "single" : nil) {
             let fresh = next.filter { n in !ratings.contains { $0.id == n.id } }
             if fresh.isEmpty { moreRatings = false } else { ratings += fresh; ratingsPage += 1 }
         } else { moreRatings = false }

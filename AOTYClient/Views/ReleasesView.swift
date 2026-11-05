@@ -8,6 +8,7 @@ struct ReleasesView: View {
     }
 
     @State private var feed: Feed = .thisWeek
+    @AppStorage("releasesSingles") private var singles = false
 
     var body: some View {
         NavigationStack {
@@ -21,12 +22,19 @@ struct ReleasesView: View {
 
                 TabView(selection: $feed) {
                     ForEach(Feed.allCases) { f in
-                        FeedList(feed: f).tag(f)
+                        FeedList(feed: f, singles: singles)
+                            .id("\(f.rawValue)-\(singles)")
+                            .tag(f)
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
             }
-            .navigationTitle("Releases")
+            .navigationTitle(singles ? "Singles" : "Releases")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    KindToggle(singles: $singles)
+                }
+            }
             .navigationDestination(for: AlbumBlock.self) { AlbumDetailView(slug: $0.slug, fallbackTitle: $0.title) }
         }
     }
@@ -35,6 +43,7 @@ struct ReleasesView: View {
 /// One feed's list. Each page keeps its own data, so swiping back is instant.
 private struct FeedList: View {
     let feed: ReleasesView.Feed
+    let singles: Bool
     @ObservedObject private var genreStore = GenreStore.shared
     @State private var albums: [AlbumBlock] = []
     @State private var page = 1
@@ -70,9 +79,9 @@ private struct FeedList: View {
 
     private func fetch(_ page: Int) async throws -> [AlbumBlock] {
         switch feed {
-        case .thisWeek: return try await AOTYAPI.shared.thisWeek(page: page)
-        case .new: return try await AOTYAPI.shared.releases(page: page)
-        case .upcoming: return try await AOTYAPI.shared.upcoming(page: page)
+        case .thisWeek: return try await AOTYAPI.shared.thisWeek(page: page, singles: singles)
+        case .new: return try await AOTYAPI.shared.releases(page: page, singles: singles)
+        case .upcoming: return try await AOTYAPI.shared.upcoming(page: page, singles: singles)
         }
     }
 
@@ -83,7 +92,13 @@ private struct FeedList: View {
             var seen = Set<String>()
             albums = try await fetch(1).filter { seen.insert($0.id).inserted }
         } catch is CancellationError {
-        } catch { self.error = error.localizedDescription; albums = [] }
+        } catch {
+            let msg = error.localizedDescription
+            self.error = (singles && feed == .upcoming && msg.contains("404"))
+                ? "AOTY doesn't have an upcoming singles list. Switch to Albums for upcoming releases."
+                : msg
+            albums = []
+        }
     }
 
     private func loadMore() async {
@@ -93,5 +108,18 @@ private struct FeedList: View {
             let fresh = try await fetch(page + 1).filter { n in !albums.contains { $0.id == n.id } }
             if fresh.isEmpty { canLoadMore = false } else { albums += fresh; page += 1 }
         } catch { canLoadMore = false }
+    }
+}
+
+/// Compact Albums / Singles switch used on Releases and Profile.
+struct KindToggle: View {
+    @Binding var singles: Bool
+    var body: some View {
+        Picker("Type", selection: $singles.animation()) {
+            Label("Albums", systemImage: "square.stack").tag(false)
+            Label("Singles", systemImage: "music.note").tag(true)
+        }
+        .pickerStyle(.menu)
+        .labelStyle(.titleAndIcon)
     }
 }
