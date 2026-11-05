@@ -95,22 +95,22 @@ struct UserProfileView: View {
         List {
             header
 
-            Section("Recently Rated") {
-                if ratings.isEmpty && loading { ProgressView().frame(maxWidth: .infinity) }
-                else if ratings.isEmpty { Text(error ?? "No ratings yet.").foregroundStyle(.secondary) }
-                ForEach(ratings.prefix(8)) { a in RatingRow(album: a, isMe: isMe) }
-                if !ratings.isEmpty {
-                    Button { push(ProfileRatingsRoute(username: username, path: profile?.ratingsPath, isMe: isMe)) } label: {
-                        Label("View All Ratings", systemImage: "list.number").foregroundStyle(.tint)
-                    }
-                }
-            }
-
             if let reviews = profile?.reviews, !reviews.isEmpty {
                 Section("Reviews") {
                     ForEach(reviews.prefix(5)) { r in ProfileReviewRow(review: r) }
                     Button { push(ProfileReviewsRoute(username: username)) } label: {
                         Label("View All Reviews", systemImage: "text.bubble").foregroundStyle(.tint)
+                    }
+                }
+            }
+
+            Section("Recently Rated") {
+                if ratings.isEmpty && loading { ProgressView().frame(maxWidth: .infinity) }
+                else if ratings.isEmpty { Text(error ?? "No ratings yet.").foregroundStyle(.secondary) }
+                ForEach(ratings.prefix(3)) { a in RatingRow(album: a, isMe: isMe) }
+                if !ratings.isEmpty {
+                    Button { push(ProfileRatingsRoute(username: username, path: profile?.ratingsPath, isMe: isMe)) } label: {
+                        Label("View All Ratings", systemImage: "list.number").foregroundStyle(.tint)
                     }
                 }
             }
