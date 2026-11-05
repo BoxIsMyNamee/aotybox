@@ -34,7 +34,9 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             build | tee build.log | grep -E "error:|warning:|BUILD" || true
-          test -d build/Build/Products/Release-iphoneos/AOTYClient.app
+          # The .app folder exists even after a failed compile, so check Xcode's verdict.
+          grep -q "\*\* BUILD SUCCEEDED \*\*" build.log
+          test -f build/Build/Products/Release-iphoneos/AOTYClient.app/AOTYClient
 
       - name: Package IPA
         run: |
