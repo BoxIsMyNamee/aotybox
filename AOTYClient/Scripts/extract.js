@@ -402,15 +402,64 @@ function aotyAlbum(doc, html, pageURL) {
 }
 
 // --- Signed-in user (from the site header) ---
+// Only trust the header/nav area. Review rows, comments and album cards are full of other
+// users' avatars, so anything inside them is ignored.
+var AOTY_CONTENT = ".albumReviewRow, .albumBlock, .albumListRow, .commentRow, .comment, .commentsContainer, .userReview, .listBlock, .newsBlock, .reviewRow, .userBlock, .rightBox, .sideBox, #comments, .sectionHeading";
+
+function aotySlugFromAvatar(src) {
+  var m = (src || "").match(/\/user\/(?:thumbs\/)?([^\/?#]+?)_\d+\.[a-z]+/i);
+  return m ? m[1].toLowerCase() : null;
+}
+
 function aotyMe(doc) {
-  var links = doc.querySelectorAll("a[href*='/user/']");
-  for (var i = 0; i < links.length; i++) {
-    var href = (links[i].getAttribute("href") || "").replace(/^https?:\/\/[^/]+/, "");
+  function inContent(el) { return !!(el.closest && el.closest(AOTY_CONTENT)); }
+  function userFromLink(a) {
+    var href = (a.getAttribute("href") || "").replace(/^https?:\/\/[^/]+/, "");
     var m = href.match(/^\/user\/([^\/?#]+)\/?$/);
-    if (!m) continue;
-    var img = links[i].querySelector("img");
-    if (!img) continue;
-    return { username: decodeURIComponent(m[1]), avatar: aotyImgSrc(img) || null };
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+  // 1. Header / nav regions.
+  var regions = doc.querySelectorAll("header, nav, #header, .header, .headerContainer, .topBar, .navBar, .menu, [class*='header'], [class*='Header'], [id*='header'], [class*='nav'], [class*='Nav'], [class*='account'], [class*='Account']");
+  for (var r = 0; r < regions.length; r++) {
+    var reg = regions[r];
+    if (inContent(reg)) continue;
+    var imgs = reg.querySelectorAll("img");
+    for (var i = 0; i < imgs.length; i++) {
+      var src = aotyImgSrc(imgs[i]);
+      if (src.indexOf("/user/") < 0) continue;
+      var a = imgs[i].closest("a");
+      var name = (a && userFromLink(a)) || aotySlugFromAvatar(src);
+      if (name) return { username: name, avatar: src };
+    }
+    var links = reg.querySelectorAll("a[href*='/user/']");
+    for (var k = 0; k < links.length; k++) {
+      var t = aotyTxt(links[k]).toLowerCase();
+      var u = userFromLink(links[k]);
+      if (u && (t === "profile" || t === "my profile" || t === "" )) return { username: u, avatar: null };
+    }
+  }
+  // 2. Links labelled "Profile" anywhere outside content.
+  var all = doc.querySelectorAll("a[href*='/user/']");
+  for (var n = 0; n < all.length; n++) {
+    if (inContent(all[n])) continue;
+    var label = aotyTxt(all[n]).toLowerCase();
+    if (label === "profile" || label === "my profile" || label === "view profile") {
+      var uu = userFromLink(all[n]);
+      if (uu) return { username: uu, avatar: null };
+    }
+  }
+  // 3. The first user avatar on the page, but only if it appears before any content block.
+  var seq = doc.querySelectorAll("img, " + AOTY_CONTENT);
+  for (var q = 0; q < seq.length; q++) {
+    var el = seq[q];
+    if (el.tagName.toLowerCase() !== "img") break;          // hit content first: give up
+    var s2 = aotyImgSrc(el);
+    if (s2.indexOf("/user/") >= 0 && !inContent(el)) {
+      var slug = aotySlugFromAvatar(s2);
+      var la = el.closest("a");
+      var nm = (la && userFromLink(la)) || slug;
+      if (nm) return { username: nm, avatar: s2 };
+    }
   }
   return { username: null, avatar: null };
 }

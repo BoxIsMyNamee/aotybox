@@ -79,6 +79,34 @@ for (const [kind, path] of pages) {
     console.log("  logo:", out.reviews[0] && out.reviews[0].image);
   }
 }
+// Signed-in user detection must ignore reviewer avatars on a logged-out page
+{
+  console.log("\n=== me (logged-out homepage)");
+  let r, html = "";
+  for (let attempt = 0; attempt < 4; attempt++) {
+    r = await fetch("https://web.archive.org/web/2026id_/https://www.albumoftheyear.org/", { headers: { "User-Agent": "Mozilla/5.0" } });
+    html = await r.text();
+    if (r.status !== 429) break;
+    await new Promise(res => setTimeout(res, 25000));
+  }
+  if (r.ok && html.length > 20000) {
+    const out = aotyExtract("me", html, "https://www.albumoftheyear.org/");
+    const avatars = (html.match(/\/user\/thumbs\//g) || []).length;
+    console.log(`  page has ${avatars} user avatars; detected:`, JSON.stringify(out));
+    check(out.username === null, "no username on a logged-out page");
+  } else console.log("  no snapshot", r.status);
+  // Synthetic signed-in header
+  const fake = '<html><body><div class="headerContainer"><a href="/user/harbor/"><img src="https://cdn.albumoftheyear.org/user/thumbs/harbor_1700000000.jpg"></a></div>' +
+    '<div class="albumReviewRow"><div class="userReviewImage"><a href="/user/smtcubes/"><img src="https://cdn.albumoftheyear.org/user/thumbs/smtcubes_1.jpg"></a></div></div></body></html>';
+  const me = aotyExtract("me", fake, "https://www.albumoftheyear.org/");
+  console.log("  synthetic:", JSON.stringify(me));
+  check(me.username === "harbor", "header avatar wins over review avatars");
+  const fake2 = '<html><body><div class="topRight"><img src="https://cdn.albumoftheyear.org/user/thumbs/harbor_1700000000.jpg"></div><div class="albumBlock"><a href="/album/1-x.php"><img src="a.jpg"></a></div></body></html>';
+  const me2 = aotyExtract("me", fake2, "https://www.albumoftheyear.org/");
+  console.log("  synthetic (avatar only):", JSON.stringify(me2));
+  check(me2.username === "harbor", "slug from avatar filename");
+}
+
 // Genius lyrics parser against an archived lyrics page
 {
   const { geniusParse } = require("../AOTYClient/Scripts/genius.js");
