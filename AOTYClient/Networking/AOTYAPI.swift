@@ -77,9 +77,16 @@ actor AOTYAPI {
         return try await get("/album", ["slug": slug, "minimal": "true"], as: AlbumDetail.self)
     }
 
+    /// sort: "best" (popular), "recent" or "worst". Always fetched on-device.
+    func userReviews(slug: String, sort: String, page: Int) async throws -> UserReviewsPage {
+        let path = "/album/\(slug)/user-reviews/?sort=\(sort)" + (page > 1 ? "&p=\(page)" : "")
+        return try await device(path, .userReviews, UserReviewsPage.self)
+    }
+
     func clearCache() async {
         cache.removeAllCachedResponses()
         await AOTYScraper.shared.clearCache()
+        ImageCache.shared.clear()
     }
 
     private func device<T: Decodable>(_ path: String, _ kind: AOTYScraper.Kind, _ type: T.Type) async throws -> T {

@@ -49,7 +49,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         webView.navigationDelegate = self
     }
 
-    enum Kind: String { case blocks, chart, album }
+    enum Kind: String { case blocks, chart, album, userReviews }
 
     enum ScrapeError: LocalizedError {
         case blocked
@@ -170,8 +170,8 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         if (aotyIsChallenge(html, r.status)) return JSON.stringify({ __challenge: true });
         if (!r.ok) return JSON.stringify({ __http: r.status });
         const out = aotyExtract(kind, html, r.url);
-        const n = (out.albums || out.items || []).length + (out.title ? 1 : 0);
-        if (n === 0) {
+        const n = (out.albums || out.items || out.reviews || []).length + (out.title ? 1 : 0);
+        if (n === 0 && kind !== "userReviews") {
           const d = new DOMParser().parseFromString(html, "text/html");
           return JSON.stringify({ __empty: "Page: " + (d.title || "untitled").trim().slice(0, 60) + " · " + html.length + " bytes · " + r.url.replace("https://www.albumoftheyear.org", "") });
         }
@@ -186,8 +186,8 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         const html = document.documentElement.outerHTML;
         if (aotyIsChallenge(html, 200)) return JSON.stringify({ __challenge: true });
         const out = aotyExtract(kind, html, location.href);
-        const n = (out.albums || out.items || []).length + (out.title ? 1 : 0);
-        if (n === 0) return JSON.stringify({ __empty: "Page: " + (document.title || "untitled").trim().slice(0, 60) + " · " + html.length + " bytes (loaded)" });
+        const n = (out.albums || out.items || out.reviews || []).length + (out.title ? 1 : 0);
+        if (n === 0 && kind !== "userReviews") return JSON.stringify({ __empty: "Page: " + (document.title || "untitled").trim().slice(0, 60) + " · " + html.length + " bytes (loaded)" });
         return JSON.stringify(out);
         """
         return try await evaluate(body, args: ["kind": kind.rawValue], path: path)

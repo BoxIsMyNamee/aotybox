@@ -30,7 +30,7 @@ struct ReleasesView: View {
                 }
 
                 ForEach(albums) { album in
-                    NavigationLink(value: album) { AlbumRow(album) }
+                    NavigationLink(value: album) { AlbumRow(album, coverSize: 84) }
                         .onAppear { if album == albums.last { Task { await loadMore() } } }
                 }
 

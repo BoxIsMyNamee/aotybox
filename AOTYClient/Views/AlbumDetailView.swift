@@ -8,6 +8,8 @@ struct AlbumDetailView: View {
     @State private var error: String?
     @State private var showAllTracks = false
     @State private var showRateSheet = false
+    @State private var showCover = false
+    @State private var openingTrack: String?
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -25,10 +27,23 @@ struct AlbumDetailView: View {
             }
         }
         .task { await load() }
+        .fullScreenCover(isPresented: $showCover) {
+            if let album, let url = album.coverURL { CoverViewer(url: url, title: album.title) }
+        }
         .sheet(isPresented: $showRateSheet) {
             if let album, let url = URL(string: album.url) {
                 AOTYWebSheet(url: url, title: "Rate & Review")
             }
+        }
+    }
+
+    private func openGenius(artist: String, track: Track) {
+        guard openingTrack == nil else { return }
+        openingTrack = track.id
+        Task {
+            let url = await Genius.url(artist: artist, title: track.title)
+            openingTrack = nil
+            openURL(url)
         }
     }
 
@@ -46,7 +61,11 @@ struct AlbumDetailView: View {
             // Header
             Section {
                 VStack(spacing: 12) {
-                    Cover(url: a.coverURL, size: 240).shadow(radius: 8)
+                    Button { showCover = true } label: {
+                        Cover(url: a.coverURL, size: 240).shadow(radius: 8)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("View cover art")
                     VStack(spacing: 4) {
                         Text(a.title).font(.title2.bold()).multilineTextAlignment(.center)
                         Text(a.artist).font(.headline).foregroundStyle(.secondary)
@@ -97,21 +116,29 @@ struct AlbumDetailView: View {
             if let tracks = a.tracklist, !tracks.isEmpty {
                 Section("Tracklist" + (a.totalLength.map { " · \($0)" } ?? "")) {
                     ForEach(showAllTracks ? tracks : Array(tracks.prefix(8))) { t in
-                        HStack {
-                            Text("\(t.number)").foregroundStyle(.secondary).monospacedDigit().frame(width: 24, alignment: .trailing)
-                            VStack(alignment: .leading) {
-                                Text(t.title)
-                                if let f = t.features, !f.isEmpty {
-                                    Text("feat. " + f.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary)
+                        Button { openGenius(artist: a.artist, track: t) } label: {
+                            HStack {
+                                Text("\(t.number)").foregroundStyle(.secondary).monospacedDigit().frame(width: 24, alignment: .trailing)
+                                VStack(alignment: .leading) {
+                                    Text(t.title).foregroundStyle(.primary)
+                                    if let f = t.features, !f.isEmpty {
+                                        Text("feat. " + f.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                if openingTrack == t.id {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    if let r = t.rating { Text(String(Int(r.rounded()))).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
+                                    if let l = t.length { Text(l).font(.caption.monospacedDigit()).foregroundStyle(.tertiary) }
                                 }
                             }
-                            Spacer()
-                            if let r = t.rating { Text(String(Int(r.rounded()))).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
-                            if let l = t.length { Text(l).font(.caption.monospacedDigit()).foregroundStyle(.tertiary) }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                     }
                     if tracks.count > 8 {
-                        Button(showAllTracks ? "Show less" : "Show all \(tracks.count) tracks") { showAllTracks.toggle() }
+                        Button(showAllTracks ? "Show Less…" : "Show More…") { withAnimation { showAllTracks.toggle() } }
                     }
                 }
             }
@@ -137,15 +164,20 @@ struct AlbumDetailView: View {
             // User reviews
             if let reviews = a.popularUserReviews, !reviews.isEmpty {
                 Section("Popular User Reviews") {
-                    ForEach(reviews.prefix(10)) { r in
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(r.username).font(.subheadline.weight(.semibold))
-                                Spacer()
-                                if let s = r.rating { Text(String(Int(s.rounded()))).font(.headline.monospacedDigit()) }
-                            }
-                            Text(r.text).font(.callout).foregroundStyle(.secondary).lineLimit(6)
+                    ForEach(reviews.prefix(5)) { r in UserReviewRow(review: r) }
+                    if let slug {
+                        NavigationLink {
+                            UserReviewsView(slug: slug, title: a.title)
+                        } label: {
+                            Label("See all user reviews", systemImage: "text.bubble")
+                                .foregroundStyle(.orange)
                         }
+                    }
+                }
+            } else if let slug {
+                Section {
+                    NavigationLink { UserReviewsView(slug: slug, title: a.title) } label: {
+                        Label("User reviews", systemImage: "text.bubble").foregroundStyle(.orange)
                     }
                 }
             }

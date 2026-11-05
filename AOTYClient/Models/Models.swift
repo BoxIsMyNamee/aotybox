@@ -62,10 +62,14 @@ struct CriticReview: Decodable, Identifiable, Hashable {
 struct UserReview: Decodable, Identifiable, Hashable {
     let reviewId: Int?
     let username: String
+    let avatar: String?
     let rating: Double?
     let text: String
+    let isTruncated: Bool?
+    let url: String?
     let likes: Int?
     let date: String?
+    var avatarURL: URL? { avatar.flatMap(URL.init(string:)) }
     var id: String { reviewId.map(String.init) ?? username + (date ?? "") }
 }
 
@@ -111,6 +115,18 @@ struct AlbumDetail: Decodable, Hashable {
 }
 
 // MARK: - Response envelopes
+
+struct DistributionRow: Decodable, Hashable {
+    let label: String
+    let count: Int
+}
+
+struct UserReviewsPage: Decodable {
+    let reviews: [UserReview]
+    let total: Int?
+    let totalPages: Int?
+    let distribution: [DistributionRow]?
+}
 
 struct AlbumListResponse: Decodable {
     let page: Int?
