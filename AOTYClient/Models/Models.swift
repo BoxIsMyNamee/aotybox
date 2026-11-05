@@ -50,6 +50,7 @@ struct Track: Decodable, Identifiable, Hashable {
 }
 
 struct CriticReview: Decodable, Identifiable, Hashable {
+    let image: String?
     let score: Double?
     let publication: String
     let author: String?

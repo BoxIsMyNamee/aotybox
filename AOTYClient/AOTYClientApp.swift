@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct AOTYClientApp: App {
     @StateObject private var scraper = AOTYScraper.shared
+    @AppStorage(Theme.key) private var accentHex = Theme.defaultHex
 
     var body: some Scene {
         WindowGroup {
@@ -12,9 +13,9 @@ struct AOTYClientApp: App {
                 SearchView().tabItem { Label("Search", systemImage: "magnifyingglass") }
                 SettingsView().tabItem { Label("Settings", systemImage: "gearshape") }
             }
-            .tint(.orange)
+            .tint(Color(hex: accentHex))
             .background(HiddenScraperHost().frame(width: 2, height: 2).allowsHitTesting(false))
-            .sheet(item: $scraper.challenge) { ChallengeSheet(url: $0.url) }
+            .sheet(item: $scraper.challenge) { ChallengeSheet(url: $0.url).accentTint() }
         }
     }
 }
@@ -27,6 +28,10 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section("Accent Color") {
+                    AccentColorPicker()
+                }
+
                 Section {
                     Button("Sign in / open my AOTY account") { showLogin = true }
                     Button("Sign out on this device", role: .destructive) {
@@ -70,7 +75,7 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .sheet(isPresented: $showLogin) {
-                AOTYWebSheet(url: AOTYSession.home, title: "AOTY")
+                AOTYWebSheet(url: AOTYSession.home, title: "AOTY").accentTint()
             }
         }
     }

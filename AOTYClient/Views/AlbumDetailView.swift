@@ -28,11 +28,11 @@ struct AlbumDetailView: View {
         }
         .task { await load() }
         .fullScreenCover(isPresented: $showCover) {
-            if let album, let url = album.coverURL { CoverViewer(url: url, title: album.title) }
+            if let album, let url = album.coverURL { CoverViewer(url: url, title: album.title).accentTint() }
         }
         .sheet(isPresented: $showRateSheet) {
             if let album, let url = URL(string: album.url) {
-                AOTYWebSheet(url: url, title: "Rate & Review")
+                AOTYWebSheet(url: url, title: "Rate & Review").accentTint()
             }
         }
     }
@@ -78,7 +78,7 @@ struct AlbumDetailView: View {
                     }
                     if let r = a.criticRanking ?? a.userRanking {
                         Text("#\(r.rank) of \(r.year.map(String.init) ?? "the year")")
-                            .font(.caption.weight(.semibold)).foregroundStyle(.orange)
+                            .font(.caption.weight(.semibold)).foregroundStyle(.tint)
                     }
                     if let genres = a.genres, !genres.isEmpty {
                         Text(genres.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary)
@@ -143,41 +143,60 @@ struct AlbumDetailView: View {
                 }
             }
 
-            // Critic reviews
-            if let reviews = a.reviews, !reviews.isEmpty {
-                Section("Critic Reviews") {
-                    ForEach(reviews.prefix(15)) { r in
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(r.publication).font(.subheadline.weight(.semibold))
-                                Spacer()
-                                if let s = r.score { Text(String(Int(s.rounded()))).font(.headline.monospacedDigit()) }
-                            }
-                            if !r.text.isEmpty { Text(r.text).font(.callout).foregroundStyle(.secondary).lineLimit(4) }
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture { if let s = r.url, let u = URL(string: s) { openURL(u) } }
-                    }
-                }
-            }
-
             // User reviews
             if let reviews = a.popularUserReviews, !reviews.isEmpty {
                 Section("Popular User Reviews") {
-                    ForEach(reviews.prefix(5)) { r in UserReviewRow(review: r) }
+                    ForEach(reviews.prefix(3)) { r in UserReviewRow(review: r) }
                     if let slug {
                         NavigationLink {
                             UserReviewsView(slug: slug, title: a.title)
                         } label: {
                             Label("See all user reviews", systemImage: "text.bubble")
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(.tint)
                         }
                     }
                 }
             } else if let slug {
                 Section {
                     NavigationLink { UserReviewsView(slug: slug, title: a.title) } label: {
-                        Label("User reviews", systemImage: "text.bubble").foregroundStyle(.orange)
+                        Label("User reviews", systemImage: "text.bubble").foregroundStyle(.tint)
+                    }
+                }
+            }
+
+            // Critic reviews
+            if let reviews = a.reviews, !reviews.isEmpty {
+                Section("Critic Reviews") {
+                    ForEach(reviews.prefix(15)) { r in
+                        HStack(alignment: .top, spacing: 12) {
+                            CachedImage(url: r.image.flatMap(URL.init(string:))) {
+                                RoundedRectangle(cornerRadius: 6).fill(.quaternary)
+                                    .overlay(Text(String(r.publication.prefix(1))).font(.caption.bold()).foregroundStyle(.secondary))
+                            }
+                            .frame(width: 36, height: 36)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(r.publication).font(.subheadline.weight(.semibold))
+                                        if let author = r.author, !author.isEmpty {
+                                            Text(author).font(.caption2).foregroundStyle(.tertiary)
+                                        }
+                                    }
+                                    Spacer()
+                                    if let s = r.score {
+                                        Text(String(Int(s.rounded())))
+                                            .font(.headline.monospacedDigit())
+                                            .padding(.horizontal, 8).padding(.vertical, 3)
+                                            .background(scoreColor(s).opacity(0.25), in: RoundedRectangle(cornerRadius: 6))
+                                    }
+                                }
+                                if !r.text.isEmpty { Text(r.text).font(.callout).foregroundStyle(.secondary).lineLimit(5) }
+                            }
+                        }
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                        .onTapGesture { if let s = r.url, let u = URL(string: s) { openURL(u) } }
                     }
                 }
             }

@@ -75,6 +75,8 @@ for (const [kind, path] of pages) {
     check(out.tracklist[0] && out.tracklist[0].title && !/\d:\d\d/.test(out.tracklist[0].title), "clean track title");
     check(out.reviews.length >= 3, "critic reviews");
     check(out.popularUserReviews.some(r => r.avatar), "user review avatars");
+    check(out.reviews.filter(r => r.image && r.image.startsWith("http")).length >= out.reviews.length / 2, "critic logos");
+    console.log("  logo:", out.reviews[0] && out.reviews[0].image);
   }
 }
 console.log(`\n${failures} failure(s)`);

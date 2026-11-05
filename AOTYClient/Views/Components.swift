@@ -44,6 +44,7 @@ struct AlbumRow: View {
     var user: Double? = nil
     var mustHear: Bool = false
     var coverSize: CGFloat = 56
+    var genres: String? = nil
 
     var body: some View {
         HStack(spacing: 12) {
@@ -55,9 +56,10 @@ struct AlbumRow: View {
                 Text(artist).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
                 HStack(spacing: 4) {
                     Text(title).font(.body.weight(.semibold)).lineLimit(2)
-                    if mustHear { Image(systemName: "star.fill").font(.caption2).foregroundStyle(.orange) }
+                    if mustHear { Image(systemName: "star.fill").font(.caption2).foregroundStyle(.tint) }
                 }
-                if let subtitle { Text(subtitle).font(.caption).foregroundStyle(.tertiary) }
+                if let genres { Text(genres).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                if let subtitle, !subtitle.isEmpty { Text(subtitle).font(.caption).foregroundStyle(.tertiary) }
             }
             Spacer(minLength: 4)
             if critic != nil && user != nil && coverSize > 60 {
@@ -76,9 +78,9 @@ struct AlbumRow: View {
 }
 
 extension AlbumRow {
-    init(_ a: AlbumBlock, coverSize: CGFloat = 56) {
+    init(_ a: AlbumBlock, coverSize: CGFloat = 56, genres: String? = nil) {
         self.init(artist: a.artist, title: a.title, cover: a.coverURL, subtitle: a.releaseDate,
-                  critic: a.criticScore, user: a.userScore, mustHear: a.mustHear ?? false, coverSize: coverSize)
+                  critic: a.criticScore, user: a.userScore, mustHear: a.mustHear ?? false, coverSize: coverSize, genres: genres)
     }
 }
 
@@ -135,7 +137,7 @@ struct UserReviewRow: View {
                     Label("\(likes)", systemImage: "heart").font(.caption).foregroundStyle(.tertiary)
                 }
                 if review.isTruncated == true || (lineLimit != nil && review.text.count > 280) {
-                    Text("Read full review").font(.caption.weight(.semibold)).foregroundStyle(.orange)
+                    Text("Read full review").font(.caption.weight(.semibold)).foregroundStyle(.tint)
                 }
             }
         }
@@ -143,7 +145,7 @@ struct UserReviewRow: View {
         .contentShape(Rectangle())
         .onTapGesture { if review.url != nil { showFull = true } }
         .sheet(isPresented: $showFull) {
-            if let s = review.url, let u = URL(string: s) { AOTYWebSheet(url: u, title: review.username) }
+            if let s = review.url, let u = URL(string: s) { AOTYWebSheet(url: u, title: review.username).accentTint() }
         }
     }
 }

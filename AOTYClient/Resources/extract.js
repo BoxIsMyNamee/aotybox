@@ -324,7 +324,9 @@ function aotyAlbum(doc, html, pageURL) {
     if (!pub) continue;
     var ext = row.querySelector(".albumReviewLinks .extLink a");
     var actions = row.querySelectorAll(".albumReviewLinks .actionContainer");
+    var logo = row.querySelector(".albumReviewImage img");
     reviews.push({
+      image: logo ? (aotyImgSrc(logo) || null) : null,
       score: aotyNum(aotyTxt(row.querySelector(".albumReviewRating"))),
       publication: aotyTxt(pub.querySelector("a")) || aotyTxt(pub),
       author: aotyTxt(row.querySelector(".albumReviewHeader .author a")) || aotyTxt(row.querySelector(".albumReviewHeader .author")) || null,

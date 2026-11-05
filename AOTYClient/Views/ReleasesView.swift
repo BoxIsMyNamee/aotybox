@@ -6,6 +6,7 @@ struct ReleasesView: View {
         var id: String { rawValue }
     }
 
+    @ObservedObject private var genreStore = GenreStore.shared
     @State private var feed: Feed = .thisWeek
     @State private var albums: [AlbumBlock] = []
     @State private var page = 1
@@ -30,8 +31,12 @@ struct ReleasesView: View {
                 }
 
                 ForEach(albums) { album in
-                    NavigationLink(value: album) { AlbumRow(album, coverSize: 84) }
-                        .onAppear { if album == albums.last { Task { await loadMore() } } }
+                    NavigationLink(value: album) { AlbumRow(album, coverSize: 84, genres: genreStore.label(for: album.slug)) }
+                        .onAppear {
+                            genreStore.appeared(album.slug)
+                            if album == albums.last { Task { await loadMore() } }
+                        }
+                        .onDisappear { genreStore.disappeared(album.slug) }
                 }
 
                 if loading { ProgressView().frame(maxWidth: .infinity) }
