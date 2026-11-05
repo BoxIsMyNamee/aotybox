@@ -42,6 +42,10 @@ jobs:
         run: |
           xcodebuild -version
           otool -L build/Build/Products/Release-iphoneos/AOTYClient.app/AOTYClient | grep -i -E "swift|webkit"
+          # libswiftWebKit isn't on iOS 18; linking it crashes the app at launch.
+          if otool -L build/Build/Products/Release-iphoneos/AOTYClient.app/AOTYClient | grep -q libswiftWebKit; then
+            echo "::error::App links libswiftWebKit (iOS 26+ only) and will crash on iOS 18"; exit 1
+          fi
       - name: Package IPA
         run: |
           mkdir -p Payload

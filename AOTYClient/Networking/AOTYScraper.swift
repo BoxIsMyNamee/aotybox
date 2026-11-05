@@ -117,7 +117,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
                       "text " + (doc.body ? doc.body.innerText || doc.body.textContent : "").replace(/\\s+/g, " ").trim().slice(0, 240)
                     ].join("\\n");
                     """
-                    let result = try await self.webView.callAsyncJavaScript(body, arguments: ["path": path, "kind": kind.rawValue], in: nil, contentWorld: .defaultClient)
+                    let result = try await self.webView.runAsyncJS(body, args: ["path": path, "kind": kind.rawValue])
                     return (result as? String) ?? "no result"
                 }
             }
@@ -132,7 +132,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         try await serialized {
             try await self.withTimeout(20) {
                 if self.webView.url == nil { try await self.ensureOrigin() }
-                let r = try await self.webView.callAsyncJavaScript(body, arguments: args, in: nil, contentWorld: .defaultClient)
+                let r = try await self.webView.runAsyncJS(body, args: args)
                 guard let s = r as? String else { throw ScrapeError.script("no result") }
                 return s
             }
@@ -214,7 +214,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
     private func evaluate(_ body: String, args: [String: Any], path: String) async throws -> Outcome {
         let result: Any?
         do {
-            result = try await webView.callAsyncJavaScript(body, arguments: args, in: nil, contentWorld: .defaultClient)
+            result = try await webView.runAsyncJS(body, args: args)
         } catch {
             throw ScrapeError.script(error.localizedDescription)
         }
@@ -370,5 +370,21 @@ struct ChallengeSheet: View {
             }
         }
         .interactiveDismissDisabled()
+    }
+}
+
+
+extension WKWebView {
+    /// Wraps the completion-handler form of callAsyncJavaScript. The `async` Swift overlay lives in
+    /// libswiftWebKit, which iOS 18 doesn't ship, and linking it crashes the app at launch.
+    func runAsyncJS(_ js: String, args: [String: Any], world: WKContentWorld = .defaultClient) async throws -> Any? {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Any?, Error>) in
+            self.callAsyncJavaScript(js, arguments: args, in: nil, in: world) { result in
+                switch result {
+                case let .success(value): cont.resume(returning: value)
+                case let .failure(error): cont.resume(throwing: error)
+                }
+            }
+        }
     }
 }
