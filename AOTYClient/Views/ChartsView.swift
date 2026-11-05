@@ -42,6 +42,7 @@ struct ChartsView: View {
                                  user: source == .users ? item.score : nil,
                                  mustHear: item.mustHear ?? false)
                     }
+                    .musicAppMenu(artist: item.artist, album: item.album)
                     .onAppear { if item == items.last { Task { await loadMore() } } }
                 }
                 if loading { ProgressView().frame(maxWidth: .infinity) }

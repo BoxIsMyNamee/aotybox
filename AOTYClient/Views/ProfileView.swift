@@ -25,7 +25,8 @@ struct ProfileView: View {
                 else if loading { ProgressView("Finding your profile…") }
                 else { signedOut }
             }
-            .navigationTitle(profile?.displayName ?? username ?? "Profile")
+            .navigationTitle("Profile")
+            .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: AlbumBlock.self) { AlbumDetailView(slug: $0.slug, fallbackTitle: $0.title) }
             .toolbar {
                 if username != nil {
@@ -126,12 +127,13 @@ struct ProfileView: View {
                                 if let r = a.rating ?? a.userScore { MiniScore(label: "You", score: r) }
                             }
                         }
+                        .musicAppMenu(artist: a.artist, album: a.title)
                         .onAppear { if a == ratings.last { Task { await loadMoreRatings(user) } } }
                     }
                 }
             } else if !singles, let albums = profile?.albums, !albums.isEmpty {
                 Section("On Your Profile") {
-                    ForEach(albums) { a in NavigationLink(value: a) { AlbumRow(a) } }
+                    ForEach(albums) { a in NavigationLink(value: a) { AlbumRow(a) }.musicAppMenu(artist: a.artist, album: a.title) }
                 }
             }
 

@@ -4,6 +4,7 @@ import SwiftUI
 struct AOTYClientApp: App {
     @StateObject private var scraper = AOTYScraper.shared
     @AppStorage(Theme.key) private var accentHex = Theme.defaultHex
+    @State private var musicLinkFailed = false
 
     var body: some Scene {
         WindowGroup {
@@ -17,6 +18,12 @@ struct AOTYClientApp: App {
             .tint(Color(hex: accentHex))
             .background(HiddenScraperHost().frame(width: 2, height: 2).allowsHitTesting(false))
             .sheet(item: $scraper.challenge) { ChallengeSheet(url: $0.url).accentTint() }
+            .onReceive(NotificationCenter.default.publisher(for: .musicAppOpenFailed)) { _ in musicLinkFailed = true }
+            .alert("Couldn't open \(MusicAppLink.name)", isPresented: $musicLinkFailed) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Check the link in Settings → Music App. Marvis lists its URL formats in Marvis → Settings → Tips & Tricks.")
+            }
         }
     }
 }
@@ -40,6 +47,12 @@ struct SettingsView: View {
                     Text("Account")
                 } footer: {
                     Text("You sign in on AOTY's own website, inside the app. Your login stays on this device and is never sent to the community API.")
+                }
+
+                Section("Music App") {
+                    NavigationLink { MusicAppSettingsView() } label: {
+                        LabeledContent("Long-press opens", value: MusicAppLink.name)
+                    }
                 }
 
                 Section("AI Assistant") {

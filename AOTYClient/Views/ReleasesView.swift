@@ -62,6 +62,7 @@ private struct FeedList: View {
 
             ForEach(albums) { album in
                 NavigationLink(value: album) { AlbumRow(album, coverSize: 84, genres: genreStore.label(for: album.slug)) }
+                    .musicAppMenu(artist: album.artist, album: album.title)
                     .onAppear {
                         genreStore.appeared(album.slug)
                         if album == albums.last { Task { await loadMore() } }

@@ -55,6 +55,7 @@ struct AlbumDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("View cover art")
+                    .musicAppMenu(artist: a.artist, album: a.title)
                     VStack(spacing: 4) {
                         Text(a.title).font(.title2.bold()).multilineTextAlignment(.center)
                         Text(a.artist).font(.headline).foregroundStyle(.secondary)
@@ -122,6 +123,7 @@ struct AlbumDetailView: View {
                             }
                             .contentShape(Rectangle())
                         }
+                        .musicAppMenu(artist: a.artist, album: a.title, song: t.title)
                     }
                     if tracks.count > 8 {
                         Button(showAllTracks ? "Show Less…" : "Show More…") { withAnimation { showAllTracks.toggle() } }
@@ -192,6 +194,7 @@ struct AlbumDetailView: View {
                 Section("Similar Albums") {
                     ForEach(similar.prefix(10)) { s in
                         NavigationLink { AlbumDetailView(slug: s.slug, fallbackTitle: s.title) } label: { AlbumRow(s) }
+                            .musicAppMenu(artist: s.artist, album: s.title)
                     }
                 }
             }
