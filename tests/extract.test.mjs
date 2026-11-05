@@ -83,8 +83,14 @@ for (const [kind, path] of pages) {
 {
   const { geniusParse } = require("../AOTYClient/Resources/genius.js");
   console.log("\n=== genius lyrics");
-  const r = await fetch("https://web.archive.org/web/2026id_/https://genius.com/Kendrick-lamar-humble-lyrics", { headers: { "User-Agent": "Mozilla/5.0" } });
-  const html = await r.text();
+  let r, html = "";
+  for (let attempt = 0; attempt < 4; attempt++) {
+    r = await fetch("https://web.archive.org/web/2026id_/https://genius.com/Kendrick-lamar-humble-lyrics", { headers: { "User-Agent": "Mozilla/5.0" } });
+    html = await r.text();
+    if (r.status !== 429) break;
+    console.log("  archive rate-limited, waiting…");
+    await new Promise(res => setTimeout(res, 25000));
+  }
   if (r.ok && html.length > 50000) {
     const out = geniusParse(html);
     const text = out.segments.map(s => s.t).join("");
