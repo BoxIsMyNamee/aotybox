@@ -13,6 +13,8 @@ const pages = [
   ["chart", "/ratings/user-highest-rated/2025/1"],
   ["album", "/album/2915-outkast-aquemini.php"],
   ["album", "/album/1998-kanye-west-my-beautiful-dark-twisted-fantasy.php"],
+  ["userReviews", "/album/2915-outkast-aquemini/user-reviews/"],
+  ["userReviews", "/album/1998-kanye-west-my-beautiful-dark-twisted-fantasy/user-reviews/"],
 ];
 
 let failures = 0;
@@ -51,6 +53,13 @@ for (const [kind, path] of pages) {
     check(i.rank === 1, "rank 1 first");
     check(i.artist && i.album, "artist + album split");
     check(typeof i.score === "number", "numeric score");
+  } else if (kind === "userReviews") {
+    console.log(`  ${out.reviews.length} reviews, total ${out.total}, pages ${out.totalPages}, dist ${out.distribution.length}`);
+    console.log("  first:", JSON.stringify(out.reviews[0])?.slice(0, 400));
+    console.log("  dist:", JSON.stringify(out.distribution.slice(0, 3)));
+    check(out.reviews.length >= 10, "user reviews parsed");
+    check(out.reviews.filter(r => r.avatar).length >= out.reviews.length / 2, "most reviews have avatars");
+    check(out.total > out.reviews.length && out.totalPages > 1, "pagination");
   } else {
     const s = { ...out, tracklist: out.tracklist.length, reviews: out.reviews.length,
       popularUserReviews: out.popularUserReviews.length, similarAlbums: out.similarAlbums.length, moreAlbums: out.moreAlbums.length };
@@ -65,6 +74,7 @@ for (const [kind, path] of pages) {
     check(out.tracklist.length >= 5, "tracklist");
     check(out.tracklist[0] && out.tracklist[0].title && !/\d:\d\d/.test(out.tracklist[0].title), "clean track title");
     check(out.reviews.length >= 3, "critic reviews");
+    check(out.popularUserReviews.some(r => r.avatar), "user review avatars");
   }
 }
 console.log(`\n${failures} failure(s)`);

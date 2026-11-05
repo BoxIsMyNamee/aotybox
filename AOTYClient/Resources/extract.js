@@ -188,6 +188,64 @@ function aotyChart(doc) {
   return { items: items, totalPages: totalPages == null ? 1 : totalPages };
 }
 
+// --- User review rows (album page + user-reviews page) ---
+function aotyUserReview(el) {
+  var nameEl = el.querySelector(".userReviewName a");
+  if (!nameEl) return null;
+  var idm = (el.getAttribute("id") || "").match(/(\d+)/);
+  var textEl = el.querySelector(".albumReviewText.user") || el.querySelector(".albumReviewText");
+  var raw = aotyTxt(textEl);
+  var avatarImg = el.querySelector(".userReviewImage img");
+  var revLink = null;
+  var links = el.querySelectorAll("a[href*='/user/']");
+  for (var i = 0; i < links.length; i++) {
+    var h = links[i].getAttribute("href") || "";
+    if (h.indexOf("/album/") >= 0 || h.indexOf("/review/") >= 0) { revLink = h; break; }
+  }
+  return {
+    reviewId: idm ? parseInt(idm[1], 10) : null,
+    username: aotyTxt(nameEl),
+    avatar: avatarImg ? (aotyImgSrc(avatarImg) || null) : null,
+    rating: aotyNum(aotyTxt(el.querySelector(".rating"))),
+    text: raw.replace(/\.{0,3}\s*read more\s*$/i, "").trim(),
+    isTruncated: /read more\s*$/i.test(raw),
+    url: revLink ? aotyAbs(revLink) : null,
+    likes: aotyCount(aotyTxt(el.querySelector(".review_likes"))),
+    date: aotyTxt(el.querySelector(".review_date")).replace(/\*$/, "").trim() || null
+  };
+}
+
+function aotyUserReviewsPage(doc, html) {
+  var reviews = [];
+  var rows = doc.querySelectorAll(".albumReviewRow");
+  for (var i = 0; i < rows.length; i++) {
+    var r = aotyUserReview(rows[i]);
+    if (r) reviews.push(r);
+  }
+  var tm = html.match(/showing\s+\d+\s*-\s*(\d+)\s*of\s*([\d,]+)\s*user reviews/i);
+  var total = tm ? parseInt(tm[2].replace(/,/g, ""), 10) : reviews.length;
+  var perPage = tm ? Math.max(1, parseInt(tm[1], 10)) : 25;
+  var maxPage = 1;
+  var pageLinks = doc.querySelectorAll("a[href*='p=']");
+  for (var j = 0; j < pageLinks.length; j++) {
+    var pm = (pageLinks[j].getAttribute("href") || "").match(/[?&]p=(\d+)/);
+    if (pm) maxPage = Math.max(maxPage, parseInt(pm[1], 10));
+  }
+  var distribution = [];
+  var drows = doc.querySelectorAll("tr.distRow");
+  for (var d = 0; d < drows.length; d++) {
+    var label = aotyTxt(drows[d].querySelector(".distLabel"));
+    var count = aotyCount(aotyTxt(drows[d].querySelector(".distCount")));
+    if (label) distribution.push({ label: label, count: count || 0 });
+  }
+  return {
+    reviews: reviews,
+    total: total,
+    totalPages: Math.max(maxPage, Math.ceil(total / (perPage < 10 ? 25 : perPage))),
+    distribution: distribution
+  };
+}
+
 // --- Album page ---
 function aotyRanking(html, boxClass) {
   var idx = html.indexOf(boxClass);
@@ -293,18 +351,8 @@ function aotyAlbum(doc, html, pageURL) {
       continue;
     }
     if (/albumReviewRow/.test(cls)) {
-      var nameEl = el.querySelector(".userReviewName a");
-      if (!nameEl) continue;
-      var idm = (el.getAttribute("id") || "").match(/(\d+)/);
-      var textEl = el.querySelector(".albumReviewText.user") || el.querySelector(".albumReviewText");
-      var ur = {
-        reviewId: idm ? parseInt(idm[1], 10) : null,
-        username: aotyTxt(nameEl),
-        rating: aotyNum(aotyTxt(el.querySelector(".rating"))),
-        text: aotyTxt(textEl).replace(/read more\s*$/i, "").trim(),
-        likes: aotyCount(aotyTxt(el.querySelector(".review_likes"))),
-        date: aotyTxt(el.querySelector(".review_date")).replace(/\*$/, "").trim() || null
-      };
+      var ur = aotyUserReview(el);
+      if (!ur) continue;
       if (section === "recent") recent.push(ur); else popular.push(ur);
     } else if (section === "similar" || section === "more") {
       var blk = aotyAlbumBlocks({ querySelectorAll: function () { return [el]; } });
@@ -362,6 +410,7 @@ function aotyExtract(kind, html, pageURL) {
   }
   if (kind === "chart") return aotyChart(doc);
   if (kind === "album") return aotyAlbum(doc, html, pageURL);
+  if (kind === "userReviews") return aotyUserReviewsPage(doc, html);
   throw new Error("unknown kind " + kind);
 }
 
