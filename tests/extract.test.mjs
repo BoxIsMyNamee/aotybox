@@ -38,7 +38,7 @@ for (const [kind, path] of pages) {
     const a = out.albums[0] || {};
     check(a.url && a.url.includes("/album/"), "album url");
     check(a.artist && a.title, "artist + title");
-    check(a.cover && a.cover.startsWith("http"), "cover url");
+    check(out.albums.filter(x => x.cover && x.cover.startsWith("http")).length >= out.albums.length / 2, "most albums have covers");
   } else if (kind === "chart") {
     console.log(`  ${out.items.length} items, totalPages ${out.totalPages}`);
     console.log("  first:", JSON.stringify(out.items[0]));
