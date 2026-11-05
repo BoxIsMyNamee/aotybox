@@ -287,19 +287,24 @@ struct SongChatView: View {
     let context: String
     @Binding var messages: [ChatMessage]
     let nothingOnGenius: Bool
+    var subject: String = "song"
     @State private var input = ""
     @State private var thinking = false
     @State private var error: String?
     @FocusState private var focused: Bool
     @State private var showAISettings = false
 
-    private let suggestions = ["What is this song about?", "Explain the hardest lines", "How was it received?", "Any samples or interpolations?"]
+    private var suggestions: [String] {
+        subject == "song"
+            ? ["What is this song about?", "Explain the hardest lines", "How was it received?", "Any samples or interpolations?"]
+            : ["What's the story behind this \(subject)?", "How was it received?", "Standout tracks?", "Themes and influences", "Who produced it?"]
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if !AISettings.isConfigured {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("Connect an AI to ask about this song", systemImage: "sparkles").font(.headline)
+                    Label("Connect an AI to ask about this \(subject)", systemImage: "sparkles").font(.headline)
                     Text("Add a Gemini, Claude, or OpenAI-compatible API key in Settings → AI Assistant. Gemini has a free tier.")
                         .font(.callout).foregroundStyle(.secondary)
                     Button("Open AI settings") { showAISettings = true }
@@ -328,7 +333,7 @@ struct SongChatView: View {
                     }
                 }
                 HStack(alignment: .bottom, spacing: 8) {
-                    TextField("Ask about this song…", text: $input, axis: .vertical)
+                    TextField("Ask about this \(subject)…", text: $input, axis: .vertical)
                         .lineLimit(1...5)
                         .textFieldStyle(.roundedBorder)
                         .focused($focused)
@@ -368,7 +373,7 @@ struct SongChatView: View {
         messages.append(ChatMessage(role: .user, text: q))
         thinking = true; defer { thinking = false }
         let system = """
-        You are a music expert inside an Album of the Year app. Answer questions about one song: its meaning, \
+        You are a music expert inside an Album of the Year app. Answer questions about one \(subject): its meaning, \
         lyrics, references, production, samples, reception, and online discussion. Be concise and specific; \
         quote at most a line or two of lyrics. If you search the web, prefer reputable music sources. \
         If you're unsure, say so.

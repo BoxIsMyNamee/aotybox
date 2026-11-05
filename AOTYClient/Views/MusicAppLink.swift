@@ -44,6 +44,9 @@ enum MusicAppLink {
             let artistName: String?
             let collectionName: String?
             let trackName: String?
+            var trackNumber: Int? = nil
+            var discNumber: Int? = nil
+            var trackTimeMillis: Int? = nil
         }
         let results: [Item]
     }
@@ -128,6 +131,24 @@ enum MusicAppLink {
             ?? results.first { norm($0.trackName ?? "").hasPrefix(s.prefix(10)) && norm($0.artistName ?? "").contains(a.prefix(5)) }
         guard let p = pick, let id = p.trackId else { return nil }
         return (id, p.collectionId)
+    }
+
+    // MARK: Tracklist fallback
+
+    /// Apple Music's tracklist for an album or single (used when AOTY has none).
+    static func tracklist(artist: String, album: String, appleMusicURL: String?) async -> [Track] {
+        var id = albumID(fromAppleMusic: appleMusicURL)
+        if id == nil { id = await findAlbum(artist: artist, album: album) }
+        guard let id else { return [] }
+        let items = await itunes("lookup", [URLQueryItem(name: "id", value: String(id)), URLQueryItem(name: "entity", value: "song")])
+            .filter { $0.wrapperType == "track" && $0.trackName != nil }
+            .sorted { ($0.discNumber ?? 1, $0.trackNumber ?? 0) < ($1.discNumber ?? 1, $1.trackNumber ?? 0) }
+        let multiDisc = Set(items.map { $0.discNumber ?? 1 }).count > 1
+        return items.enumerated().map { i, t in
+            Track(number: multiDisc ? i + 1 : (t.trackNumber ?? i + 1), title: t.trackName ?? "",
+                  length: t.trackTimeMillis.map { ms in String(format: "%d:%02d", ms / 60000, (ms / 1000) % 60) },
+                  rating: nil, features: nil)
+        }
     }
 
     // MARK: Opening

@@ -11,6 +11,7 @@ struct ProfileView: View {
     @State private var showLogin = false
     @State private var showChange = false
     @State private var typedName = ""
+    @State private var showSettings = false
 
     var body: some View {
         AppStack {
@@ -28,6 +29,13 @@ struct ProfileView: View {
             }
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                        .accessibilityLabel("Settings")
+                }
+            }
+            .sheet(isPresented: $showSettings) { SettingsView().accentTint() }
             .sheet(isPresented: $showLogin, onDismiss: { Task { await detect() } }) {
                 AOTYWebSheet(url: AOTYSession.home, title: "Sign in").accentTint()
             }

@@ -105,11 +105,11 @@ enum AIError: LocalizedError {
 // MARK: - Client
 
 enum AIClient {
-    static func reply(system: String, history: [ChatMessage]) async throws -> ChatMessage {
+    static func reply(system: String, history: [ChatMessage], webSearch: Bool = true) async throws -> ChatMessage {
         guard let key = AISettings.apiKey(), !key.isEmpty else { throw AIError.notConfigured }
         switch AISettings.provider {
-        case .gemini: return try await gemini(key: key, system: system, history: history)
-        case .anthropic: return try await anthropic(key: key, system: system, history: history)
+        case .gemini: return try await gemini(key: key, system: system, history: history, webSearch: webSearch)
+        case .anthropic: return try await anthropic(key: key, system: system, history: history, webSearch: webSearch)
         case .openai: return try await openai(key: key, system: system, history: history)
         }
     }
@@ -165,7 +165,7 @@ enum AIClient {
         return sorted
     }
 
-    private static func gemini(key: String, system: String, history: [ChatMessage]) async throws -> ChatMessage {
+    private static func gemini(key: String, system: String, history: [ChatMessage], webSearch: Bool) async throws -> ChatMessage {
         let d = UserDefaults.standard
         let typed = (d.string(forKey: AISettings.modelKey) ?? "").trimmingCharacters(in: .whitespaces)
         var models: [String] = []
@@ -178,13 +178,13 @@ enum AIClient {
 
         var lastError: Error = AIError.empty
         for model in models {
-            let searchOrder = d.bool(forKey: searchOffKey) ? [false] : [true, false]
+            let searchOrder = !webSearch || d.bool(forKey: searchOffKey) ? [false] : [true, false]
             searchLoop: for search in searchOrder {
                 for attempt in 0..<2 {
                     do {
                         let reply = try await geminiOnce(key: key, model: model, search: search, system: system, history: history)
                         d.set(model, forKey: resolvedModelKey)
-                        d.set(!search, forKey: searchOffKey)
+                        if webSearch { d.set(!search, forKey: searchOffKey) }
                         return reply
                     } catch let AIError.http(code, msg) {
                         lastError = AIError.http(code, msg)
@@ -237,15 +237,15 @@ enum AIClient {
         return msg
     }
 
-    private static func anthropic(key: String, system: String, history: [ChatMessage]) async throws -> ChatMessage {
+    private static func anthropic(key: String, system: String, history: [ChatMessage], webSearch: Bool) async throws -> ChatMessage {
         let messages = history.map { ["role": $0.role == .user ? "user" : "assistant", "content": $0.text] }
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": AISettings.model,
-            "max_tokens": 1500,
+            "max_tokens": 2000,
             "system": system,
             "messages": messages,
-            "tools": [["type": "web_search_20250305", "name": "web_search", "max_uses": 3]],
         ]
+        if webSearch { body["tools"] = [["type": "web_search_20250305", "name": "web_search", "max_uses": 3]] }
         let obj = try await post(URL(string: "https://api.anthropic.com/v1/messages")!,
                                  headers: ["x-api-key": key, "anthropic-version": "2023-06-01"], body: body)
         let blocks = (obj["content"] as? [[String: Any]]) ?? []

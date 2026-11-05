@@ -9,6 +9,10 @@ struct AlbumDetailView: View {
     @State private var showAllTracks = false
     @State private var showRateSheet = false
     @State private var showCover = false
+    @State private var fallbackTracks: [Track] = []
+    @State private var fallbackSource: String?
+    @State private var showChat = false
+    @State private var chat: [ChatMessage] = []
     @Environment(\.openURL) private var openURL
     @Environment(\.push) private var push
 
@@ -30,6 +34,9 @@ struct AlbumDetailView: View {
         .fullScreenCover(isPresented: $showCover) {
             if let album, let url = album.coverURL { CoverViewer(url: url, title: album.title).accentTint() }
         }
+        .sheet(isPresented: $showChat) {
+            if let album { AlbumChatSheet(album: album, tracks: tracks(album), messages: $chat).accentTint() }
+        }
         .sheet(isPresented: $showRateSheet) {
             if let album, let url = URL(string: album.url) {
                 AOTYWebSheet(url: url, title: "Rate & Review").accentTint()
@@ -47,6 +54,28 @@ struct AlbumDetailView: View {
         do { album = try await AOTYAPI.shared.album(slug: slug) }
         catch is CancellationError {}
         catch { self.error = error.localizedDescription }
+        if let album, album.tracklist?.isEmpty ?? true, fallbackTracks.isEmpty { await loadFallbackTracks(album) }
+    }
+
+    private func isSingle(_ a: AlbumDetail) -> Bool { (a.format ?? "").lowercased().contains("single") }
+
+    private func tracks(_ a: AlbumDetail) -> [Track] {
+        if let t = a.tracklist, !t.isEmpty { return t }
+        return fallbackTracks
+    }
+
+    /// AOTY has no tracklist (common for singles): try Apple Music, then Genius,
+    /// and for a single fall back to the title track.
+    private func loadFallbackTracks(_ a: AlbumDetail) async {
+        let am = await MusicAppLink.tracklist(artist: a.artist, album: a.title, appleMusicURL: appleMusicLink(a))
+        if !am.isEmpty { fallbackTracks = am; fallbackSource = "Apple Music"; return }
+        let g = await GeniusClient.albumTracks(artist: a.artist, album: a.title)
+        if !g.isEmpty { fallbackTracks = g; fallbackSource = "Genius"; return }
+        if isSingle(a) {
+            let title = a.title.replacingOccurrences(of: #"\s+-\s+(Single|EP)$"#, with: "", options: [.regularExpression, .caseInsensitive])
+            fallbackTracks = [Track(number: 1, title: title, length: nil, rating: nil, features: nil)]
+            fallbackSource = nil
+        }
     }
 
     @ViewBuilder
@@ -56,10 +85,9 @@ struct AlbumDetailView: View {
             Section {
                 VStack(spacing: 12) {
                     Cover(url: a.coverURL, size: 240).shadow(radius: 8)
-                        .tapAndHold(tap: { showCover = true }, hold: {
-                            Task { await MusicAppLink.open(artist: a.artist, album: a.title, song: nil, appleMusicURL: appleMusicLink(a)) }
-                        })
+                        .tapAndHold(tap: { showCover = true }, hold: { showChat = true })
                         .accessibilityLabel("View cover art")
+                        .accessibilityHint("Hold to ask the AI about this \(isSingle(a) ? "single" : "album")")
                     VStack(spacing: 4) {
                         Text(a.title).font(.title2.bold()).multilineTextAlignment(.center)
                         Text(a.artist).font(.headline).foregroundStyle(.secondary)
@@ -89,6 +117,14 @@ struct AlbumDetailView: View {
                 } label: {
                     Label("Rate or review on AOTY", systemImage: "star.bubble")
                 }
+                Button {
+                    Task { await MusicAppLink.open(artist: a.artist, album: a.title, song: nil, appleMusicURL: appleMusicLink(a)) }
+                } label: {
+                    Label("Open in \(MusicAppLink.name)", systemImage: "play.circle")
+                }
+                Button { showChat = true } label: {
+                    Label("Ask AI about this \(isSingle(a) ? "single" : "album")", systemImage: "sparkles")
+                }
             }
 
             // Listen
@@ -107,9 +143,10 @@ struct AlbumDetailView: View {
             }
 
             // Tracklist
-            if let tracks = a.tracklist, !tracks.isEmpty {
-                Section("Tracklist" + (a.totalLength.map { " · \($0)" } ?? "")) {
-                    ForEach(showAllTracks ? tracks : Array(tracks.prefix(8))) { t in
+            let trackList = tracks(a)
+            if !trackList.isEmpty {
+                Section {
+                    ForEach(showAllTracks ? trackList : Array(trackList.prefix(8))) { t in
                         NavRow(value: SongRoute(artist: a.artist, title: t.title, album: a.title, cover: a.coverURL),
                                artist: a.artist, album: a.title, song: t.title, appleMusicURL: appleMusicLink(a)) {
                             HStack {
@@ -126,9 +163,13 @@ struct AlbumDetailView: View {
                             }
                         }
                     }
-                    if tracks.count > 8 {
+                    if trackList.count > 8 {
                         Button(showAllTracks ? "Show Less…" : "Show More…") { withAnimation { showAllTracks.toggle() } }
                     }
+                } header: {
+                    Text("Tracklist" + (a.totalLength.map { " · \($0)" } ?? ""))
+                } footer: {
+                    if let fallbackSource { Text("Tracklist from \(fallbackSource)") }
                 }
             }
 
@@ -200,5 +241,62 @@ struct AlbumDetailView: View {
             AttributionFooter()
         }
         .listStyle(.insetGrouped)
+    }
+}
+
+// MARK: - Album chat (hold the cover)
+
+struct AlbumChatSheet: View {
+    let album: AlbumDetail
+    let tracks: [Track]
+    @Binding var messages: [ChatMessage]
+    @Environment(\.dismiss) private var dismiss
+
+    private var kind: String { (album.format ?? "").lowercased().contains("single") ? "single" : "album" }
+
+    private var context: String {
+        var lines = ["\(kind.capitalized): \(album.title)", "Artist: \(album.artist)"]
+        if let d = album.datePublished { lines.append("Released: \(d)") }
+        if let f = album.format { lines.append("Format: \(f)") }
+        if let l = album.label { lines.append("Label: \(l)") }
+        if let g = album.genres, !g.isEmpty { lines.append("Genres: " + g.joined(separator: ", ")) }
+        if let c = album.criticScore { lines.append("AOTY critic score: \(Int(c)) from \(album.criticCount ?? 0) reviews") }
+        if let u = album.userScore { lines.append("AOTY user score: \(u) from \(album.userCount ?? 0) ratings") }
+        if !tracks.isEmpty { lines.append("Tracklist: " + tracks.map { "\($0.number). \($0.title)" }.joined(separator: "; ")) }
+        let critics = (album.reviews ?? []).prefix(5).map { "\($0.publication): \($0.text.prefix(200))" }
+        if !critics.isEmpty { lines.append("Critic excerpts:\n" + critics.joined(separator: "\n")) }
+        return "Context from Album of the Year:\n" + lines.joined(separator: "\n")
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 12) {
+                        Cover(url: album.coverURL, size: 64)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(album.title).font(.headline).lineLimit(2)
+                            Text(album.artist).font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }
+                    SongChatView(context: context, messages: $messages, nothingOnGenius: false, subject: kind)
+                }
+                .padding()
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .navigationTitle("Ask AI")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                if !messages.isEmpty {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button { messages.removeAll() } label: { Image(systemName: "arrow.counterclockwise") }
+                            .accessibilityLabel("New chat")
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 }

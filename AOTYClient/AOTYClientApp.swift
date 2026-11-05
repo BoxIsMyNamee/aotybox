@@ -13,7 +13,7 @@ struct AOTYClientApp: App {
                 ChartsView().tabItem { Label("Charts", systemImage: "chart.bar") }
                 SearchView().tabItem { Label("Search", systemImage: "magnifyingglass") }
                 ProfileView().tabItem { Label("Profile", systemImage: "person.crop.circle") }
-                SettingsView().tabItem { Label("Settings", systemImage: "gearshape") }
+                ProofView().tabItem { Label("Proof", systemImage: "text.badge.checkmark") }
             }
             .tint(Color(hex: accentHex))
             .background(HiddenScraperHost().frame(width: 2, height: 2).allowsHitTesting(false))
@@ -30,6 +30,7 @@ struct AOTYClientApp: App {
 
 struct SettingsView: View {
     @State private var showLogin = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
@@ -72,6 +73,7 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .sheet(isPresented: $showLogin) {
                 AOTYWebSheet(url: AOTYSession.home, title: "AOTY").accentTint()
             }

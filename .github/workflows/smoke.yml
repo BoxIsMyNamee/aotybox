@@ -16,8 +16,23 @@ jobs:
           ls -d /Applications/Xcode*.app
           xcodebuild -version
           xcrun simctl list runtimes | grep iOS
+      - name: Select Xcode 26
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)" && xcodebuild -version
       - name: Generate project
         run: brew install xcodegen && xcodegen
+      - name: Check tracklist fallback sources
+        continue-on-error: true
+        run: |
+          # Apple Music lookup for an album id, and Genius album search + tracks
+          curl -s "https://itunes.apple.com/search?term=Charli+xcx+Guess+single&entity=album&limit=5" | python3 -c "import json,sys; r=json.load(sys.stdin)['results']; print([(x['collectionName'],x['trackCount']) for x in r])"
+          ID=$(curl -s "https://itunes.apple.com/search?term=Kendrick+Lamar+GNX&entity=album&limit=1" | python3 -c "import json,sys; print(json.load(sys.stdin)['results'][0]['collectionId'])")
+          curl -s "https://itunes.apple.com/lookup?id=$ID&entity=song" | python3 -c "import json,sys; r=[x for x in json.load(sys.stdin)['results'] if x.get('wrapperType')=='track']; print(len(r), [(x['trackNumber'],x['trackName'],x.get('trackTimeMillis')) for x in r[:3]])"
+          UA="Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+          GID=$(curl -s -A "$UA" "https://genius.com/api/search/album?q=Kendrick%20Lamar%20GNX&per_page=5" | python3 -c "
+          import json,sys
+          h=[x['result'] for s in json.load(sys.stdin)['response']['sections'] for x in s['hits']]
+          print([(x['name'], (x.get('artist') or {}).get('name')) for x in h], file=sys.stderr); print(h[0]['id'])")
+          curl -s -A "$UA" "https://genius.com/api/albums/$GID/tracks?per_page=50" | python3 -c "import json,sys; t=json.load(sys.stdin)['response']['tracks']; print(len(t), [(x['number'], x['song']['title']) for x in t[:3]])"
       - name: Build for simulator
         run: |
           set -o pipefail
@@ -36,7 +51,7 @@ jobs:
           nm -um "$B" | grep -i "libswiftWebKit" | awk '{print $NF}' | head -20 | xcrun swift-demangle
       - name: Boot, install, launch, and watch for crashes
         run: |
-          # Build used Xcode 16.4 (same as the IPA); run it on the newest iOS simulator (iOS 26, like the phone).
+          # Built with Xcode 26 (same as the IPA); run it on the newest iOS simulator (iOS 26, like the phone).
           NEWEST=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
           echo "Simulator tooling: $NEWEST"
           export DEVELOPER_DIR="$NEWEST/Contents/Developer"

@@ -102,6 +102,31 @@ enum GeniusClient {
                        art: (r["song_art_image_url"] as? String).flatMap(URL.init(string:)))
     }
 
+    // MARK: Album tracklist (fallback when AOTY has none)
+
+    static func albumTracks(artist: String, album: String) async -> [Track] {
+        let q = "\(artist) \(album)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        guard let resp = try? await json("/api/search/album?q=\(q)&per_page=5"),
+              let sections = resp["sections"] as? [[String: Any]] else { return [] }
+        let results = sections.flatMap { ($0["hits"] as? [[String: Any]]) ?? [] }.compactMap { $0["result"] as? [String: Any] }
+        let norm = { (s: String) in
+            s.lowercased().folding(options: .diacriticInsensitive, locale: nil)
+                .replacingOccurrences(of: #"\s*[\(\[].*?[\)\]]"#, with: "", options: .regularExpression)
+                .filter { $0.isLetter || $0.isNumber }
+        }
+        let a = norm(artist), t = norm(album)
+        func artistName(_ r: [String: Any]) -> String { ((r["artist"] as? [String: Any])?["name"] as? String) ?? (r["artist_names"] as? String) ?? "" }
+        let pick = results.first { norm(($0["name"] as? String) ?? "") == t && norm(artistName($0)).contains(a.prefix(6)) }
+            ?? results.first { norm(($0["name"] as? String) ?? "").hasPrefix(t.prefix(10)) && norm(artistName($0)).contains(a.prefix(5)) }
+        guard let id = pick?["id"] as? Int,
+              let tr = try? await json("/api/albums/\(id)/tracks?per_page=50"),
+              let tracks = tr["tracks"] as? [[String: Any]] else { return [] }
+        return tracks.enumerated().compactMap { i, x in
+            guard let song = x["song"] as? [String: Any], let title = song["title"] as? String else { return nil }
+            return Track(number: (x["number"] as? Int) ?? i + 1, title: title, length: nil, rating: nil, features: nil)
+        }
+    }
+
     // MARK: Song
 
     static func song(id: Int) async throws -> Song {

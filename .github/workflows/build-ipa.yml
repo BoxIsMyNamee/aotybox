@@ -16,7 +16,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.4.app || true
+        # iOS 26 SDK: gives the tab bar, nav bars and toolbars Liquid Glass.
+        run: |
+          NEWEST=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          echo "Using $NEWEST"
+          sudo xcode-select -s "$NEWEST"
 
       - name: Generate Xcode project
         run: |
