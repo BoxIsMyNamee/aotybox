@@ -22,7 +22,7 @@ struct AOTYClientApp: App {
             .alert("Couldn't open \(MusicAppLink.name)", isPresented: $musicLinkFailed) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text("Check the link in Settings → Music App. Marvis lists its URL formats in Marvis → Settings → Tips & Tricks.")
+                Text("Make sure \(MusicAppLink.name) is installed, or pick another app in Settings → Music App.")
             }
         }
     }

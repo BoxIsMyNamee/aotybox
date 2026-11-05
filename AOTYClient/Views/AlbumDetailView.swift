@@ -36,6 +36,10 @@ struct AlbumDetailView: View {
         }
     }
 
+    private func appleMusicLink(_ a: AlbumDetail) -> String? {
+        a.streamingLinks?.first { $0.platform.lowercased().contains("apple") || $0.url.contains("music.apple.com") }?.url
+    }
+
     private func load() async {
         guard let slug else { error = "This item has no album link."; return }
         error = nil
@@ -55,7 +59,7 @@ struct AlbumDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("View cover art")
-                    .musicAppMenu(artist: a.artist, album: a.title)
+                    .musicAppMenu(artist: a.artist, album: a.title, appleMusicURL: appleMusicLink(a))
                     VStack(spacing: 4) {
                         Text(a.title).font(.title2.bold()).multilineTextAlignment(.center)
                         Text(a.artist).font(.headline).foregroundStyle(.secondary)
@@ -123,7 +127,7 @@ struct AlbumDetailView: View {
                             }
                             .contentShape(Rectangle())
                         }
-                        .musicAppMenu(artist: a.artist, album: a.title, song: t.title)
+                        .musicAppMenu(artist: a.artist, album: a.title, song: t.title, appleMusicURL: appleMusicLink(a))
                     }
                     if tracks.count > 8 {
                         Button(showAllTracks ? "Show Less…" : "Show More…") { withAnimation { showAllTracks.toggle() } }
