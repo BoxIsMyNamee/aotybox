@@ -1,13 +1,9 @@
-const q = async (path, params) => { const u = new URL("https://itunes.apple.com/" + path); for (const [k,v] of Object.entries({...params, country: "us"})) u.searchParams.set(k, v); const r = await fetch(u); return (await r.json()).results; };
-const norm = s => (s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\s*[\(\[].*?[\)\]]/g,"").replace(/\s+-\s+(single|ep)$/,"").replace(/&/g,"and").replace(/[^\p{L}\p{N}]/gu,"");
-for (const [artist, album] of [["The Avalanches","No Bad Memories"],["Queens of the Stone Age","Perfecth"],["PISS","you made me / skin on linen"],["Nick Lutsko","Ends"]]) {
-  const res = await q("search", { term: `${artist} ${album}`, entity: "album", limit: 15 });
-  const a = norm(artist), t = norm(album);
-  const hit = res.find(r => norm(r.collectionName) === t && norm(r.artistName).includes(a.slice(0,8))) || res.find(r => norm(r.collectionName).startsWith(t.slice(0,10)) && norm(r.artistName).includes(a.slice(0,5)));
-  console.log(`${artist} – ${album}:`, hit ? `${hit.collectionId} (${hit.collectionName} / ${hit.artistName})` : "NO MATCH", "| top:", res.slice(0,2).map(r=>r.collectionName+" / "+r.artistName).join("; "));
-  if (hit && artist === "The Avalanches") {
-    const tracks = (await q("lookup", { id: hit.collectionId, entity: "song" })).filter(x => x.wrapperType === "track");
-    const s = tracks.find(x => norm(x.trackName) === norm("Every Single Weekend"));
-    console.log("  song Every Single Weekend:", s ? `${s.trackId} (${s.trackName})` : "NO MATCH", `| ${tracks.length} tracks`);
-  }
-}
+const q = async (path, params) => { const u = new URL("https://itunes.apple.com/" + path); for (const [k,v] of Object.entries(params)) u.searchParams.set(k, v); const r = await fetch(u); const t = await r.text(); try { return JSON.parse(t).results; } catch { return "ERR " + r.status + " " + t.slice(0,100); } };
+const show = (label, res) => console.log(label, Array.isArray(res) ? `${res.length}: ` + res.slice(0,4).map(r => `${r.collectionName||r.trackName||r.artistName} / ${r.artistName} [${r.collectionId||r.artistId}] ${r.releaseDate?.slice(0,10)||""}`).join(" ; ") : res);
+show("album term only, us:", await q("search", { term: "No Bad Memories", entity: "album", country: "us" }));
+show("artist albums:", await q("search", { term: "The Avalanches", entity: "album", country: "us", limit: 10 }));
+const art = await q("search", { term: "The Avalanches", entity: "musicArtist", country: "us", limit: 1 });
+show("artist:", art);
+if (Array.isArray(art) && art[0]) show("artist lookup albums (sorted recent):", await q("lookup", { id: art[0].artistId, entity: "album", sort: "recent", limit: 10, country: "us" }));
+show("song search:", await q("search", { term: "Avalanches Every Single Weekend", entity: "song", country: "us" }));
+show("QOTSA albums:", await q("search", { term: "Queens of the Stone Age", entity: "album", country: "us", limit: 6 }));
