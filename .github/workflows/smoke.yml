@@ -11,6 +11,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Tool versions
+        run: |
+          ls -d /Applications/Xcode*.app
+          xcodebuild -version
+          xcrun simctl list runtimes | grep iOS
       - name: Generate project
         run: brew install xcodegen && xcodegen
       - name: Build for simulator
@@ -19,8 +24,10 @@ jobs:
           xcodebuild -project AOTYClient.xcodeproj -scheme AOTYClient -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tail -5
-      - name: Show bundle contents
-        run: ls -la build/Build/Products/Debug-iphonesimulator/AOTYClient.app
+      - name: Show bundle contents and linked libraries
+        run: |
+          ls -la build/Build/Products/Debug-iphonesimulator/AOTYClient.app
+          otool -L build/Build/Products/Debug-iphonesimulator/AOTYClient.app/AOTYClient.debug.dylib 2>/dev/null | grep -i -E "swift|webkit" || otool -L build/Build/Products/Debug-iphonesimulator/AOTYClient.app/AOTYClient | grep -i -E "swift|webkit"
       - name: Boot, install, launch, and watch for crashes
         run: |
           UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if 'iPhone' in x['name']))")

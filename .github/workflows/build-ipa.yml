@@ -38,6 +38,10 @@ jobs:
           grep -q "\*\* BUILD SUCCEEDED \*\*" build.log
           test -f build/Build/Products/Release-iphoneos/AOTYClient.app/AOTYClient
 
+      - name: Show toolchain and linked libraries
+        run: |
+          xcodebuild -version
+          otool -L build/Build/Products/Release-iphoneos/AOTYClient.app/AOTYClient | grep -i -E "swift|webkit"
       - name: Package IPA
         run: |
           mkdir -p Payload
