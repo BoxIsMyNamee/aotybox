@@ -14,9 +14,10 @@ targets:
     platform: iOS
     sources:
       - path: AOTYClient
-        excludes: ["Resources/**"]
-      - path: AOTYClient/Resources
-        type: folder
+        excludes: ["Scripts/**"]
+      - path: AOTYClient/Scripts/extract.js
+        buildPhase: resources
+      - path: AOTYClient/Scripts/genius.js
         buildPhase: resources
     settings:
       base:

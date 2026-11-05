@@ -2,7 +2,7 @@ name: Test extractors
 
 on:
   push:
-    paths: ["AOTYClient/Resources/**", "tests/**", ".github/workflows/test-extract.yml"]
+    paths: ["AOTYClient/Scripts/**", "tests/**", ".github/workflows/test-extract.yml"]
   workflow_dispatch:
 
 jobs:

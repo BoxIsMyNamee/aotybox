@@ -3,7 +3,7 @@ import { DOMParser } from "linkedom";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 globalThis.DOMParser = DOMParser;
-const { aotyExtract, aotyIsChallenge, aotyGenericBlocks } = require("../AOTYClient/Resources/extract.js");
+const { aotyExtract, aotyIsChallenge, aotyGenericBlocks } = require("../AOTYClient/Scripts/extract.js");
 
 const pages = [
   ["blocks", "/releases/this-week/"],
@@ -81,7 +81,7 @@ for (const [kind, path] of pages) {
 }
 // Genius lyrics parser against an archived lyrics page
 {
-  const { geniusParse } = require("../AOTYClient/Resources/genius.js");
+  const { geniusParse } = require("../AOTYClient/Scripts/genius.js");
   console.log("\n=== genius lyrics");
   let r, html = "";
   for (let attempt = 0; attempt < 4; attempt++) {

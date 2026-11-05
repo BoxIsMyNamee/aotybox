@@ -1,0 +1,50 @@
+name: Launch test (simulator)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate project
+        run: brew install xcodegen && xcodegen
+      - name: Build for simulator
+        run: |
+          set -o pipefail
+          xcodebuild -project AOTYClient.xcodeproj -scheme AOTYClient -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tail -5
+      - name: Show bundle contents
+        run: ls -la build/Build/Products/Debug-iphonesimulator/AOTYClient.app
+      - name: Boot, install, launch, and watch for crashes
+        run: |
+          UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if 'iPhone' in x['name']))")
+          echo "Simulator $UDID"
+          xcrun simctl boot "$UDID"
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" build/Build/Products/Debug-iphonesimulator/AOTYClient.app
+          xcrun simctl launch --console-pty "$UDID" com.harper.aotyclient > launch.log 2>&1 &
+          sleep 25
+          echo "--- app output"; tail -40 launch.log || true
+          if xcrun simctl spawn "$UDID" launchctl list | grep -q aotyclient; then
+            echo "✅ App still running after 25s"
+          else
+            echo "❌ App is not running"
+            ls -t ~/Library/Logs/DiagnosticReports/ 2>/dev/null | head
+            f=$(ls -t ~/Library/Logs/DiagnosticReports/AOTYClient* 2>/dev/null | head -1)
+            [ -n "$f" ] && head -120 "$f"
+            exit 1
+          fi
+          xcrun simctl io "$UDID" screenshot launch.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: launch-test
+          path: |
+            launch.log
+            launch.png
