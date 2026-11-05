@@ -435,7 +435,7 @@ function aotyMe(doc) {
     for (var k = 0; k < links.length; k++) {
       var t = aotyTxt(links[k]).toLowerCase();
       var u = userFromLink(links[k]);
-      if (u && (t === "profile" || t === "my profile" || t === "" )) return { username: u, avatar: null };
+      if (u && (t === "profile" || t === "my profile" || t === "view profile")) return { username: u, avatar: null };
     }
   }
   // 2. Links labelled "Profile" anywhere outside content.
