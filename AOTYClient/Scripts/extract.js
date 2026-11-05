@@ -240,7 +240,7 @@ function aotyUserReview(el) {
     username: aotyTxt(nameEl),
     avatar: avatarImg ? (aotyImgSrc(avatarImg) || null) : null,
     rating: aotyNum(aotyTxt(el.querySelector(".rating"))),
-    text: raw.replace(/\.{0,3}\s*read more\s*$/i, "").trim(),
+    text: raw.replace(/\s*(\.\.\.|…)?\s*read more\s*$/i, "").trim(),
     isTruncated: /read more\s*$/i.test(raw),
     url: revLink ? aotyAbs(revLink) : null,
     likes: aotyCount(aotyTxt(el.querySelector(".review_likes"))),
@@ -585,7 +585,7 @@ function aotyProfileReviewRows(doc) {
       album: aotyTxt(el.querySelector(".albumTitle")),
       cover: img ? (aotyCleanImg(aotyImgSrc(img)) || null) : null,
       rating: aotyNum(aotyTxt(el.querySelector(".rating"))),
-      text: raw.replace(/\.{0,3}\s*read more\s*$/i, "").trim(),
+      text: raw.replace(/\s*(\.\.\.|…)?\s*read more\s*$/i, "").trim(),
       isTruncated: /read more\s*$/i.test(raw),
       url: reviewLink ? aotyAbs(reviewLink) : null,
       likes: aotyCount(aotyTxt(el.querySelector(".review_likes"))),
@@ -609,11 +609,21 @@ function aotyFollows(doc, loose) {
     seen[u.toLowerCase()] = 1;
     out.push({ username: u, name: (name || u).trim(), avatar: img || null });
   }
+  function distinctUsers(box) {
+    var set = {}, n = 0, links = box.querySelectorAll("a[href*='/user/']");
+    for (var q = 0; q < links.length; q++) {
+      var h = (links[q].getAttribute("href") || "").split("?")[0];
+      if (!set[h]) { set[h] = 1; n++; }
+    }
+    return n;
+  }
+  // Smallest ancestor with an avatar and exactly one user; stop before it spans two users.
   function rowFor(el) {
     var box = el;
     for (var d = 0; d < 6 && box; d++) {
-      var links = box.querySelectorAll("a[href*='/user/']");
-      if (links.length && box.querySelector("img")) return box;
+      var n = distinctUsers(box);
+      if (n > 1) return null;
+      if (n === 1 && box.querySelector("img")) return box;
       box = box.parentElement;
     }
     return null;
