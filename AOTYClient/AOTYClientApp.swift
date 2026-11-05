@@ -60,6 +60,7 @@ struct SettingsView: View {
 
                 Section {
                     Button("Clear cache") { Task { await AOTYAPI.shared.clearCache() } }
+                    NavigationLink("Diagnostics") { DiagnosticsView() }
                 }
 
                 Section("About") {

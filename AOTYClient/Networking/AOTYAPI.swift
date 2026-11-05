@@ -44,7 +44,7 @@ actor AOTYAPI {
     // MARK: - Endpoints
 
     func releases(page: Int = 1) async throws -> [AlbumBlock] {
-        if Self.usesDevice { return try await device("/releases/\(page)/", .blocks, AlbumListResponse.self).albums }
+        if Self.usesDevice { return try await device(page > 1 ? "/releases/\(page)/" : "/releases/", .blocks, AlbumListResponse.self).albums }
         return try await get("/releases", ["page": "\(page)"], as: AlbumListResponse.self).albums
     }
 
@@ -57,13 +57,13 @@ actor AOTYAPI {
     }
 
     func upcoming(page: Int = 1) async throws -> [AlbumBlock] {
-        if Self.usesDevice { return try await device("/upcoming/\(page)/", .blocks, AlbumListResponse.self).albums }
+        if Self.usesDevice { return try await device(page > 1 ? "/upcoming/\(page)/" : "/upcoming/", .blocks, AlbumListResponse.self).albums }
         return try await get("/upcoming", ["page": "\(page)"], as: AlbumListResponse.self).albums
     }
 
     /// source: "6-highest-rated" (critics) or "user-highest-rated" (users). period: a year like "2026", or "all".
     func chart(source: String, period: String, page: Int = 1) async throws -> ChartResponse {
-        if Self.usesDevice { return try await device("/ratings/\(source)/\(period)/\(page)/", .chart, ChartResponse.self) }
+        if Self.usesDevice { return try await device("/ratings/\(source)/\(period)/\(page)", .chart, ChartResponse.self) }
         return try await get("/ratings", ["source": source, "period": period, "page": "\(page)"], as: ChartResponse.self)
     }
 

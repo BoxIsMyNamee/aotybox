@@ -23,7 +23,6 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
     private let extractorJS: String
     private var originReady = false
     private var navContinuation: CheckedContinuation<Void, Error>?
-    private var challengeContinuation: CheckedContinuation<Void, Never>?
     private var queueTail: Task<Void, Never> = Task {}
     private var lastFetch = Date.distantPast
     private let minGap: TimeInterval = 0.4
@@ -38,9 +37,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
     }()
 
     override private init() {
-        let config = WKWebViewConfiguration()
-        config.websiteDataStore = AOTYSession.dataStore
-        config.mediaTypesRequiringUserActionForPlayback = .all
+        let config = AOTYSession.makeConfiguration()
         webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 2, height: 2), configuration: config)
         if let url = Bundle.main.url(forResource: "extract", withExtension: "js"),
            let js = try? String(contentsOf: url, encoding: .utf8) {
@@ -56,16 +53,20 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
 
     enum ScrapeError: LocalizedError {
         case blocked
-        case http(Int)
+        case http(Int, String)
+        case empty(String)
         case script(String)
         case navigation(String)
+        case timeout
 
         var errorDescription: String? {
             switch self {
-            case .blocked: "AOTY's Cloudflare check didn't pass. Pull to refresh to try again."
-            case let .http(code): "AOTY returned HTTP \(code)."
+            case .blocked: "AOTY wants a quick check. Complete it in the sheet, then tap Retry."
+            case let .http(code, path): "AOTY returned HTTP \(code) for \(path)."
+            case let .empty(info): "The page loaded but nothing could be read from it. \(info)"
             case let .script(msg): "Couldn't read the AOTY page: \(msg)"
             case let .navigation(msg): "Couldn't load AOTY: \(msg)"
+            case .timeout: "AOTY took too long to respond. Tap Retry."
             }
         }
     }
@@ -77,15 +78,50 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
             return value
         }
         do {
-            let data = try await serialized { try await self.fetchJSON(path: path, kind: kind) }
+            let data = try await serialized { try await self.withTimeout(30) { try await self.fetchJSON(path: path, kind: kind) } }
+            let value = try JSONDecoder().decode(T.self, from: data)
             store(path, data)
-            return try JSONDecoder().decode(T.self, from: data)
+            return value
         } catch {
-            // Offline or blocked: fall back to stale cache if we have any.
             if let stale = cached(path, allowStale: true), let value = try? JSONDecoder().decode(T.self, from: stale) {
                 return value
             }
             throw error
+        }
+    }
+
+    /// Raw report of what AOTY returns for a path. Used by Settings → Diagnostics.
+    func probe(_ path: String, kind: Kind) async -> String {
+        do {
+            return try await serialized {
+                try await self.withTimeout(30) {
+                    try await self.ensureOrigin()
+                    try await self.throttle()
+                    let body = self.extractorJS + """
+
+                    let r, html;
+                    try { r = await fetch(path, { credentials: "include", headers: { "Accept": "text/html" } }); html = await r.text(); }
+                    catch (e) { return "fetch threw: " + e; }
+                    const doc = new DOMParser().parseFromString(html, "text/html");
+                    let count = "?";
+                    try { const o = aotyExtract(kind, html, r.url); count = (o.albums || o.items || o.tracklist || []).length; } catch (e) { count = "extract error: " + e; }
+                    return [
+                      "HTTP " + r.status + (r.redirected ? " (redirected)" : ""),
+                      "URL " + r.url,
+                      "bytes " + html.length,
+                      "title " + (doc.title || "").trim().slice(0, 80),
+                      "challenge " + aotyIsChallenge(html, r.status),
+                      ".albumBlock " + doc.querySelectorAll(".albumBlock").length + ", .albumListRow " + doc.querySelectorAll(".albumListRow").length,
+                      "items " + count,
+                      "text " + (doc.body ? doc.body.innerText || doc.body.textContent : "").replace(/\\s+/g, " ").trim().slice(0, 240)
+                    ].join("\\n");
+                    """
+                    let result = try await self.webView.callAsyncJavaScript(body, arguments: ["path": path, "kind": kind.rawValue], in: nil, contentWorld: .defaultClient)
+                    return (result as? String) ?? "no result"
+                }
+            }
+        } catch {
+            return "error: \(error.localizedDescription)"
         }
     }
 
@@ -99,27 +135,26 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
     func challengeFinished() {
         challenge = nil
         originReady = false
-        challengeContinuation?.resume()
-        challengeContinuation = nil
+        clearCache()
     }
 
     // MARK: - Core
 
     private func fetchJSON(path: String, kind: Kind) async throws -> Data {
-        let url = URL(string: AOTYSession.home.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + path)!
+        let url = URL(string: "https://www.albumoftheyear.org" + path)!
 
         // Attempt 1: same-origin fetch from the hidden web view.
         try await ensureOrigin()
         if case let .ok(data) = try await runFetch(path: path, kind: kind) { return data }
 
-        // Challenged: let the user pass the check once, then retry.
-        await presentChallenge(url)
-        try await ensureOrigin()
-        if case let .ok(data) = try await runFetch(path: path, kind: kind) { return data }
-
-        // Last resort: navigate the hidden view to the page and extract from the live document.
+        // Challenged on fetch: try loading the page for real in the hidden view
+        // (a full navigation sometimes passes where fetch() doesn't).
         try await navigate(to: url)
-        if case let .ok(data) = try await runOnLoadedPage(kind: kind) { return data }
+        originReady = true
+        if case let .ok(data) = try await runOnLoadedPage(kind: kind, path: path) { return data }
+
+        // Still challenged: ask the user to pass the check, and fail this request.
+        challenge = Challenge(url: url)
         throw ScrapeError.blocked
     }
 
@@ -133,22 +168,31 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         const html = await r.text();
         if (aotyIsChallenge(html, r.status)) return JSON.stringify({ __challenge: true });
         if (!r.ok) return JSON.stringify({ __http: r.status });
-        return JSON.stringify(aotyExtract(kind, html, r.url));
+        const out = aotyExtract(kind, html, r.url);
+        const n = (out.albums || out.items || []).length + (out.title ? 1 : 0);
+        if (n === 0) {
+          const d = new DOMParser().parseFromString(html, "text/html");
+          return JSON.stringify({ __empty: "Page: " + (d.title || "untitled").trim().slice(0, 60) + " · " + html.length + " bytes · " + r.url.replace("https://www.albumoftheyear.org", "") });
+        }
+        return JSON.stringify(out);
         """
-        return try await evaluate(body, args: ["path": path, "kind": kind.rawValue])
+        return try await evaluate(body, args: ["path": path, "kind": kind.rawValue], path: path)
     }
 
-    private func runOnLoadedPage(kind: Kind) async throws -> Outcome {
+    private func runOnLoadedPage(kind: Kind, path: String) async throws -> Outcome {
         let body = extractorJS + """
 
         const html = document.documentElement.outerHTML;
         if (aotyIsChallenge(html, 200)) return JSON.stringify({ __challenge: true });
-        return JSON.stringify(aotyExtract(kind, html, location.href));
+        const out = aotyExtract(kind, html, location.href);
+        const n = (out.albums || out.items || []).length + (out.title ? 1 : 0);
+        if (n === 0) return JSON.stringify({ __empty: "Page: " + (document.title || "untitled").trim().slice(0, 60) + " · " + html.length + " bytes (loaded)" });
+        return JSON.stringify(out);
         """
-        return try await evaluate(body, args: ["kind": kind.rawValue])
+        return try await evaluate(body, args: ["kind": kind.rawValue], path: path)
     }
 
-    private func evaluate(_ body: String, args: [String: Any]) async throws -> Outcome {
+    private func evaluate(_ body: String, args: [String: Any], path: String) async throws -> Outcome {
         let result: Any?
         do {
             result = try await webView.callAsyncJavaScript(body, arguments: args, in: nil, contentWorld: .defaultClient)
@@ -160,7 +204,8 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         }
         if let probe = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             if probe["__challenge"] != nil { return .challenged }
-            if let code = probe["__http"] as? Int { throw ScrapeError.http(code) }
+            if let code = probe["__http"] as? Int { throw ScrapeError.http(code, path) }
+            if let info = probe["__empty"] as? String { throw ScrapeError.empty(info) }
         }
         return .ok(data)
     }
@@ -180,17 +225,40 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         }
     }
 
-    private func presentChallenge(_ url: URL) async {
-        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-            challengeContinuation = c
-            challenge = Challenge(url: url)
-        }
-    }
-
     private func throttle() async throws {
         let wait = minGap - Date().timeIntervalSince(lastFetch)
         if wait > 0 { try await Task.sleep(for: .seconds(wait)) }
         lastFetch = Date()
+    }
+
+    private final class Once { var done = false }
+
+    /// Race `op` against a timer. Unlike a task group this returns as soon as the timer
+    /// fires, even if WebKit never calls back, and it unsticks any pending navigation.
+    private func withTimeout<T>(_ seconds: Double, _ op: @escaping @MainActor () async throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<T, Error>) in
+            let once = Once()
+            let work = Task { @MainActor in
+                do {
+                    let value = try await op()
+                    if !once.done { once.done = true; cont.resume(returning: value) }
+                } catch {
+                    if !once.done { once.done = true; cont.resume(throwing: error) }
+                }
+            }
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(seconds))
+                if !once.done {
+                    once.done = true
+                    work.cancel()
+                    self.webView.stopLoading()
+                    self.navContinuation?.resume(throwing: ScrapeError.timeout)
+                    self.navContinuation = nil
+                    self.originReady = false
+                    cont.resume(throwing: ScrapeError.timeout)
+                }
+            }
+        }
     }
 
     /// Run operations one at a time, in order.

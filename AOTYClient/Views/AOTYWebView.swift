@@ -10,6 +10,17 @@ enum AOTYSession {
     static let dataStore = WKWebsiteDataStore.default()
     static let home = URL(string: "https://www.albumoftheyear.org/")!
 
+    /// Shared config: AOTY session, and no autoplaying or picture-in-picture video ads.
+    static func makeConfiguration() -> WKWebViewConfiguration {
+        let config = WKWebViewConfiguration()
+        config.websiteDataStore = dataStore
+        config.allowsInlineMediaPlayback = true
+        config.allowsPictureInPictureMediaPlayback = false
+        config.allowsAirPlayForMediaPlayback = false
+        config.mediaTypesRequiringUserActionForPlayback = .all
+        return config
+    }
+
     static func signOut() async {
         let types = WKWebsiteDataStore.allWebsiteDataTypes()
         let records = await dataStore.dataRecords(ofTypes: types)
@@ -25,9 +36,7 @@ struct AOTYWebView: UIViewRepresentable {
     var onAlbumTap: ((String) -> Void)? = nil
 
     func makeUIView(context: Context) -> WKWebView {
-        let config = WKWebViewConfiguration()
-        config.websiteDataStore = AOTYSession.dataStore
-        let web = WKWebView(frame: .zero, configuration: config)
+        let web = WKWebView(frame: .zero, configuration: AOTYSession.makeConfiguration())
         web.navigationDelegate = context.coordinator
         web.allowsBackForwardNavigationGestures = true
         context.coordinator.loadedURL = url
