@@ -87,8 +87,6 @@ struct UserProfileView: View {
     @State private var profile: Profile?
     @State private var ratings: [AlbumBlock] = []
     @State private var friends: [FollowUser] = []
-    @State private var page = 1
-    @State private var more = true
     @State private var loading = false
     @State private var error: String?
     @State private var showFullProfile = false
@@ -100,18 +98,12 @@ struct UserProfileView: View {
             Section("Recently Rated") {
                 if ratings.isEmpty && loading { ProgressView().frame(maxWidth: .infinity) }
                 else if ratings.isEmpty { Text(error ?? "No ratings yet.").foregroundStyle(.secondary) }
-                ForEach(ratings) { a in
-                    NavRow(value: a, artist: a.artist, album: a.title) {
-                        HStack {
-                            AlbumRow(artist: a.artist, title: a.title, cover: a.coverURL,
-                                     subtitle: [a.releaseDate, a.ratedDate].compactMap { $0 }.joined(separator: " · "),
-                                     coverSize: 56)
-                            if let r = a.rating ?? a.userScore { MiniScore(label: isMe ? "You" : "", score: r) }
-                        }
+                ForEach(ratings.prefix(8)) { a in RatingRow(album: a, isMe: isMe) }
+                if !ratings.isEmpty {
+                    Button { push(ProfileRatingsRoute(username: username, path: profile?.ratingsPath, isMe: isMe)) } label: {
+                        Label("View All Ratings", systemImage: "list.number").foregroundStyle(.tint)
                     }
-                    .onAppear { if a == ratings.last { Task { await loadMore() } } }
                 }
-                if loading && !ratings.isEmpty { ProgressView().frame(maxWidth: .infinity) }
             }
 
             if let reviews = profile?.reviews, !reviews.isEmpty {
@@ -193,13 +185,10 @@ struct UserProfileView: View {
         do {
             let p = try await AOTYAPI.shared.profile(username: username)
             profile = p
-            more = true
             if let recent = p.recent, !recent.isEmpty {
                 ratings = recent           // AOTY's own mixed order
-                page = 1                   // "View All" list starts again at page 1; duplicates are skipped
             } else {
                 ratings = (try? await AOTYAPI.shared.userRatings(username: username, page: 1)) ?? []
-                page = 2
             }
             let preview = excludeSelf(p.following ?? [])
             if !preview.isEmpty { friends = preview }
@@ -209,20 +198,66 @@ struct UserProfileView: View {
         }
     }
 
-    /// Older ratings from AOTY's "View All" list. The profile shows the newest handful, so start
-    /// that list at page 1 and skip anything already shown.
+}
+
+// MARK: - Ratings
+
+struct RatingRow: View {
+    let album: AlbumBlock
+    let isMe: Bool
+    var body: some View {
+        NavRow(value: album, artist: album.artist, album: album.title) {
+            HStack {
+                AlbumRow(artist: album.artist, title: album.title, cover: album.coverURL,
+                         subtitle: [album.releaseDate, album.ratedDate].compactMap { $0 }.joined(separator: " · "),
+                         coverSize: 56)
+                if let r = album.rating ?? album.userScore { MiniScore(label: isMe ? "You" : "", score: r) }
+            }
+        }
+    }
+}
+
+/// Every rating, paged, on its own screen.
+struct ProfileRatingsView: View {
+    let username: String
+    let path: String?
+    let isMe: Bool
+    @State private var ratings: [AlbumBlock] = []
+    @State private var page = 1
+    @State private var more = true
+    @State private var loading = false
+    @State private var error: String?
+
+    var body: some View {
+        List {
+            if let error, ratings.isEmpty { ErrorView(message: error) { await reload() } }
+            ForEach(ratings) { a in
+                RatingRow(album: a, isMe: isMe)
+                    .onAppear { if a == ratings.last { Task { await loadMore() } } }
+            }
+            if loading { ProgressView().frame(maxWidth: .infinity) }
+        }
+        .listStyle(.plain)
+        .navigationTitle("Ratings")
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await reload() }
+        .task { if ratings.isEmpty { await reload() } }
+    }
+
+    private var listPath: String { path ?? "/user/\(username)/ratings/" }
+
+    private func reload() async {
+        loading = true; error = nil; defer { loading = false }
+        do { ratings = try await AOTYAPI.shared.ratings(path: listPath, page: 1); page = 1; more = !ratings.isEmpty }
+        catch { self.error = error.localizedDescription }
+    }
+
     private func loadMore() async {
         guard more, !loading else { return }
         loading = true; defer { loading = false }
-        let path = profile?.ratingsPath ?? "/user/\(username)/ratings/"
-        for _ in 0..<3 {
-            let next = (try? await AOTYAPI.shared.ratings(path: path, page: page)) ?? []
-            page += 1
-            if next.isEmpty { more = false; return }
-            let fresh = next.filter { n in !ratings.contains { $0.id == n.id } }
-            if !fresh.isEmpty { ratings += fresh; return }
-        }
-        more = false
+        let next = (try? await AOTYAPI.shared.ratings(path: listPath, page: page + 1)) ?? []
+        let fresh = next.filter { n in !ratings.contains { $0.id == n.id } }
+        if fresh.isEmpty { more = false } else { ratings += fresh; page += 1 }
     }
 }
 
