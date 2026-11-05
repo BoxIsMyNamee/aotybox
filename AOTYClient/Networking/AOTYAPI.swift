@@ -97,7 +97,7 @@ actor AOTYAPI {
 
         guard (200..<300).contains(http.statusCode) else {
             let body = try? decoder.decode(APIErrorBody.self, from: data)
-            throw APIError.http(http.statusCode, body?.error ?? body?.message)
+            throw APIError.http(http.statusCode, body?.detail ?? body?.error ?? body?.message)
         }
 
         let value: T
@@ -132,7 +132,12 @@ enum APIError: LocalizedError {
         switch self {
         case .badURL: "Invalid API URL. Check Settings."
         case .badResponse: "No response from the API."
-        case let .http(code, msg): "API error \(code)" + (msg.map { ": \($0)" } ?? "")
+        case let .http(code, msg):
+            if let msg, msg.contains("403") {
+                "AOTY is blocking the community API right now (\(msg)). This isn't an app bug."
+            } else {
+                "API error \(code)" + (msg.map { ": \($0)" } ?? "")
+            }
         case let .decoding(path, err): "Couldn't read \(path) — the API's format may have changed. (\(err.localizedDescription))"
         }
     }

@@ -128,6 +128,7 @@ struct ChartResponse: Decodable {
 struct APIErrorBody: Decodable {
     let error: String?
     let message: String?
+    let detail: String?
 }
 
 // MARK: - Slugs
