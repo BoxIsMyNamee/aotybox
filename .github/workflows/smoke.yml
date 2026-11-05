@@ -28,6 +28,12 @@ jobs:
         run: |
           ls -la build/Build/Products/Debug-iphonesimulator/AOTYClient.app
           otool -L build/Build/Products/Debug-iphonesimulator/AOTYClient.app/AOTYClient.debug.dylib 2>/dev/null | grep -i -E "swift|webkit" || otool -L build/Build/Products/Debug-iphonesimulator/AOTYClient.app/AOTYClient | grep -i -E "swift|webkit"
+      - name: Symbols imported from libswiftWebKit
+        run: |
+          B=build/Build/Products/Debug-iphonesimulator/AOTYClient.app/AOTYClient.debug.dylib
+          [ -f "$B" ] || B=build/Build/Products/Debug-iphonesimulator/AOTYClient.app/AOTYClient
+          nm -um "$B" | grep -i "libswiftWebKit" | head -20
+          nm -um "$B" | grep -i "libswiftWebKit" | awk '{print $NF}' | head -20 | xcrun swift-demangle
       - name: Boot, install, launch, and watch for crashes
         run: |
           UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if 'iPhone' in x['name']))")
