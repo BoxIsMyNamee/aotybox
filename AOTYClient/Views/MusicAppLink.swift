@@ -15,6 +15,21 @@ enum MusicAppLink {
 
     static let appKey = "musicApp"
     static var app: App { App(rawValue: UserDefaults.standard.string(forKey: appKey) ?? "") ?? .marvis }
+
+    /// How songs are opened in Marvis. Which one highlights the track depends on Marvis.
+    enum SongStyle: String, CaseIterable, Identifiable {
+        case songPage, albumTrack, songID
+        var id: String { rawValue }
+        var name: String {
+            switch self {
+            case .songPage: "Song page link"
+            case .albumTrack: "Album link with track"
+            case .songID: "Song ID"
+            }
+        }
+    }
+    static let songStyleKey = "marvisSongStyle"
+    static var songStyle: SongStyle { SongStyle(rawValue: UserDefaults.standard.string(forKey: songStyleKey) ?? "") ?? .songPage }
     static var name: String { app.name }
 
     private static var storefront: String { (Locale.current.region?.identifier ?? "US").lowercased() }
@@ -143,10 +158,17 @@ enum MusicAppLink {
         case .marvis:
             // Songs: open the album's Apple Music URL with ?i=<track>, which points at that exact
             // track (Marvis "Open Resource by URL"). Albums: open by ID.
-            if type == "song", let albumID {
-                let am = "https://music.apple.com/\(storefront)/album/\(albumID)?i=\(id)"
-                let enc = am.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? am
-                return URL(string: "marvis://open?url=\(enc)")
+            if type == "song" {
+                func viaURL(_ am: String) -> URL? {
+                    URL(string: "marvis://open?url=" + (am.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? am))
+                }
+                switch songStyle {
+                case .songPage: return viaURL("https://music.apple.com/\(storefront)/song/\(id)")
+                case .albumTrack:
+                    if let albumID { return viaURL("https://music.apple.com/\(storefront)/album/\(albumID)?i=\(id)") }
+                    return URL(string: "marvis://open?id=\(id)&type=song")
+                case .songID: return URL(string: "marvis://open?id=\(id)&type=song")
+                }
             }
             return URL(string: "marvis://open?id=\(id)&type=\(type)")
         case .appleMusic:
@@ -177,6 +199,7 @@ extension Notification.Name {
 
 struct MusicAppSettingsView: View {
     @AppStorage(MusicAppLink.appKey) private var app = MusicAppLink.App.marvis.rawValue
+    @AppStorage(MusicAppLink.songStyleKey) private var songStyle = MusicAppLink.SongStyle.songPage.rawValue
 
     var body: some View {
         Form {
@@ -188,6 +211,25 @@ struct MusicAppSettingsView: View {
                 .labelsHidden()
             } footer: {
                 Text("Press and hold any album or song to open that exact item. The app finds it in the Apple Music catalog; if there's no match it opens a search instead.")
+            }
+            if app == MusicAppLink.App.marvis.rawValue {
+                Section {
+                    Picker("Songs open with", selection: $songStyle) {
+                        ForEach(MusicAppLink.SongStyle.allCases) { Text($0.name).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+                    ForEach(MusicAppLink.SongStyle.allCases) { style in
+                        Button("Test “\(style.name)”") {
+                            songStyle = style.rawValue
+                            Task { await MusicAppLink.open(artist: "The Avalanches", album: "No Bad Memories", song: "Every Single Weekend", appleMusicURL: nil) }
+                        }
+                    }
+                } header: {
+                    Text("Songs in Marvis")
+                } footer: {
+                    Text("Try each test and keep the one where Marvis shows “Every Single Weekend” highlighted or on its own page. Each test also selects that style.")
+                }
             }
             Section {
                 Button("Test with “The Avalanches – No Bad Memories”") {

@@ -63,17 +63,35 @@ struct TapAndHold: ViewModifier {
     let tap: () -> Void
     let hold: () -> Void
     @State private var pressing = false
+    @State private var fired = false
+    @State private var timer: Task<Void, Never>?
 
     func body(content: Content) -> some View {
         content
             .contentShape(Rectangle())
             .scaleEffect(pressing ? 0.95 : 1)
             .animation(.spring(response: 0.28, dampingFraction: 0.55), value: pressing)
-            .onTapGesture(perform: tap)
-            .onLongPressGesture(minimumDuration: 0.4, maximumDistance: 12) {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                hold()
-            } onPressingChanged: { pressing = $0 }
+            .onTapGesture {
+                if fired { fired = false; return }   // the hold already handled this touch
+                tap()
+            }
+            // The long press itself never completes (huge duration); it only reports press
+            // state. A timer fires the hold action while the finger is still down.
+            .onLongPressGesture(minimumDuration: 60, maximumDistance: 12, perform: {}) { isPressing in
+                pressing = isPressing
+                timer?.cancel()
+                if isPressing {
+                    fired = false
+                    timer = Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(420))
+                        guard !Task.isCancelled, pressing else { return }
+                        fired = true
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.5)) { pressing = false }
+                        hold()
+                    }
+                }
+            }
     }
 }
 
