@@ -101,13 +101,14 @@ enum MusicAppLink {
     static func open(artist: String, album: String?, song: String?, appleMusicURL: String?) async {
         var url: URL?
         if let song {
-            let albumID = albumID(fromAppleMusic: appleMusicURL)
-                ?? (album != nil ? await findAlbum(artist: artist, album: album!) : nil)
+            var albumID = albumID(fromAppleMusic: appleMusicURL)
+            if albumID == nil, let album { albumID = await findAlbum(artist: artist, album: album) }
             if let hit = await findSong(artist: artist, song: song, album: album, albumID: albumID) {
                 url = link(id: hit.song, type: "song", albumID: hit.album)
             }
         } else if let album {
-            let id = albumID(fromAppleMusic: appleMusicURL) ?? (await findAlbum(artist: artist, album: album))
+            var id = albumID(fromAppleMusic: appleMusicURL)
+            if id == nil { id = await findAlbum(artist: artist, album: album) }
             if let id { url = link(id: id, type: "album", albumID: id) }
         }
         if url == nil { url = searchLink(artist: artist, title: song ?? album ?? "") }
