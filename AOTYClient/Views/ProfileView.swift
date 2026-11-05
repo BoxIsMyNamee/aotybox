@@ -89,8 +89,10 @@ struct UserProfileView: View {
 
     @State private var profile: Profile?
     @State private var ratings: [AlbumBlock] = []
-    @State private var albumPage = 1, singlePage = 1
-    @State private var moreAlbums = true, moreSingles = true
+    @State private var albumPage = 1
+    @State private var singlePage = 1
+    @State private var moreAlbums = true
+    @State private var moreSingles = true
     @State private var loading = false
     @State private var error: String?
     @State private var showFullProfile = false
