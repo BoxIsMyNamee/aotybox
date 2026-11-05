@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-15
@@ -31,6 +34,8 @@ jobs:
             -destination 'generic/platform=iOS' \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION=0.1.${{ github.run_number }} \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             build | tee build.log | grep -E "error:|warning:|BUILD" || true
@@ -61,3 +66,53 @@ jobs:
         with:
           name: build-log
           path: build.log
+
+      - name: Write LiveContainer / AltStore source
+        if: github.ref == 'refs/heads/main'
+        env:
+          N: ${{ github.run_number }}
+          REPO: ${{ github.repository }}
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          SIZE=$(stat -f%z AOTYClient.ipa)
+          python3 - <<'PY'
+          import json, os, datetime
+          n, repo, size = os.environ["N"], os.environ["REPO"], int(os.popen("stat -f%z AOTYClient.ipa").read())
+          url = f"https://github.com/{repo}/releases/download/build-{n}/AOTYClient.ipa"
+          now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+          notes = (os.environ.get("MSG") or "").split("\n")[0][:200]
+          version = {"version": f"0.1.{n}", "buildVersion": n, "date": now, "localizedDescription": notes,
+                     "downloadURL": url, "size": size, "minOSVersion": "17.0"}
+          src = {
+            "name": "AOTYbox", "identifier": "com.harper.aotyclient.source",
+            "subtitle": "Builds of the AOTY client", "website": f"https://github.com/{repo}",
+            "apps": [{
+              "name": "AOTY", "bundleIdentifier": "com.harper.aotyclient", "developerName": "Harper",
+              "subtitle": "Album of the Year client", "localizedDescription": "Native client for albumoftheyear.org.",
+              "iconURL": f"https://raw.githubusercontent.com/{repo}/main/icon.png",
+              "versions": [version],
+              "version": version["version"], "versionDate": now, "versionDescription": notes,
+              "downloadURL": url, "size": size,
+            }],
+            "news": [],
+          }
+          json.dump(src, open("source.json", "w"), indent=2)
+          PY
+          cat source.json
+
+      - name: Publish release (newest build is always at releases/latest)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          N: ${{ github.run_number }}
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          printf '%s\n' "$MSG" > notes.txt
+          gh release create "build-$N" AOTYClient.ipa source.json \
+            --repo "${{ github.repository }}" --target "${{ github.sha }}" \
+            --title "Build $N" --notes-file notes.txt --latest
+          # Keep the 10 newest releases.
+          gh release list --repo "${{ github.repository }}" --limit 100 --json tagName -q '.[].tagName' \
+            | grep '^build-' | sort -t- -k2 -n -r | tail -n +11 \
+            | xargs -r -I{} gh release delete {} --repo "${{ github.repository }}" --yes --cleanup-tag
+
