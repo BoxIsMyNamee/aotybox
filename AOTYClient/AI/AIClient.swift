@@ -130,37 +130,85 @@ enum AIClient {
         return obj
     }
 
-    /// Free-tier-friendly fallbacks, tried when the chosen model returns 429 (no free quota).
-    private static let geminiFallbacks = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
     private static let resolvedModelKey = "aiGeminiResolvedModel"
     private static let searchOffKey = "aiGeminiSearchOff"
+    private static let modelListKey = "aiGeminiModelList"
+    private static let modelListDateKey = "aiGeminiModelListDate"
+
+    /// Flash text models this key can actually call, newest first (asks Google; cached a day).
+    private static func availableFlashModels(key: String) async -> [String] {
+        let d = UserDefaults.standard
+        if let date = d.object(forKey: modelListDateKey) as? Date, Date().timeIntervalSince(date) < 86400,
+           let cached = d.stringArray(forKey: modelListKey), !cached.isEmpty { return cached }
+        var req = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200")!, timeoutInterval: 15)
+        req.setValue(key, forHTTPHeaderField: "x-goog-api-key")
+        guard let (data, resp) = try? await URLSession.shared.data(for: req), (resp as? HTTPURLResponse)?.statusCode == 200,
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let list = obj["models"] as? [[String: Any]] else { return [] }
+        let skip = ["image", "tts", "live", "audio", "embedding", "vision", "thinking-exp", "robotics", "computer"]
+        let names: [String] = list.compactMap { m in
+            guard let name = (m["name"] as? String)?.replacingOccurrences(of: "models/", with: ""),
+                  ((m["supportedGenerationMethods"] as? [String]) ?? []).contains("generateContent"),
+                  name.contains("flash"), !skip.contains(where: { name.contains($0) }) else { return nil }
+            return name
+        }
+        func version(_ n: String) -> [Int] {
+            (n.firstMatch(of: /gemini-(\d+)(?:\.(\d+))?/).map { [Int($0.1) ?? 0, Int($0.2 ?? "0") ?? 0] }) ?? [0, 0]
+        }
+        func rank(_ n: String) -> Int { (n.contains("preview") || n.contains("exp") ? 2 : 0) + (n.contains("lite") ? 1 : 0) }
+        let sorted = names.sorted { a, b in
+            let va = version(a), vb = version(b)
+            if va != vb { return va.lexicographicallyPrecedes(vb) == false }
+            return rank(a) < rank(b)
+        }
+        if !sorted.isEmpty { d.set(sorted, forKey: modelListKey); d.set(Date(), forKey: modelListDateKey) }
+        return sorted
+    }
 
     private static func gemini(key: String, system: String, history: [ChatMessage]) async throws -> ChatMessage {
-        let chosen = AISettings.model
-        let userPicked = !(UserDefaults.standard.string(forKey: AISettings.modelKey) ?? "").trimmingCharacters(in: .whitespaces).isEmpty
-        var models = [chosen]
-        if !userPicked {
-            if let r = UserDefaults.standard.string(forKey: resolvedModelKey), r != chosen { models.insert(r, at: 0) }
-            models += geminiFallbacks.filter { !models.contains($0) }
-        }
+        let d = UserDefaults.standard
+        let typed = (d.string(forKey: AISettings.modelKey) ?? "").trimmingCharacters(in: .whitespaces)
+        var models: [String] = []
+        if !typed.isEmpty { models.append(typed) }
+        if let r = d.string(forKey: resolvedModelKey) { models.append(r) }
+        models.append(AIProvider.gemini.defaultModel)                       // gemini-flash-latest
+        models += await availableFlashModels(key: key)
+        var seen = Set<String>()
+        models = models.filter { seen.insert($0).inserted }.prefix(8).map { $0 }
+
         var lastError: Error = AIError.empty
         for model in models {
-            // With Google Search first (better answers), then without (search has its own quota).
-            let searchOrder = UserDefaults.standard.bool(forKey: searchOffKey) ? [false] : [true, false]
-            for search in searchOrder {
-                do {
-                    let reply = try await geminiOnce(key: key, model: model, search: search, system: system, history: history)
-                    if !userPicked { UserDefaults.standard.set(model, forKey: resolvedModelKey) }
-                    UserDefaults.standard.set(!search, forKey: searchOffKey)
-                    return reply
-                } catch let AIError.http(code, msg) where code == 429 || (code == 404 && !userPicked) || (code == 400 && msg.lowercased().contains("search")) {
-                    lastError = AIError.http(code, msg)
-                    continue
+            let searchOrder = d.bool(forKey: searchOffKey) ? [false] : [true, false]
+            searchLoop: for search in searchOrder {
+                for attempt in 0..<2 {
+                    do {
+                        let reply = try await geminiOnce(key: key, model: model, search: search, system: system, history: history)
+                        d.set(model, forKey: resolvedModelKey)
+                        d.set(!search, forKey: searchOffKey)
+                        return reply
+                    } catch let AIError.http(code, msg) {
+                        lastError = AIError.http(code, msg)
+                        switch code {
+                        case 503, 500, 502, 504:
+                            if attempt == 0 { try? await Task.sleep(for: .seconds(1.5)); continue }   // brief retry
+                            break searchLoop                                                       // busy: next model
+                        case 429:
+                            continue searchLoop                                                    // try without search, then next model
+                        case 400 where msg.lowercased().contains("search") || msg.lowercased().contains("tool"):
+                            continue searchLoop
+                        case 404, 400:
+                            break searchLoop                                                       // retired/unknown model
+                        default:
+                            throw AIError.http(code, msg)                                          // bad key etc.
+                        }
+                    }
                 }
             }
         }
-        if case let AIError.http(429, _) = lastError {
-            throw AIError.http(429, "No free quota on any Gemini model for this key yet. Check limits at ai.dev/rate-limit, or try again later.")
+        if case let AIError.http(code, _) = lastError, code == 429 || code == 503 {
+            throw AIError.http(code, code == 429
+                ? "No free quota on the Gemini models this key can use. Check limits at ai.dev/rate-limit, or try again later."
+                : "Gemini is busy right now on every available model. Try again in a minute.")
         }
         throw lastError
     }

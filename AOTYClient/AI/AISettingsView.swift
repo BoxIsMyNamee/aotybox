@@ -19,7 +19,7 @@ struct AISettingsView: View {
                 SecureField("API key", text: $key)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .onSubmit { AISettings.setAPIKey(key, provider) }
-                TextField(provider.defaultModel.isEmpty ? "Model (required)" : "Model (default \(provider.defaultModel))", text: $model)
+                TextField(provider == .gemini ? "Model (leave empty = automatic)" : (provider.defaultModel.isEmpty ? "Model (required)" : "Model (default \(provider.defaultModel))"), text: $model)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                 if provider == .openai {
                     TextField("Base URL (default https://api.openai.com/v1)", text: $baseURL)
@@ -45,6 +45,7 @@ struct AISettingsView: View {
         .onChange(of: model) {
             UserDefaults.standard.removeObject(forKey: "aiGeminiResolvedModel")
             UserDefaults.standard.removeObject(forKey: "aiGeminiSearchOff")
+            UserDefaults.standard.removeObject(forKey: "aiGeminiModelListDate")
         }
         .onDisappear { AISettings.setAPIKey(key, provider) }
     }
