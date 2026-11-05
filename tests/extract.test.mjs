@@ -3,7 +3,7 @@ import { DOMParser } from "linkedom";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
 globalThis.DOMParser = DOMParser;
-const { aotyExtract, aotyIsChallenge } = require("../AOTYClient/Resources/extract.js");
+const { aotyExtract, aotyIsChallenge, aotyGenericBlocks } = require("../AOTYClient/Resources/extract.js");
 
 const pages = [
   ["blocks", "/releases/this-week/"],
@@ -35,6 +35,10 @@ for (const [kind, path] of pages) {
     console.log(`  ${out.albums.length} albums`);
     console.log("  first:", JSON.stringify(out.albums[0]));
     check(out.albums.length >= 5, "expected >= 5 album blocks");
+    const g = aotyGenericBlocks(new DOMParser().parseFromString(html, "text/html"));
+    console.log(`  generic fallback: ${g.length} albums; first: ${JSON.stringify(g[0])}`);
+    check(g.length >= out.albums.length * 0.8, "generic fallback finds most albums");
+    check(g[0] && g[0].title && g[0].url.includes("/album/"), "generic fallback first item");
     const a = out.albums[0] || {};
     check(a.url && a.url.includes("/album/"), "album url");
     check(a.artist && a.title, "artist + title");

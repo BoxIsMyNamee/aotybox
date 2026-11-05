@@ -24,6 +24,9 @@ struct ReleasesView: View {
 
                 if let error, albums.isEmpty {
                     ErrorView(message: error) { await reload() }
+                } else if albums.isEmpty && !loading {
+                    ContentUnavailableView("Nothing here yet", systemImage: "square.stack",
+                                           description: Text("Pull to refresh."))
                 }
 
                 ForEach(albums) { album in

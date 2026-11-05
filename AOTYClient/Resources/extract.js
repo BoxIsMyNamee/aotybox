@@ -83,6 +83,63 @@ function aotyAlbumBlocks(root) {
   return out;
 }
 
+// --- Fallback for album cards when the page layout differs (e.g. signed-in users) ---
+// Find every album link that wraps a cover image, take the smallest ancestor that holds
+// only that album, and read title/artist/scores from its text.
+function aotyGenericBlocks(doc) {
+  var out = [], seen = {};
+  var links = doc.querySelectorAll("a[href*='/album/']");
+  for (var i = 0; i < links.length; i++) {
+    var a = links[i];
+    var href = a.getAttribute("href") || "";
+    if (!/\/album\/\d+[^\/]*\.php/.test(href)) continue;
+    var url = aotyAbs(href).split("#")[0];
+    if (seen[url]) continue;
+    var img = a.querySelector("img");
+    if (!img) continue;
+    // Climb while the parent still only contains this one album.
+    var box = a;
+    for (var d = 0; d < 6 && box.parentElement; d++) {
+      var p = box.parentElement;
+      var hrefs = {};
+      var inner = p.querySelectorAll("a[href*='/album/']");
+      for (var k = 0; k < inner.length; k++) hrefs[(inner[k].getAttribute("href") || "").split("#")[0]] = 1;
+      if (Object.keys(hrefs).length > 1) break;
+      box = p;
+    }
+    seen[url] = 1;
+    var alt = (img.getAttribute("alt") || "").trim();
+    var dash = alt.indexOf(" - ");
+    var artistEl = box.querySelector(".artistTitle") || box.querySelector("a[href*='/artist/']");
+    var titleEl = box.querySelector(".albumTitle");
+    var text = (box.textContent || "").replace(/\s+/g, " ");
+    var cm = text.match(/(\d{1,3})\s*critic score\s*\(?([\d,.]+[KkMm]?)?\)?/i);
+    var um = text.match(/(\d{1,3})\s*user score\s*\(?([\d,.]+[KkMm]?)?\)?/i);
+    var title = aotyTxt(titleEl) || (dash > -1 ? alt.slice(dash + 3) : alt);
+    var artist = aotyTxt(artistEl) || (dash > -1 ? alt.slice(0, dash) : "");
+    if (!title) continue;
+    out.push({
+      url: url, artist: artist, title: title,
+      cover: aotyCleanImg(aotyImgSrc(img)),
+      mediaType: null,
+      releaseDate: aotyTxt(box.querySelector(".type")) || null,
+      criticScore: cm ? Number(cm[1]) : null, criticCount: cm ? aotyCount(cm[2]) : null,
+      userScore: um ? Number(um[1]) : null, userCount: um ? aotyCount(um[2]) : null,
+      mustHear: !!box.querySelector(".mustHear")
+    });
+  }
+  return out;
+}
+
+/** Short sample of the markup around the first album card, for Diagnostics. */
+function aotySample(doc) {
+  var a = doc.querySelector("a[href*='/album/'] img");
+  if (!a) return "(no album links with images found)";
+  var el = a;
+  for (var i = 0; i < 4 && el.parentElement; i++) el = el.parentElement;
+  return el.outerHTML.replace(/\s+/g, " ").slice(0, 1500);
+}
+
 // --- Ratings charts (.albumListRow) ---
 function aotyChart(doc) {
   var items = [];
@@ -298,10 +355,14 @@ function aotyIsChallenge(html, status) {
 
 function aotyExtract(kind, html, pageURL) {
   var doc = new DOMParser().parseFromString(html, "text/html");
-  if (kind === "blocks") return { page: null, albums: aotyAlbumBlocks(doc) };
+  if (kind === "blocks") {
+    var albums = aotyAlbumBlocks(doc);
+    if (!albums.length) albums = aotyGenericBlocks(doc);
+    return { page: null, albums: albums };
+  }
   if (kind === "chart") return aotyChart(doc);
   if (kind === "album") return aotyAlbum(doc, html, pageURL);
   throw new Error("unknown kind " + kind);
 }
 
-if (typeof module !== "undefined") module.exports = { aotyExtract: aotyExtract, aotyIsChallenge: aotyIsChallenge };
+if (typeof module !== "undefined") module.exports = { aotyExtract: aotyExtract, aotyIsChallenge: aotyIsChallenge, aotyGenericBlocks: aotyGenericBlocks, aotySample: aotySample };

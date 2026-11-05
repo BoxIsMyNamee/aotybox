@@ -18,6 +18,10 @@ struct DiagnosticsView: View {
             Section {
                 Button(running ? "Running…" : "Run diagnostics") { Task { await run() } }
                     .disabled(running)
+                Button("Copy results") {
+                    UIPasteboard.general.string = probes.map { "## \($0.0) \($0.1)\n\(results[$0.1] ?? "-")" }.joined(separator: "\n\n")
+                }
+                .disabled(results.isEmpty || running)
             } footer: {
                 Text("Loads each page the app uses and reports what came back. Takes a few seconds.")
             }

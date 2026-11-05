@@ -31,7 +31,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
     private let ttl: TimeInterval = 15 * 60
     private var memory: [String: (Date, Data)] = [:]
     private let cacheDir: URL = {
-        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("aoty", isDirectory: true)
+        let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("aoty-v2", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }()
@@ -113,6 +113,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
                       "challenge " + aotyIsChallenge(html, r.status),
                       ".albumBlock " + doc.querySelectorAll(".albumBlock").length + ", .albumListRow " + doc.querySelectorAll(".albumListRow").length,
                       "items " + count,
+                      "sample " + aotySample(doc),
                       "text " + (doc.body ? doc.body.innerText || doc.body.textContent : "").replace(/\\s+/g, " ").trim().slice(0, 240)
                     ].join("\\n");
                     """
