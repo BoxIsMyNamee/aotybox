@@ -63,15 +63,35 @@ enum MusicAppLink {
         return nil
     }
 
+    private struct ArtistResponse: Decodable {
+        struct Item: Decodable { let artistId: Int?; let artistName: String? }
+        let results: [Item]
+    }
+
+    /// Album search first; Apple's album search misses brand-new releases, so fall back to the
+    /// artist's full discography (lookup by artist ID), which does include them.
     static func findAlbum(artist: String, album: String) async -> Int? {
-        let results = await itunes("search", [
+        let a = norm(artist), t = norm(album)
+        func match(_ list: [ITunesResponse.Item]) -> Int? {
+            let exact = list.first { $0.collectionId != nil && norm($0.collectionName ?? "") == t && norm($0.artistName ?? "").contains(a.prefix(8)) }
+            let loose = list.first { $0.collectionId != nil && norm($0.collectionName ?? "").hasPrefix(t.prefix(10)) && norm($0.artistName ?? "").contains(a.prefix(5)) }
+            return (exact ?? loose)?.collectionId
+        }
+        if let id = match(await itunes("search", [
             URLQueryItem(name: "term", value: "\(artist) \(album)"),
             URLQueryItem(name: "entity", value: "album"), URLQueryItem(name: "limit", value: "15"),
-        ])
-        let a = norm(artist), t = norm(album)
-        let exact = results.first { norm($0.collectionName ?? "") == t && norm($0.artistName ?? "").contains(a.prefix(8)) }
-        let loose = results.first { norm($0.collectionName ?? "").hasPrefix(t.prefix(10)) && norm($0.artistName ?? "").contains(a.prefix(5)) }
-        return (exact ?? loose)?.collectionId
+        ])) { return id }
+
+        var c = URLComponents(string: "https://itunes.apple.com/search")!
+        c.queryItems = [URLQueryItem(name: "term", value: artist), URLQueryItem(name: "entity", value: "musicArtist"),
+                        URLQueryItem(name: "limit", value: "5"), URLQueryItem(name: "country", value: storefront)]
+        guard let url = c.url, let (data, _) = try? await URLSession.shared.data(from: url),
+              let artists = try? JSONDecoder().decode(ArtistResponse.self, from: data).results,
+              let artistID = (artists.first { norm($0.artistName ?? "") == a } ?? artists.first)?.artistId else { return nil }
+        return match(await itunes("lookup", [
+            URLQueryItem(name: "id", value: String(artistID)), URLQueryItem(name: "entity", value: "album"),
+            URLQueryItem(name: "limit", value: "200"), URLQueryItem(name: "sort", value: "recent"),
+        ]))
     }
 
     static func findSong(artist: String, song: String, album: String?, albumID: Int?) async -> (song: Int, album: Int?)? {
