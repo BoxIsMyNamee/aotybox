@@ -79,5 +79,25 @@ for (const [kind, path] of pages) {
     console.log("  logo:", out.reviews[0] && out.reviews[0].image);
   }
 }
+// Genius lyrics parser against an archived lyrics page
+{
+  const { geniusParse } = require("../AOTYClient/Resources/genius.js");
+  console.log("\n=== genius lyrics");
+  const r = await fetch("https://web.archive.org/web/2026id_/https://genius.com/Kendrick-lamar-humble-lyrics", { headers: { "User-Agent": "Mozilla/5.0" } });
+  const html = await r.text();
+  if (r.ok && html.length > 50000) {
+    const out = geniusParse(html);
+    const text = out.segments.map(s => s.t).join("");
+    const refs = out.segments.filter(s => s.r).length;
+    console.log(`  songId ${out.songId}, ${out.segments.length} segments, ${refs} annotated, ${text.length} chars`);
+    console.log("  start:", JSON.stringify(text.slice(0, 200)));
+    console.log("  seg0:", JSON.stringify(out.segments[0]));
+    check(out.songId === 3039923, "song id from meta");
+    check(text.includes("Nobody pray for me") && text.includes("Sit down"), "lyrics text");
+    check(refs >= 10, "annotated segments");
+    check(!/Contributors/.test(text.slice(0, 100)), "header excluded");
+  } else console.log("  no snapshot", r.status);
+}
+
 console.log(`\n${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

@@ -15,11 +15,31 @@ struct AlbumBlock: Decodable, Identifiable, Hashable {
     let criticCount: Int?
     let userScore: Double?
     let userCount: Int?
+    let rating: Double?      // the profile owner's own rating, on profile pages
     let mustHear: Bool?
 
     var id: String { url }
     var slug: String? { AlbumSlug.from(url) }
     var coverURL: URL? { URL(string: cover) }
+}
+
+struct Me: Decodable {
+    let username: String?
+    let avatar: String?
+}
+
+struct ProfileStat: Decodable, Hashable {
+    let label: String
+    let value: String
+}
+
+struct Profile: Decodable {
+    let username: String
+    let displayName: String?
+    let avatar: String?
+    let stats: [ProfileStat]
+    let about: String?
+    let albums: [AlbumBlock]
 }
 
 /// One row on a ratings chart (/ratings).

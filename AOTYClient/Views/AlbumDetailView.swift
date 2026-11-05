@@ -9,7 +9,6 @@ struct AlbumDetailView: View {
     @State private var showAllTracks = false
     @State private var showRateSheet = false
     @State private var showCover = false
-    @State private var openingTrack: String?
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -34,16 +33,6 @@ struct AlbumDetailView: View {
             if let album, let url = URL(string: album.url) {
                 AOTYWebSheet(url: url, title: "Rate & Review").accentTint()
             }
-        }
-    }
-
-    private func openGenius(artist: String, track: Track) {
-        guard openingTrack == nil else { return }
-        openingTrack = track.id
-        Task {
-            let url = await Genius.url(artist: artist, title: track.title)
-            openingTrack = nil
-            openURL(url)
         }
     }
 
@@ -116,7 +105,9 @@ struct AlbumDetailView: View {
             if let tracks = a.tracklist, !tracks.isEmpty {
                 Section("Tracklist" + (a.totalLength.map { " · \($0)" } ?? "")) {
                     ForEach(showAllTracks ? tracks : Array(tracks.prefix(8))) { t in
-                        Button { openGenius(artist: a.artist, track: t) } label: {
+                        NavigationLink {
+                            SongView(artist: a.artist, title: t.title, album: a.title, albumCover: a.coverURL)
+                        } label: {
                             HStack {
                                 Text("\(t.number)").foregroundStyle(.secondary).monospacedDigit().frame(width: 24, alignment: .trailing)
                                 VStack(alignment: .leading) {
@@ -126,16 +117,11 @@ struct AlbumDetailView: View {
                                     }
                                 }
                                 Spacer()
-                                if openingTrack == t.id {
-                                    ProgressView().controlSize(.small)
-                                } else {
-                                    if let r = t.rating { Text(String(Int(r.rounded()))).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
-                                    if let l = t.length { Text(l).font(.caption.monospacedDigit()).foregroundStyle(.tertiary) }
-                                }
+                                if let r = t.rating { Text(String(Int(r.rounded()))).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
+                                if let l = t.length { Text(l).font(.caption.monospacedDigit()).foregroundStyle(.tertiary) }
                             }
                             .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
                     }
                     if tracks.count > 8 {
                         Button(showAllTracks ? "Show Less…" : "Show More…") { withAnimation { showAllTracks.toggle() } }

@@ -49,7 +49,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         webView.navigationDelegate = self
     }
 
-    enum Kind: String { case blocks, chart, album, userReviews }
+    enum Kind: String { case blocks, chart, album, userReviews, me, profile }
 
     enum ScrapeError: LocalizedError {
         case blocked
@@ -126,6 +126,24 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         }
     }
 
+    /// Run a JS snippet in the hidden web view (used to parse non-AOTY HTML such as Genius pages).
+    /// `body` must `return` a string.
+    func runJS(_ body: String, args: [String: Any]) async throws -> String {
+        try await serialized {
+            try await self.withTimeout(20) {
+                if self.webView.url == nil { try await self.ensureOrigin() }
+                let r = try await self.webView.callAsyncJavaScript(body, arguments: args, in: nil, contentWorld: .defaultClient)
+                guard let s = r as? String else { throw ScrapeError.script("no result") }
+                return s
+            }
+        }
+    }
+
+    func forget(_ path: String) {
+        memory[path] = nil
+        try? FileManager.default.removeItem(at: key(path))
+    }
+
     func clearCache() {
         memory.removeAll()
         try? FileManager.default.removeItem(at: cacheDir)
@@ -171,7 +189,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         if (!r.ok) return JSON.stringify({ __http: r.status });
         const out = aotyExtract(kind, html, r.url);
         const n = (out.albums || out.items || out.reviews || []).length + (out.title ? 1 : 0);
-        if (n === 0 && kind !== "userReviews") {
+        if (n === 0 && (kind === "blocks" || kind === "chart" || kind === "album")) {
           const d = new DOMParser().parseFromString(html, "text/html");
           return JSON.stringify({ __empty: "Page: " + (d.title || "untitled").trim().slice(0, 60) + " · " + html.length + " bytes · " + r.url.replace("https://www.albumoftheyear.org", "") });
         }
@@ -187,7 +205,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         if (aotyIsChallenge(html, 200)) return JSON.stringify({ __challenge: true });
         const out = aotyExtract(kind, html, location.href);
         const n = (out.albums || out.items || out.reviews || []).length + (out.title ? 1 : 0);
-        if (n === 0 && kind !== "userReviews") return JSON.stringify({ __empty: "Page: " + (document.title || "untitled").trim().slice(0, 60) + " · " + html.length + " bytes (loaded)" });
+        if (n === 0 && (kind === "blocks" || kind === "chart" || kind === "album")) return JSON.stringify({ __empty: "Page: " + (document.title || "untitled").trim().slice(0, 60) + " · " + html.length + " bytes (loaded)" });
         return JSON.stringify(out);
         """
         return try await evaluate(body, args: ["kind": kind.rawValue], path: path)

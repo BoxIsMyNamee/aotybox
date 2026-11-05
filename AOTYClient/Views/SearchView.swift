@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SearchView: View {
-    @AppStorage(AOTYAPI.sourceKey) private var source = "device"
+    private let source = "device"
     @State private var query = ""
     @State private var submitted = ""
     @State private var results: [AlbumBlock] = []

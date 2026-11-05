@@ -55,7 +55,7 @@ function aotyAlbumBlocks(root) {
     var a = b.querySelector(".image a") || b.querySelector("a[href*='/album/']");
     var img = b.querySelector(".image img");
     var wrap = b.querySelector(".image");
-    var critic = null, criticCount = null, user = null, userCount = null;
+    var critic = null, criticCount = null, user = null, userCount = null, mine = null;
     var rows = b.querySelectorAll(".ratingRow");
     for (var r = 0; r < rows.length; r++) {
       var row = rows[r];
@@ -66,7 +66,9 @@ function aotyAlbumBlocks(root) {
       for (var k = 0; k < texts.length; k++) if (texts[k].charAt(0) === "(") cnt = texts[k];
       if (label.indexOf("critic") >= 0) { critic = aotyNum(val); criticCount = aotyCount(cnt); }
       else if (label.indexOf("user") >= 0) { user = aotyNum(val); userCount = aotyCount(cnt); }
+      else if (val) { mine = aotyNum(val); }
     }
+    if (mine == null && !rows.length) mine = aotyNum(aotyTxt(b.querySelector(".rating")));
     var item = {
       url: aotyAbs(a && a.getAttribute("href")),
       artist: aotyTxt(b.querySelector(".artistTitle")),
@@ -75,7 +77,7 @@ function aotyAlbumBlocks(root) {
       mediaType: b.getAttribute("data-type") || null,
       releaseDate: aotyTxt(b.querySelector(".type")) || null,
       criticScore: critic, criticCount: criticCount,
-      userScore: user, userCount: userCount,
+      userScore: user, userCount: userCount, rating: mine,
       mustHear: !!b.querySelector(".mustHear") || !!(wrap && /\bmustHear\b/.test(wrap.getAttribute("class") || ""))
     };
     if (item.url.indexOf("/album/") >= 0 && item.title) out.push(item);
@@ -125,6 +127,7 @@ function aotyGenericBlocks(doc) {
       releaseDate: aotyTxt(box.querySelector(".type")) || null,
       criticScore: cm ? Number(cm[1]) : null, criticCount: cm ? aotyCount(cm[2]) : null,
       userScore: um ? Number(um[1]) : null, userCount: um ? aotyCount(um[2]) : null,
+      rating: (!cm && !um) ? aotyNum(aotyTxt(box.querySelector(".rating"))) : null,
       mustHear: !!box.querySelector(".mustHear")
     });
   }
@@ -398,6 +401,48 @@ function aotyAlbum(doc, html, pageURL) {
   };
 }
 
+// --- Signed-in user (from the site header) ---
+function aotyMe(doc) {
+  var links = doc.querySelectorAll("a[href*='/user/']");
+  for (var i = 0; i < links.length; i++) {
+    var href = (links[i].getAttribute("href") || "").replace(/^https?:\/\/[^/]+/, "");
+    var m = href.match(/^\/user\/([^\/?#]+)\/?$/);
+    if (!m) continue;
+    var img = links[i].querySelector("img");
+    if (!img) continue;
+    return { username: decodeURIComponent(m[1]), avatar: aotyImgSrc(img) || null };
+  }
+  return { username: null, avatar: null };
+}
+
+// --- Profile page (best effort, layout-independent) ---
+function aotyProfile(doc, html, pageURL) {
+  var text = (doc.body ? doc.body.textContent : "").replace(/\s+/g, " ");
+  var stats = [];
+  var labels = ["Ratings", "Reviews", "Lists", "Followers", "Following"];
+  for (var i = 0; i < labels.length; i++) {
+    var re = new RegExp("([\\d,.]+[KkMm]?)\\s*" + labels[i] + "\\b", "i");
+    var m = text.match(re);
+    if (m) stats.push({ label: labels[i], value: m[1] });
+  }
+  var userPath = (pageURL || "").replace(/^https?:\/\/[^/]+/, "");
+  var um = userPath.match(/\/user\/([^\/?#]+)/);
+  var username = um ? decodeURIComponent(um[1]) : "";
+  var avatar = null;
+  var imgs = doc.querySelectorAll("img");
+  for (var k = 0; k < imgs.length; k++) {
+    var src = aotyImgSrc(imgs[k]);
+    var alt = (imgs[k].getAttribute("alt") || "").toLowerCase();
+    if (src.indexOf("/user/") >= 0 && (alt === username.toLowerCase() || alt.replace(/[-_]/g, "") === username.toLowerCase().replace(/[-_]/g, ""))) { avatar = src; break; }
+  }
+  if (!avatar) { var og = doc.querySelector('meta[property="og:image"]'); if (og && /\/user\//.test(og.getAttribute("content") || "")) avatar = og.getAttribute("content"); }
+  var nameEl = doc.querySelector("h1") || doc.querySelector(".profileName");
+  var albums = aotyAlbumBlocks(doc);
+  if (!albums.length) albums = aotyGenericBlocks(doc);
+  var about = aotyTxt(doc.querySelector(".aboutUser, .profileAbout, .userAbout"));
+  return { username: username, displayName: aotyTxt(nameEl) || username, avatar: avatar, stats: stats, about: about || null, albums: albums.slice(0, 30) };
+}
+
 function aotyIsChallenge(html, status) {
   return status === 403 || status === 503 ||
     /<title>\s*Just a moment/i.test(html) || /cf-challenge|challenge-platform|cf_chl_/i.test(html.slice(0, 20000));
@@ -413,6 +458,8 @@ function aotyExtract(kind, html, pageURL) {
   if (kind === "chart") return aotyChart(doc);
   if (kind === "album") return aotyAlbum(doc, html, pageURL);
   if (kind === "userReviews") return aotyUserReviewsPage(doc, html);
+  if (kind === "me") return aotyMe(doc);
+  if (kind === "profile") return aotyProfile(doc, html, pageURL);
   throw new Error("unknown kind " + kind);
 }
 

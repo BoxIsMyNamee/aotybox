@@ -16,9 +16,8 @@ actor AOTYAPI {
     /// "device" (default): fetch AOTY pages on the phone. "api": use the community API.
     static let sourceKey = "dataSource"
 
-    static var usesDevice: Bool {
-        (UserDefaults.standard.string(forKey: sourceKey) ?? "device") == "device"
-    }
+    /// Always on-device now (the community API is blocked by AOTY). API code kept for later.
+    static var usesDevice: Bool { true }
 
     private let session: URLSession
     private let cache: URLCache
@@ -81,6 +80,21 @@ actor AOTYAPI {
     func userReviews(slug: String, sort: String, page: Int) async throws -> UserReviewsPage {
         let path = "/album/\(slug)/user-reviews/?sort=\(sort)" + (page > 1 ? "&p=\(page)" : "")
         return try await device(path, .userReviews, UserReviewsPage.self)
+    }
+
+    /// The signed-in AOTY user, read from the site header.
+    func me(refresh: Bool = false) async throws -> Me {
+        if refresh { await AOTYScraper.shared.forget("/") }
+        return try await device("/", .me, Me.self)
+    }
+
+    func profile(username: String) async throws -> Profile {
+        try await device("/user/\(username)/", .profile, Profile.self)
+    }
+
+    func userRatings(username: String, page: Int) async throws -> [AlbumBlock] {
+        let path = "/user/\(username)/ratings/" + (page > 1 ? "\(page)/" : "")
+        return try await device(path, .blocks, AlbumListResponse.self).albums
     }
 
     func clearCache() async {
