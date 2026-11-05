@@ -6,14 +6,25 @@ import UIKit
 final class ImageCache: @unchecked Sendable {
     static let shared = ImageCache()
 
+    // NSCache is thread-safe; in-flight de-duplication lives in an actor.
     private let memory: NSCache<NSURL, UIImage> = {
         let c = NSCache<NSURL, UIImage>()
         c.totalCostLimit = 150 * 1024 * 1024
         return c
     }()
     private let session: URLSession
-    private var inFlight: [URL: Task<UIImage?, Never>] = [:]
-    private let lock = NSLock()
+    private let loader = Loader()
+
+    private actor Loader {
+        var inFlight: [URL: Task<UIImage?, Never>] = [:]
+        func task(for url: URL, make: @Sendable @escaping () async -> UIImage?) -> Task<UIImage?, Never> {
+            if let t = inFlight[url] { return t }
+            let t = Task { await make() }
+            inFlight[url] = t
+            return t
+        }
+        func finish(_ url: URL) { inFlight[url] = nil }
+    }
 
     private init() {
         let config = URLSessionConfiguration.default
@@ -27,9 +38,8 @@ final class ImageCache: @unchecked Sendable {
 
     func image(for url: URL) async -> UIImage? {
         if let hit = cached(url) { return hit }
-        lock.lock()
-        if let task = inFlight[url] { lock.unlock(); return await task.value }
-        let task = Task<UIImage?, Never> { [session, memory] in
+        let session = self.session, memory = self.memory
+        let task = await loader.task(for: url) {
             var request = URLRequest(url: url)
             request.cachePolicy = .returnCacheDataElseLoad
             guard let (data, _) = try? await session.data(for: request),
@@ -38,10 +48,8 @@ final class ImageCache: @unchecked Sendable {
             memory.setObject(decoded, forKey: url as NSURL, cost: data.count)
             return decoded
         }
-        inFlight[url] = task
-        lock.unlock()
         let result = await task.value
-        lock.lock(); inFlight[url] = nil; lock.unlock()
+        await loader.finish(url)
         return result
     }
 
@@ -108,9 +116,14 @@ struct CoverViewer: View {
     @State private var dragOffset: CGFloat = 0
     @State private var zoomed = false
 
+    private var backdropOpacity: Double {
+        let fade: Double = Double(abs(dragOffset)) / 400.0
+        return 1.0 - min(fade, 0.6)
+    }
+
     var body: some View {
         ZStack {
-            Color.black.opacity(1 - min(abs(dragOffset) / 400, 0.6)).ignoresSafeArea()
+            Color.black.opacity(backdropOpacity).ignoresSafeArea()
             if let image {
                 ZoomableImage(image: image, isZoomed: $zoomed)
                     .ignoresSafeArea()
