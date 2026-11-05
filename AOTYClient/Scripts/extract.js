@@ -519,11 +519,87 @@ function aotyProfile(doc, html, pageURL) {
   var albums = aotyAlbumBlocks(doc);
   if (!albums.length) albums = aotyGenericBlocks(doc);
   var about = aotyTxt(doc.querySelector(".aboutUser, .profileAbout, .userAbout"));
-  return { username: username, displayName: aotyTxt(nameEl) || username, avatar: avatar, stats: stats, about: about || null, albums: albums.slice(0, 30) };
+
+  // Sections, sliced by heading like AOTY-api does: Recently Rated (mixed albums + singles,
+  // in AOTY's own order), Recent Reviews, and the Following preview box.
+  var recentChunk = aotySlice(html, ["Recently Rated", "Recently Listened"]);
+  var recent = [];
+  var viewAll = null;
+  if (recentChunk) {
+    var rd = new DOMParser().parseFromString(recentChunk, "text/html");
+    recent = aotyAlbumBlocks(rd);
+    if (!recent.length) recent = aotyGenericBlocks(rd);
+    var vas = rd.querySelectorAll("a");
+    for (var v = 0; v < vas.length; v++) if (/view all/i.test(aotyTxt(vas[v]))) { viewAll = (vas[v].getAttribute("href") || "").replace(/^https?:\/\/[^/]+/, ""); break; }
+  }
+  var reviews = [];
+  var revChunk = aotySlice(html, ["Recent Reviews"]);
+  if (revChunk) reviews = aotyProfileReviewRows(new DOMParser().parseFromString(revChunk, "text/html")).slice(0, 10);
+
+  var following = [];
+  var fi = html.indexOf("Following (");
+  if (fi >= 0) {
+    var end = html.indexOf('<div class="rightBox">', fi + 12);
+    var nh = html.indexOf('<h2 class="sectionHeading">', fi + 12);
+    if (end < 0 || (nh >= 0 && nh < end)) end = nh;
+    var box = html.slice(fi, end > 0 ? end : fi + 8000);
+    following = aotyFollows(new DOMParser().parseFromString(box, "text/html"), true).users;
+  }
+  following = following.filter(function (f) { return f.username.toLowerCase() !== username.toLowerCase(); });
+
+  return { username: username, displayName: aotyTxt(nameEl) || username, avatar: avatar, stats: stats, about: about || null,
+           albums: albums.slice(0, 30), recent: recent, ratingsPath: viewAll, reviews: reviews, following: following };
+}
+
+function aotySlice(html, headings) {
+  for (var i = 0; i < headings.length; i++) {
+    var start = html.indexOf(headings[i]);
+    if (start < 0) continue;
+    var next = html.indexOf('<h2 class="sectionHeading">', start + headings[i].length);
+    return html.slice(start, next >= 0 ? next : start + 60000);
+  }
+  return "";
+}
+
+// Review rows on a user's profile / reviews page: album info + their score + text.
+function aotyProfileReviewRows(doc) {
+  var out = [];
+  var rows = doc.querySelectorAll(".albumReviewRow");
+  for (var i = 0; i < rows.length; i++) {
+    var el = rows[i];
+    var albumLink = null, reviewLink = null;
+    var links = el.querySelectorAll("a[href*='/album/']");
+    for (var k = 0; k < links.length; k++) {
+      var h = links[k].getAttribute("href") || "";
+      if (/\/user\/[^/]+\/album\//.test(h)) { if (!reviewLink) reviewLink = h; }
+      else if (!albumLink) albumLink = h;
+    }
+    var img = el.querySelector(".userReviewImage img, .albumReviewImage img, img");
+    var textEl = el.querySelector(".albumReviewText.user") || el.querySelector(".albumReviewText");
+    var raw = aotyTxt(textEl);
+    var idm = (el.getAttribute("id") || "").match(/(\d+)/);
+    var item = {
+      id: idm ? idm[1] : String(i) + (albumLink || ""),
+      albumUrl: albumLink ? aotyAbs(albumLink) : null,
+      artist: aotyTxt(el.querySelector(".artistTitle")),
+      album: aotyTxt(el.querySelector(".albumTitle")),
+      cover: img ? (aotyCleanImg(aotyImgSrc(img)) || null) : null,
+      rating: aotyNum(aotyTxt(el.querySelector(".rating"))),
+      text: raw.replace(/\.{0,3}\s*read more\s*$/i, "").trim(),
+      isTruncated: /read more\s*$/i.test(raw),
+      url: reviewLink ? aotyAbs(reviewLink) : null,
+      likes: aotyCount(aotyTxt(el.querySelector(".review_likes"))),
+      date: aotyTxt(el.querySelector(".review_date")).replace(/\*$/, "").trim() || null
+    };
+    if (item.album || item.text) out.push(item);
+  }
+  return out;
 }
 
 // --- Following / followers list ---
-function aotyFollows(doc) {
+// Rows are found by their "N Followers / Following N" line, so the logged-in user's header
+// avatar and any sidebars are ignored. `loose` (for small preview boxes) accepts any avatar link.
+function aotyFollows(doc, loose) {
   var out = [], seen = {};
   function add(href, name, img) {
     var m = (href || "").replace(/^https?:\/\/[^/]+/, "").match(/^\/user\/([^\/?#]+)\/?$/);
@@ -531,24 +607,47 @@ function aotyFollows(doc) {
     var u = decodeURIComponent(m[1]);
     if (seen[u.toLowerCase()]) return;
     seen[u.toLowerCase()] = 1;
-    out.push({ username: u, name: name || u, avatar: img || null });
+    out.push({ username: u, name: (name || u).trim(), avatar: img || null });
   }
-  var rows = doc.querySelectorAll(".listRow.users, .listRow.user, .userRow, .followRow");
-  for (var i = 0; i < rows.length; i++) {
-    var a = rows[i].querySelector("a[href*='/user/']");
-    var img = rows[i].querySelector(".profilePic img, img");
-    add(a && a.getAttribute("href"), aotyTxt(rows[i].querySelector(".userName")) || aotyTxt(a), img ? aotyImgSrc(img) : null);
+  function rowFor(el) {
+    var box = el;
+    for (var d = 0; d < 6 && box; d++) {
+      var links = box.querySelectorAll("a[href*='/user/']");
+      if (links.length && box.querySelector("img")) return box;
+      box = box.parentElement;
+    }
+    return null;
   }
+  // 1. Rows carrying the follower-count line.
+  var all = doc.querySelectorAll("*");
+  for (var i = 0; i < all.length; i++) {
+    var e = all[i];
+    if (e.children.length > 2) continue;
+    if (!/\d[\d,.]*\s*Followers?\s*\/\s*Following\s*\d/i.test(e.textContent || "")) continue;
+    var row = rowFor(e);
+    if (!row) continue;
+    var a = row.querySelector("a[href*='/user/']");
+    var img = row.querySelector("img");
+    var nameEl = row.querySelector(".userName") || a;
+    var nm = aotyTxt(nameEl).replace(/follows you/i, "").trim();
+    add(a && a.getAttribute("href"), nm, img ? aotyImgSrc(img) : null);
+  }
+  // 2. AOTY-api's known row class.
   if (!out.length) {
-    // Fallback: any user link wrapping an avatar, outside reviews/comments.
-    var links = doc.querySelectorAll("a[href*='/user/']");
-    for (var k = 0; k < links.length; k++) {
-      var l = links[k];
-      if (l.closest && l.closest(".albumReviewRow, .commentRow, .comment, header, nav")) continue;
-      var im = l.querySelector("img");
-      if (!im || aotyImgSrc(im).indexOf("/user/") < 0) continue;
-      var box = l.parentElement && l.parentElement.parentElement;
-      add(l.getAttribute("href"), aotyTxt(box && box.querySelector(".userName")) || (im.getAttribute("alt") || ""), aotyImgSrc(im));
+    var rows = doc.querySelectorAll(".listRow.users");
+    for (var r = 0; r < rows.length; r++) {
+      var ra = rows[r].querySelector("a[href*='/user/']");
+      var ri = rows[r].querySelector(".profilePic img, img");
+      add(ra && ra.getAttribute("href"), aotyTxt(rows[r].querySelector(".userName")) || aotyTxt(ra), ri ? aotyImgSrc(ri) : null);
+    }
+  }
+  // 3. Loose: any user link wrapping an avatar (preview boxes only).
+  if (!out.length && loose) {
+    var links2 = doc.querySelectorAll("a[href*='/user/']");
+    for (var k = 0; k < links2.length; k++) {
+      var im = links2[k].querySelector("img");
+      if (!im) continue;
+      add(links2[k].getAttribute("href"), im.getAttribute("alt") || links2[k].getAttribute("title") || "", aotyImgSrc(im));
     }
   }
   return { users: out };
@@ -576,7 +675,11 @@ function aotyExtract(kind, html, pageURL) {
   if (kind === "userReviews") return aotyUserReviewsPage(doc, html);
   if (kind === "me") return aotyMe(doc);
   if (kind === "profile") return aotyProfile(doc, html, pageURL);
-  if (kind === "follows") return aotyFollows(doc);
+  if (kind === "follows") return aotyFollows(doc, false);
+  if (kind === "userReviewList") {
+    var rv = aotyProfileReviewRows(doc);
+    return { reviews: rv };
+  }
   throw new Error("unknown kind " + kind);
 }
 

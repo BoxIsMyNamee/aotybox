@@ -138,9 +138,34 @@ for (const [kind, path] of pages) {
   check(out.albums[1].rating === 80 && out.albums[1].ratedDate === "Nov 2", "month-day rated date");
   const follows = '<div class="listRow users"><div class="profilePic"><a href="/user/kidwithguns/"><img src="https://cdn.albumoftheyear.org/user/thumbs/kidwithguns_1.jpg"></a></div><div class="userName"><a href="/user/kidwithguns/">KidWithGuns</a></div></div>' +
     '<div class="listRow users"><div class="profilePic"><a href="/user/amaana/"><img src="https://cdn.albumoftheyear.org/user/thumbs/amaana_2.jpg"></a></div><div class="userName"><a href="/user/amaana/">amaana</a></div></div>';
+  const followsReal = '<header><a href="/user/harperseemscool/"><img src="https://cdn.albumoftheyear.org/user/thumbs/harperseemscool_9.jpg"></a></header>' +
+    '<div class="followRow"><a href="/user/kidwithguns/"><img src="https://cdn.albumoftheyear.org/user/thumbs/kidwithguns_1.jpg"></a><div><a class="name" href="/user/kidwithguns/">KidWithGuns</a><span>FOLLOWS YOU</span><div>1 Followers / Following 2</div></div></div>' +
+    '<div class="followRow"><a href="/user/amaana/"><img src="https://cdn.albumoftheyear.org/user/thumbs/amaana_2.jpg"></a><div><a class="name" href="/user/amaana/">amaana</a><div>5 Followers / Following 2</div></div></div>';
+  const f2 = aotyExtract("follows", "<html><body>" + followsReal + "</body></html>", "");
+  console.log("   count-line rows:", JSON.stringify(f2.users.map(u => u.username)));
+  check(f2.users.length === 2 && !f2.users.some(u => u.username === "harperseemscool"), "follows ignores header avatar");
   const f = aotyExtract("follows", "<html><body>" + follows + "</body></html>", "");
   console.log("  ", JSON.stringify(f));
   check(f.users.length === 2 && f.users[0].username === "kidwithguns" && f.users[0].name === "KidWithGuns" && f.users[0].avatar, "follows list");
+}
+
+// Profile sections (synthetic, mirroring AOTY's headings)
+{
+  const page = '<html><body><h1>harbor</h1>' +
+    '<h2 class="sectionHeading">Recently Rated <a href="/user/harperseemscool/ratings/">View All</a></h2>' +
+    '<div class="albumBlock" data-type="single"><div class="image"><a href="/album/2-ee-poison-pop.php"><img src="https://cdn2.albumoftheyear.org/album/a.jpg"></a></div><div class="artistTitle">Everything Everything</div><div class="albumTitle">Poison Pop</div><div class="ratingRowContainer"><div class="ratingBlock"><div class="rating">90</div></div><div class="ratingText">16h ago</div></div></div>' +
+    '<div class="albumBlock" data-type="lp"><div class="image"><a href="/album/1-nick-lutsko-ends.php"><img src="https://cdn2.albumoftheyear.org/album/b.jpg"></a></div><div class="artistTitle">Nick Lutsko</div><div class="albumTitle">Ends</div><div class="ratingRowContainer"><div class="ratingBlock"><div class="rating">80</div></div><div class="ratingText">Nov 2</div></div></div>' +
+    '<h2 class="sectionHeading">Recent Reviews</h2>' +
+    '<div class="albumReviewRow" id="review_55"><div class="userReviewImage"><a href="/user/harperseemscool/album/1-nick-lutsko-ends/"><img src="https://cdn2.albumoftheyear.org/album/b.jpg"></a></div><div class="artistTitle"><a href="/artist/9-nick-lutsko/">Nick Lutsko</a></div><div class="albumTitle"><a href="/album/1-nick-lutsko-ends.php">Ends</a></div><div class="rating">80</div><div class="albumReviewText user"><p>Great record. read more</p></div><div class="review_date">Nov 2</div></div>' +
+    '<h2 class="sectionHeading">Lists</h2>' +
+    '<div class="rightBox"><div class="sectionHeading">Following (3)</div><a href="/user/lilyp/"><img alt="LilyP" src="https://cdn.albumoftheyear.org/user/thumbs/lilyp_1.jpg"></a><a href="/user/wojack/"><img alt="Wojack" src="https://cdn.albumoftheyear.org/user/thumbs/wojack_1.jpg"></a><a href="/user/harperseemscool/"><img alt="me" src="x.jpg"></a></div><div class="rightBox">x</div>' +
+    '</body></html>';
+  const pr = aotyExtract("profile", page, "https://www.albumoftheyear.org/user/harperseemscool/");
+  console.log("\n=== profile sections:", JSON.stringify({ recent: pr.recent.map(a => a.title), ratingsPath: pr.ratingsPath, reviews: pr.reviews.map(r => [r.album, r.rating, r.text, r.isTruncated, r.url]), following: pr.following.map(f => f.username) }));
+  check(pr.recent.length === 2 && pr.recent[0].title === "Poison Pop", "recently rated in page order");
+  check(pr.ratingsPath === "/user/harperseemscool/ratings/", "view-all path");
+  check(pr.reviews.length === 1 && pr.reviews[0].album === "Ends" && pr.reviews[0].isTruncated && pr.reviews[0].text === "Great record.", "recent reviews");
+  check(pr.following.length === 2 && !pr.following.some(f => f.username === "harperseemscool"), "following preview excludes owner");
 }
 
 // Genius lyrics parser against an archived lyrics page
