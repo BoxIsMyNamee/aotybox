@@ -13,6 +13,12 @@ actor AOTYAPI {
 
     static let defaultBaseURL = "https://aoty.prigoana.com"
     static let baseURLKey = "apiBaseURL"
+    /// "device" (default): fetch AOTY pages on the phone. "api": use the community API.
+    static let sourceKey = "dataSource"
+
+    static var usesDevice: Bool {
+        (UserDefaults.standard.string(forKey: sourceKey) ?? "device") == "device"
+    }
 
     private let session: URLSession
     private let cache: URLCache
@@ -38,20 +44,27 @@ actor AOTYAPI {
     // MARK: - Endpoints
 
     func releases(page: Int = 1) async throws -> [AlbumBlock] {
-        try await get("/releases", ["page": "\(page)"], as: AlbumListResponse.self).albums
+        if Self.usesDevice { return try await device("/releases/\(page)/", .blocks, AlbumListResponse.self).albums }
+        return try await get("/releases", ["page": "\(page)"], as: AlbumListResponse.self).albums
     }
 
     func thisWeek(page: Int = 1) async throws -> [AlbumBlock] {
-        try await get("/releases/this-week", ["page": "\(page)"], as: AlbumListResponse.self).albums
+        if Self.usesDevice {
+            let path = page > 1 ? "/releases/this-week/\(page)/" : "/releases/this-week/"
+            return try await device(path, .blocks, AlbumListResponse.self).albums
+        }
+        return try await get("/releases/this-week", ["page": "\(page)"], as: AlbumListResponse.self).albums
     }
 
     func upcoming(page: Int = 1) async throws -> [AlbumBlock] {
-        try await get("/upcoming", ["page": "\(page)"], as: AlbumListResponse.self).albums
+        if Self.usesDevice { return try await device("/upcoming/\(page)/", .blocks, AlbumListResponse.self).albums }
+        return try await get("/upcoming", ["page": "\(page)"], as: AlbumListResponse.self).albums
     }
 
     /// source: "6-highest-rated" (critics) or "user-highest-rated" (users). period: a year like "2026", or "all".
     func chart(source: String, period: String, page: Int = 1) async throws -> ChartResponse {
-        try await get("/ratings", ["source": source, "period": period, "page": "\(page)"], as: ChartResponse.self)
+        if Self.usesDevice { return try await device("/ratings/\(source)/\(period)/\(page)/", .chart, ChartResponse.self) }
+        return try await get("/ratings", ["source": source, "period": period, "page": "\(page)"], as: ChartResponse.self)
     }
 
     func searchAlbums(_ query: String, page: Int = 1) async throws -> [AlbumBlock] {
@@ -60,11 +73,17 @@ actor AOTYAPI {
 
     /// `minimal=true` skips the extra stats/credits fetches the worker would otherwise make.
     func album(slug: String) async throws -> AlbumDetail {
-        try await get("/album", ["slug": slug, "minimal": "true"], as: AlbumDetail.self)
+        if Self.usesDevice { return try await device("/album/\(slug).php", .album, AlbumDetail.self) }
+        return try await get("/album", ["slug": slug, "minimal": "true"], as: AlbumDetail.self)
     }
 
-    func clearCache() {
+    func clearCache() async {
         cache.removeAllCachedResponses()
+        await AOTYScraper.shared.clearCache()
+    }
+
+    private func device<T: Decodable>(_ path: String, _ kind: AOTYScraper.Kind, _ type: T.Type) async throws -> T {
+        try await AOTYScraper.shared.fetch(path, kind: kind, as: type)
     }
 
     // MARK: - Core

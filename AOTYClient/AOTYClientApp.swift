@@ -2,6 +2,8 @@ import SwiftUI
 
 @main
 struct AOTYClientApp: App {
+    @StateObject private var scraper = AOTYScraper.shared
+
     var body: some Scene {
         WindowGroup {
             TabView {
@@ -11,12 +13,15 @@ struct AOTYClientApp: App {
                 SettingsView().tabItem { Label("Settings", systemImage: "gearshape") }
             }
             .tint(.orange)
+            .background(HiddenScraperHost().frame(width: 2, height: 2).allowsHitTesting(false))
+            .sheet(item: $scraper.challenge) { ChallengeSheet(url: $0.url) }
         }
     }
 }
 
 struct SettingsView: View {
     @AppStorage(AOTYAPI.baseURLKey) private var baseURL = AOTYAPI.defaultBaseURL
+    @AppStorage(AOTYAPI.sourceKey) private var source = "device"
     @State private var showLogin = false
 
     var body: some View {
@@ -34,15 +39,23 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Picker("Fetch data", selection: $source) {
+                        Text("On this phone").tag("device")
+                        Text("Community API").tag("api")
+                    }
+                    if source == "api" {
                     TextField("API base URL", text: $baseURL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
                     Button("Reset to community default") { baseURL = AOTYAPI.defaultBaseURL }
+                    }
                 } header: {
                     Text("Data source")
                 } footer: {
-                    Text("Point this at your own deployment of the AOTY API to stop relying on the shared community instance.")
+                    Text(source == "device"
+                         ? "Pages are loaded from albumoftheyear.org on this phone, using your AOTY session. Nothing passes through another server."
+                         : "Uses the community AOTY API server. Point this at your own deployment if you run one.")
                 }
 
                 Section {
@@ -50,7 +63,7 @@ struct SettingsView: View {
                 }
 
                 Section("About") {
-                    Text("Unofficial client. Album data © Album of the Year and its contributing publications, fetched via the community AOTY API (github.com/edideaur/AOTY-api). Not affiliated with Album of the Year.")
+                    Text("Unofficial client. Album data © Album of the Year and its contributing publications. Page parsing adapted from the community AOTY API (github.com/edideaur/AOTY-api). Not affiliated with Album of the Year.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }

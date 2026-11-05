@@ -21,6 +21,8 @@ enum AOTYSession {
 struct AOTYWebView: UIViewRepresentable {
     let url: URL
     @Binding var isLoading: Bool
+    /// If set, taps on AOTY album links open the native album page instead.
+    var onAlbumTap: ((String) -> Void)? = nil
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -28,17 +30,41 @@ struct AOTYWebView: UIViewRepresentable {
         let web = WKWebView(frame: .zero, configuration: config)
         web.navigationDelegate = context.coordinator
         web.allowsBackForwardNavigationGestures = true
+        context.coordinator.loadedURL = url
         web.load(URLRequest(url: url))
         return web
     }
 
-    func updateUIView(_ web: WKWebView, context: Context) {}
+    func updateUIView(_ web: WKWebView, context: Context) {
+        context.coordinator.parent = self
+        if context.coordinator.loadedURL != url {
+            context.coordinator.loadedURL = url
+            web.load(URLRequest(url: url))
+        }
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     final class Coordinator: NSObject, WKNavigationDelegate {
-        let parent: AOTYWebView
+        var parent: AOTYWebView
+        var loadedURL: URL?
         init(_ parent: AOTYWebView) { self.parent = parent }
+
+        func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                     decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
+            if let onAlbumTap = parent.onAlbumTap,
+               action.navigationType == .linkActivated,
+               let url = action.request.url,
+               url.host?.contains("albumoftheyear.org") == true,
+               url.path.hasPrefix("/album/"),
+               let slug = AlbumSlug.from(url.absoluteString),
+               url.path.hasSuffix(".php") || url.path.hasSuffix("/\(slug)/") || url.path.hasSuffix("/\(slug)") {
+                decisionHandler(.cancel)
+                onAlbumTap(slug)
+                return
+            }
+            decisionHandler(.allow)
+        }
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { parent.isLoading = true }
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { parent.isLoading = false }
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { parent.isLoading = false }
