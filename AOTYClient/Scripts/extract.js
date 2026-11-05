@@ -46,6 +46,26 @@ function aotyInt(s) {
   return n == null ? null : Math.round(n);
 }
 
+// "16h ago", "3 days ago", "Nov 2", "Oct 17, 2025", "Jul 2024"
+function aotyLooksLikeDate(t) {
+  t = (t || "").trim();
+  return /^\d+\s*(s|m|min|mins|h|hr|hrs|d|w|mo|y|second|minute|hour|day|week|month|year)s?\s+ago$/i.test(t) ||
+    /^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(,?\s+\d{4})?$/i.test(t) ||
+    /^(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{4}$/i.test(t) ||
+    /^\d{4}-\d{2}-\d{2}/.test(t);
+}
+function aotyFindDate(root) {
+  var els = root.querySelectorAll("*");
+  for (var i = 0; i < els.length; i++) {
+    if (els[i].children.length) continue;
+    var ti = els[i].getAttribute("title") || "";
+    if (aotyLooksLikeDate(ti)) return ti;
+    var t = aotyTxt(els[i]);
+    if (aotyLooksLikeDate(t)) return t;
+  }
+  return null;
+}
+
 // --- Album cards (.albumBlock): releases, upcoming, this-week, similar ---
 function aotyAlbumBlocks(root) {
   var out = [];
@@ -55,8 +75,8 @@ function aotyAlbumBlocks(root) {
     var a = b.querySelector(".image a") || b.querySelector("a[href*='/album/']");
     var img = b.querySelector(".image img");
     var wrap = b.querySelector(".image");
-    var critic = null, criticCount = null, user = null, userCount = null, mine = null;
-    var rows = b.querySelectorAll(".ratingRow");
+    var critic = null, criticCount = null, user = null, userCount = null, mine = null, ratedDate = null;
+    var rows = b.querySelectorAll(".ratingRow, .ratingRowContainer");
     for (var r = 0; r < rows.length; r++) {
       var row = rows[r];
       var val = aotyTxt(row.querySelector(".rating"));
@@ -66,8 +86,17 @@ function aotyAlbumBlocks(root) {
       for (var k = 0; k < texts.length; k++) if (texts[k].charAt(0) === "(") cnt = texts[k];
       if (label.indexOf("critic") >= 0) { critic = aotyNum(val); criticCount = aotyCount(cnt); }
       else if (label.indexOf("user") >= 0) { user = aotyNum(val); userCount = aotyCount(cnt); }
-      else if (val) { mine = aotyNum(val); }
+      else if (val) {
+        mine = aotyNum(val);
+        var dEls = row.querySelectorAll(".ratingText, .date, [title]");
+        for (var dd = 0; dd < dEls.length && !ratedDate; dd++) {
+          var tt = aotyTxt(dEls[dd]), ti = dEls[dd].getAttribute("title") || "";
+          if (aotyLooksLikeDate(ti)) ratedDate = ti;
+          else if (aotyLooksLikeDate(tt)) ratedDate = tt;
+        }
+      }
     }
+    if (!ratedDate) ratedDate = aotyFindDate(b);
     if (mine == null && !rows.length) mine = aotyNum(aotyTxt(b.querySelector(".rating")));
     var item = {
       url: aotyAbs(a && a.getAttribute("href")),
@@ -77,7 +106,7 @@ function aotyAlbumBlocks(root) {
       mediaType: b.getAttribute("data-type") || null,
       releaseDate: aotyTxt(b.querySelector(".type")) || null,
       criticScore: critic, criticCount: criticCount,
-      userScore: user, userCount: userCount, rating: mine,
+      userScore: user, userCount: userCount, rating: mine, ratedDate: ratedDate,
       mustHear: !!b.querySelector(".mustHear") || !!(wrap && /\bmustHear\b/.test(wrap.getAttribute("class") || ""))
     };
     if (item.url.indexOf("/album/") >= 0 && item.title) out.push(item);
@@ -128,6 +157,7 @@ function aotyGenericBlocks(doc) {
       criticScore: cm ? Number(cm[1]) : null, criticCount: cm ? aotyCount(cm[2]) : null,
       userScore: um ? Number(um[1]) : null, userCount: um ? aotyCount(um[2]) : null,
       rating: (!cm && !um) ? aotyNum(aotyTxt(box.querySelector(".rating"))) : null,
+      ratedDate: (!cm && !um) ? aotyFindDate(box) : null,
       mustHear: !!box.querySelector(".mustHear")
     });
   }
@@ -492,6 +522,38 @@ function aotyProfile(doc, html, pageURL) {
   return { username: username, displayName: aotyTxt(nameEl) || username, avatar: avatar, stats: stats, about: about || null, albums: albums.slice(0, 30) };
 }
 
+// --- Following / followers list ---
+function aotyFollows(doc) {
+  var out = [], seen = {};
+  function add(href, name, img) {
+    var m = (href || "").replace(/^https?:\/\/[^/]+/, "").match(/^\/user\/([^\/?#]+)\/?$/);
+    if (!m) return;
+    var u = decodeURIComponent(m[1]);
+    if (seen[u.toLowerCase()]) return;
+    seen[u.toLowerCase()] = 1;
+    out.push({ username: u, name: name || u, avatar: img || null });
+  }
+  var rows = doc.querySelectorAll(".listRow.users, .listRow.user, .userRow, .followRow");
+  for (var i = 0; i < rows.length; i++) {
+    var a = rows[i].querySelector("a[href*='/user/']");
+    var img = rows[i].querySelector(".profilePic img, img");
+    add(a && a.getAttribute("href"), aotyTxt(rows[i].querySelector(".userName")) || aotyTxt(a), img ? aotyImgSrc(img) : null);
+  }
+  if (!out.length) {
+    // Fallback: any user link wrapping an avatar, outside reviews/comments.
+    var links = doc.querySelectorAll("a[href*='/user/']");
+    for (var k = 0; k < links.length; k++) {
+      var l = links[k];
+      if (l.closest && l.closest(".albumReviewRow, .commentRow, .comment, header, nav")) continue;
+      var im = l.querySelector("img");
+      if (!im || aotyImgSrc(im).indexOf("/user/") < 0) continue;
+      var box = l.parentElement && l.parentElement.parentElement;
+      add(l.getAttribute("href"), aotyTxt(box && box.querySelector(".userName")) || (im.getAttribute("alt") || ""), aotyImgSrc(im));
+    }
+  }
+  return { users: out };
+}
+
 function aotyIsChallenge(html, status) {
   return status === 403 || status === 503 ||
     /<title>\s*Just a moment/i.test(html) || /cf-challenge|challenge-platform|cf_chl_/i.test(html.slice(0, 20000));
@@ -509,6 +571,7 @@ function aotyExtract(kind, html, pageURL) {
   if (kind === "userReviews") return aotyUserReviewsPage(doc, html);
   if (kind === "me") return aotyMe(doc);
   if (kind === "profile") return aotyProfile(doc, html, pageURL);
+  if (kind === "follows") return aotyFollows(doc);
   throw new Error("unknown kind " + kind);
 }
 

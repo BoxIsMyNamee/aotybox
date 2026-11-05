@@ -115,6 +115,25 @@ for (const [kind, path] of pages) {
   check(me2.username === "harbor", "slug from avatar filename");
 }
 
+// Rated date + follows (synthetic markup mirroring AOTY's classes)
+{
+  console.log("\n=== rated dates + follows (synthetic)");
+  const blocks = '<div class="albumBlock" data-type="single"><div class="image"><a href="/album/6817412130-everything-everything-poison-pop.php"><img src="https://cdn2.albumoftheyear.org/album/x.jpg"></a></div>' +
+    '<div class="artistTitle">Everything Everything</div><div class="albumTitle">Poison Pop</div><div class="type">2026 • Single</div>' +
+    '<div class="ratingRowContainer"><div class="ratingBlock"><div class="rating">90</div></div><div class="ratingText">16h ago</div></div></div>' +
+    '<div class="albumBlock" data-type="lp"><div class="image"><a href="/album/1-nick-lutsko-ends.php"><img src="https://cdn2.albumoftheyear.org/album/y.jpg"></a></div>' +
+    '<div class="artistTitle">Nick Lutsko</div><div class="albumTitle">Ends</div><div class="ratingRow"><div class="ratingBlock"><div class="rating">80</div></div><div class="ratingText">Nov 2</div></div></div>';
+  const out = aotyExtract("blocks", "<html><body>" + blocks + "</body></html>", "https://www.albumoftheyear.org/user/x/ratings/");
+  console.log("  ", JSON.stringify(out.albums.map(a => [a.title, a.rating, a.ratedDate, a.mediaType])));
+  check(out.albums[0].rating === 90 && out.albums[0].ratedDate === "16h ago", "relative rated date");
+  check(out.albums[1].rating === 80 && out.albums[1].ratedDate === "Nov 2", "month-day rated date");
+  const follows = '<div class="listRow users"><div class="profilePic"><a href="/user/kidwithguns/"><img src="https://cdn.albumoftheyear.org/user/thumbs/kidwithguns_1.jpg"></a></div><div class="userName"><a href="/user/kidwithguns/">KidWithGuns</a></div></div>' +
+    '<div class="listRow users"><div class="profilePic"><a href="/user/amaana/"><img src="https://cdn.albumoftheyear.org/user/thumbs/amaana_2.jpg"></a></div><div class="userName"><a href="/user/amaana/">amaana</a></div></div>';
+  const f = aotyExtract("follows", "<html><body>" + follows + "</body></html>", "");
+  console.log("  ", JSON.stringify(f));
+  check(f.users.length === 2 && f.users[0].username === "kidwithguns" && f.users[0].name === "KidWithGuns" && f.users[0].avatar, "follows list");
+}
+
 // Genius lyrics parser against an archived lyrics page
 {
   const { geniusParse } = require("../AOTYClient/Scripts/genius.js");

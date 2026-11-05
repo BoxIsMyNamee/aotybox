@@ -16,11 +16,61 @@ struct AlbumBlock: Decodable, Identifiable, Hashable {
     let userScore: Double?
     let userCount: Int?
     let rating: Double?      // the profile owner's own rating, on profile pages
+    let ratedDate: String?   // when they rated it ("16h ago", "Nov 2")
     let mustHear: Bool?
 
     var id: String { url }
     var slug: String? { AlbumSlug.from(url) }
     var coverURL: URL? { URL(string: cover) }
+}
+
+struct FollowUser: Decodable, Identifiable, Hashable {
+    let username: String
+    let name: String
+    let avatar: String?
+    var id: String { username.lowercased() }
+}
+
+struct FollowList: Decodable { let users: [FollowUser] }
+
+/// Turns AOTY's rating dates ("16h ago", "3 days ago", "Nov 2", "Oct 17, 2025") into Dates.
+enum RatedDate {
+    static func parse(_ raw: String?, now: Date = .now) -> Date? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
+        let s = raw.lowercased()
+        if let m = s.firstMatch(of: /^(\d+)\s*(s|m|min|mins|h|hr|hrs|d|w|mo|y|second|minute|hour|day|week|month|year)s?\s+ago$/) {
+            let n = Double(m.1) ?? 0
+            let unit: Double
+            switch String(m.2) {
+            case "s", "second": unit = 1
+            case "m", "min", "mins", "minute": unit = 60
+            case "h", "hr", "hrs", "hour": unit = 3600
+            case "d", "day": unit = 86400
+            case "w", "week": unit = 604800
+            case "mo", "month": unit = 2_592_000
+            default: unit = 31_536_000
+            }
+            return now.addingTimeInterval(-n * unit)
+        }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        for fmt in ["MMM d, yyyy", "MMM d yyyy", "MMMM d, yyyy", "yyyy-MM-dd", "MMM yyyy"] {
+            f.dateFormat = fmt
+            if let d = f.date(from: raw) { return d }
+        }
+        for fmt in ["MMM d", "MMMM d"] {
+            f.dateFormat = fmt
+            if let d = f.date(from: raw) {
+                let cal = Calendar.current
+                var c = cal.dateComponents([.month, .day], from: d)
+                c.year = cal.component(.year, from: now)
+                guard var dated = cal.date(from: c) else { continue }
+                if dated > now.addingTimeInterval(86400) { dated = cal.date(byAdding: .year, value: -1, to: dated) ?? dated }
+                return dated
+            }
+        }
+        return nil
+    }
 }
 
 struct Me: Decodable {

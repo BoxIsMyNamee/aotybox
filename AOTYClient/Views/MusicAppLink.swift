@@ -141,6 +141,13 @@ enum MusicAppLink {
     private static func link(id: Int, type: String, albumID: Int?) -> URL? {
         switch app {
         case .marvis:
+            // Songs: open the album's Apple Music URL with ?i=<track>, which points at that exact
+            // track (Marvis "Open Resource by URL"). Albums: open by ID.
+            if type == "song", let albumID {
+                let am = "https://music.apple.com/\(storefront)/album/\(albumID)?i=\(id)"
+                let enc = am.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? am
+                return URL(string: "marvis://open?url=\(enc)")
+            }
             return URL(string: "marvis://open?id=\(id)&type=\(type)")
         case .appleMusic:
             if type == "song", let albumID { return URL(string: "https://music.apple.com/\(storefront)/album/\(albumID)?i=\(id)") }

@@ -104,6 +104,11 @@ actor AOTYAPI {
         return try await device(path, .blocks, AlbumListResponse.self).albums
     }
 
+    func following(username: String, page: Int = 1) async throws -> [FollowUser] {
+        let path = "/user/\(username)/following/" + (page > 1 ? "\(page)/" : "")
+        return try await device(path, .follows, FollowList.self).users
+    }
+
     func clearCache() async {
         cache.removeAllCachedResponses()
         await AOTYScraper.shared.clearCache()
