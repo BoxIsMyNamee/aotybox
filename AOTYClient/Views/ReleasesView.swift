@@ -3,25 +3,28 @@ import SwiftUI
 /// Releases with three feeds you can switch by tapping the picker or swiping sideways.
 struct ReleasesView: View {
     enum Feed: String, CaseIterable, Identifiable {
-        case thisWeek = "This Week", new = "New", upcoming = "Upcoming"
+        case thisWeek = "This Week", upcoming = "Upcoming", new = "New"
         var id: String { rawValue }
     }
+
+    /// Singles have no upcoming list on AOTY.
+    private var feeds: [Feed] { singles ? [.thisWeek, .new] : [.thisWeek, .upcoming, .new] }
 
     @State private var feed: Feed = .thisWeek
     @AppStorage("releasesSingles") private var singles = false
 
     var body: some View {
-        NavigationStack {
+        AppStack {
             VStack(spacing: 0) {
                 Picker("Feed", selection: $feed.animation(.easeInOut(duration: 0.25))) {
-                    ForEach(Feed.allCases) { Text($0.rawValue).tag($0) }
+                    ForEach(feeds) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
                 .padding(.bottom, 8)
 
                 TabView(selection: $feed) {
-                    ForEach(Feed.allCases) { f in
+                    ForEach(feeds) { f in
                         FeedList(feed: f, singles: singles)
                             .id("\(f.rawValue)-\(singles)")
                             .tag(f)
@@ -35,7 +38,7 @@ struct ReleasesView: View {
                     KindToggle(singles: $singles)
                 }
             }
-            .navigationDestination(for: AlbumBlock.self) { AlbumDetailView(slug: $0.slug, fallbackTitle: $0.title) }
+            .onChange(of: singles) { if singles && feed == .upcoming { feed = .new } }
         }
     }
 }
@@ -61,8 +64,9 @@ private struct FeedList: View {
             }
 
             ForEach(albums) { album in
-                NavigationLink(value: album) { AlbumRow(album, coverSize: 84, genres: genreStore.label(for: album.slug)) }
-                    .musicAppMenu(artist: album.artist, album: album.title)
+                NavRow(value: album, artist: album.artist, album: album.title) {
+                    AlbumRow(album, coverSize: 84, genres: genreStore.label(for: album.slug))
+                }
                     .onAppear {
                         genreStore.appeared(album.slug)
                         if album == albums.last { Task { await loadMore() } }
@@ -112,15 +116,17 @@ private struct FeedList: View {
     }
 }
 
-/// Compact Albums / Singles switch used on Releases and Profile.
+/// One-tap Albums ⇄ Singles switch.
 struct KindToggle: View {
     @Binding var singles: Bool
     var body: some View {
-        Picker("Type", selection: $singles.animation()) {
-            Label("Albums", systemImage: "square.stack").tag(false)
-            Label("Singles", systemImage: "music.note").tag(true)
+        Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            withAnimation { singles.toggle() }
+        } label: {
+            Label(singles ? "Singles" : "Albums", systemImage: singles ? "music.note" : "square.stack")
+                .labelStyle(.titleAndIcon)
+                .contentTransition(.symbolEffect(.replace))
         }
-        .pickerStyle(.menu)
-        .labelStyle(.titleAndIcon)
     }
 }

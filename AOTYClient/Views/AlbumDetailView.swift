@@ -10,6 +10,7 @@ struct AlbumDetailView: View {
     @State private var showRateSheet = false
     @State private var showCover = false
     @Environment(\.openURL) private var openURL
+    @Environment(\.push) private var push
 
     var body: some View {
         Group {
@@ -54,12 +55,11 @@ struct AlbumDetailView: View {
             // Header
             Section {
                 VStack(spacing: 12) {
-                    Button { showCover = true } label: {
-                        Cover(url: a.coverURL, size: 240).shadow(radius: 8)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("View cover art")
-                    .musicAppMenu(artist: a.artist, album: a.title, appleMusicURL: appleMusicLink(a))
+                    Cover(url: a.coverURL, size: 240).shadow(radius: 8)
+                        .tapAndHold(tap: { showCover = true }, hold: {
+                            Task { await MusicAppLink.open(artist: a.artist, album: a.title, song: nil, appleMusicURL: appleMusicLink(a)) }
+                        })
+                        .accessibilityLabel("View cover art")
                     VStack(spacing: 4) {
                         Text(a.title).font(.title2.bold()).multilineTextAlignment(.center)
                         Text(a.artist).font(.headline).foregroundStyle(.secondary)
@@ -110,9 +110,8 @@ struct AlbumDetailView: View {
             if let tracks = a.tracklist, !tracks.isEmpty {
                 Section("Tracklist" + (a.totalLength.map { " · \($0)" } ?? "")) {
                     ForEach(showAllTracks ? tracks : Array(tracks.prefix(8))) { t in
-                        NavigationLink {
-                            SongView(artist: a.artist, title: t.title, album: a.title, albumCover: a.coverURL)
-                        } label: {
+                        NavRow(value: SongRoute(artist: a.artist, title: t.title, album: a.title, cover: a.coverURL),
+                               artist: a.artist, album: a.title, song: t.title, appleMusicURL: appleMusicLink(a)) {
                             HStack {
                                 Text("\(t.number)").foregroundStyle(.secondary).monospacedDigit().frame(width: 24, alignment: .trailing)
                                 VStack(alignment: .leading) {
@@ -125,9 +124,7 @@ struct AlbumDetailView: View {
                                 if let r = t.rating { Text(String(Int(r.rounded()))).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
                                 if let l = t.length { Text(l).font(.caption.monospacedDigit()).foregroundStyle(.tertiary) }
                             }
-                            .contentShape(Rectangle())
                         }
-                        .musicAppMenu(artist: a.artist, album: a.title, song: t.title, appleMusicURL: appleMusicLink(a))
                     }
                     if tracks.count > 8 {
                         Button(showAllTracks ? "Show Less…" : "Show More…") { withAnimation { showAllTracks.toggle() } }
@@ -140,9 +137,7 @@ struct AlbumDetailView: View {
                 Section("Popular User Reviews") {
                     ForEach(reviews.prefix(3)) { r in UserReviewRow(review: r) }
                     if let slug {
-                        NavigationLink {
-                            UserReviewsView(slug: slug, title: a.title)
-                        } label: {
+                        Button { push(UserReviewsRoute(slug: slug, title: a.title)) } label: {
                             Label("See all user reviews", systemImage: "text.bubble")
                                 .foregroundStyle(.tint)
                         }
@@ -150,7 +145,7 @@ struct AlbumDetailView: View {
                 }
             } else if let slug {
                 Section {
-                    NavigationLink { UserReviewsView(slug: slug, title: a.title) } label: {
+                    Button { push(UserReviewsRoute(slug: slug, title: a.title)) } label: {
                         Label("User reviews", systemImage: "text.bubble").foregroundStyle(.tint)
                     }
                 }
@@ -197,8 +192,7 @@ struct AlbumDetailView: View {
             if let similar = a.similarAlbums, !similar.isEmpty {
                 Section("Similar Albums") {
                     ForEach(similar.prefix(10)) { s in
-                        NavigationLink { AlbumDetailView(slug: s.slug, fallbackTitle: s.title) } label: { AlbumRow(s) }
-                            .musicAppMenu(artist: s.artist, album: s.title)
+                        NavRow(value: s, artist: s.artist, album: s.title) { AlbumRow(s) }
                     }
                 }
             }

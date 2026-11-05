@@ -109,6 +109,18 @@ actor AOTYAPI {
         return try await device(path, .follows, FollowList.self).users
     }
 
+    func profileReviews(username: String, page: Int = 1) async throws -> [ProfileReview] {
+        let path = "/user/\(username)/reviews/" + (page > 1 ? "\(page)/" : "")
+        return try await device(path, .userReviewList, ProfileReviewList.self).reviews
+    }
+
+    /// Ratings from a path AOTY gave us (e.g. the profile's "View All" link), with paging.
+    func ratings(path: String, page: Int) async throws -> [AlbumBlock] {
+        var base = path.hasSuffix("/") ? path : path + "/"
+        if page > 1 { base += "\(page)/" }
+        return try await device(base, .blocks, AlbumListResponse.self).albums
+    }
+
     func clearCache() async {
         cache.removeAllCachedResponses()
         await AOTYScraper.shared.clearCache()

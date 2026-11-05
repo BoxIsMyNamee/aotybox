@@ -21,7 +21,7 @@ struct ChartsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        AppStack {
             List {
                 Section {
                     Picker("Source", selection: $source) {
@@ -34,7 +34,7 @@ struct ChartsView: View {
                 if let error, items.isEmpty { ErrorView(message: error) { await reload() } }
 
                 ForEach(items) { item in
-                    NavigationLink(value: item) {
+                    NavRow(value: item, artist: item.artist, album: item.album) {
                         AlbumRow(artist: item.artist, title: item.album, cover: item.coverURL,
                                  subtitle: [item.date, item.genres?.first].compactMap { $0 }.joined(separator: " · "),
                                  rank: item.rank,
@@ -42,7 +42,6 @@ struct ChartsView: View {
                                  user: source == .users ? item.score : nil,
                                  mustHear: item.mustHear ?? false)
                     }
-                    .musicAppMenu(artist: item.artist, album: item.album)
                     .onAppear { if item == items.last { Task { await loadMore() } } }
                 }
                 if loading { ProgressView().frame(maxWidth: .infinity) }
@@ -57,7 +56,6 @@ struct ChartsView: View {
                     }
                 } label: { Label("Year", systemImage: "calendar") }
             }
-            .navigationDestination(for: ChartItem.self) { AlbumDetailView(slug: $0.slug, fallbackTitle: $0.album) }
             .refreshable { await reload() }
             .task(id: "\(source.rawValue)|\(period)") { await reload() }
         }

@@ -175,35 +175,6 @@ extension Notification.Name {
     static let musicAppOpenFailed = Notification.Name("musicAppOpenFailed")
 }
 
-struct MusicAppMenu: ViewModifier {
-    let artist: String
-    let album: String?
-    let song: String?
-    let appleMusicURL: String?
-
-    func body(content: Content) -> some View {
-        content.contextMenu {
-            Button {
-                Task { await MusicAppLink.open(artist: artist, album: album, song: song, appleMusicURL: appleMusicURL) }
-            } label: {
-                Label("Open in \(MusicAppLink.name)", systemImage: "music.note")
-            }
-            Button {
-                UIPasteboard.general.string = "\(artist) – \(song ?? album ?? "")"
-            } label: {
-                Label("Copy Title", systemImage: "doc.on.doc")
-            }
-        }
-    }
-}
-
-extension View {
-    /// Long-press menu: open the exact album/song in Marvis Pro (or Apple Music), or copy the title.
-    func musicAppMenu(artist: String, album: String? = nil, song: String? = nil, appleMusicURL: String? = nil) -> some View {
-        modifier(MusicAppMenu(artist: artist, album: album, song: song, appleMusicURL: appleMusicURL))
-    }
-}
-
 struct MusicAppSettingsView: View {
     @AppStorage(MusicAppLink.appKey) private var app = MusicAppLink.App.marvis.rawValue
 

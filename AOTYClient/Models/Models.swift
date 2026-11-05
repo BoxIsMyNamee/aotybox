@@ -90,7 +90,30 @@ struct Profile: Decodable {
     let stats: [ProfileStat]
     let about: String?
     let albums: [AlbumBlock]
+    let recent: [AlbumBlock]?
+    let ratingsPath: String?
+    let reviews: [ProfileReview]?
+    let following: [FollowUser]?
 }
+
+/// A review on a user's profile: album info + their score and text.
+struct ProfileReview: Decodable, Identifiable, Hashable {
+    let id: String
+    let albumUrl: String?
+    let artist: String
+    let album: String
+    let cover: String?
+    let rating: Double?
+    let text: String
+    let isTruncated: Bool?
+    let url: String?
+    let likes: Int?
+    let date: String?
+    var slug: String? { albumUrl.flatMap(AlbumSlug.from) }
+    var coverURL: URL? { cover.flatMap(URL.init(string:)) }
+}
+
+struct ProfileReviewList: Decodable { let reviews: [ProfileReview] }
 
 /// One row on a ratings chart (/ratings).
 struct ChartItem: Decodable, Identifiable, Hashable {

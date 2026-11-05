@@ -291,6 +291,7 @@ struct SongChatView: View {
     @State private var thinking = false
     @State private var error: String?
     @FocusState private var focused: Bool
+    @State private var showAISettings = false
 
     private let suggestions = ["What is this song about?", "Explain the hardest lines", "How was it received?", "Any samples or interpolations?"]
 
@@ -301,7 +302,8 @@ struct SongChatView: View {
                     Label("Connect an AI to ask about this song", systemImage: "sparkles").font(.headline)
                     Text("Add a Gemini, Claude, or OpenAI-compatible API key in Settings → AI Assistant. Gemini has a free tier.")
                         .font(.callout).foregroundStyle(.secondary)
-                    NavigationLink("Open AI settings") { AISettingsView() }
+                    Button("Open AI settings") { showAISettings = true }
+                        .sheet(isPresented: $showAISettings) { NavigationStack { AISettingsView() }.accentTint() }
                 }
                 .padding()
                 .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))

@@ -1,37 +1,103 @@
 import SwiftUI
 
 struct SearchView: View {
-    private let source = "device"
+    var body: some View {
+        AppStack { SearchContent() }
+    }
+}
+
+/// Search: recent searches + this week's covers when idle; AOTY's results when searching
+/// (album taps open the native album page).
+private struct SearchContent: View {
+    @AppStorage("recentSearches") private var recentJSON = "[]"
+    @Environment(\.push) private var push
     @State private var query = ""
     @State private var submitted = ""
-    @State private var results: [AlbumBlock] = []
     @State private var loading = false
-    @State private var error: String?
-    @State private var path: [String] = []   // album slugs
+    @State private var thisWeek: [AlbumBlock] = []
+
+    private var recents: [String] {
+        (try? JSONDecoder().decode([String].self, from: Data(recentJSON.utf8))) ?? []
+    }
 
     var body: some View {
-        NavigationStack(path: $path) {
-            Group {
-                if source == "device" { webResults } else { apiResults }
+        Group {
+            if let url = searchURL {
+                AOTYWebView(url: url, isLoading: $loading, onAlbumTap: { push(AlbumRoute(slug: $0, title: "Album")) })
+                    .overlay(alignment: .top) { if loading { ProgressView().padding(8) } }
+                    .ignoresSafeArea(edges: .bottom)
+            } else {
+                idle
             }
-            .navigationTitle("Search")
-            .navigationDestination(for: String.self) { AlbumDetailView(slug: $0, fallbackTitle: "Album") }
-            .searchable(text: $query, prompt: "Albums & artists")
-            .onSubmit(of: .search) { Task { await run() } }
-            .onChange(of: query) { if query.isEmpty { results = []; error = nil; submitted = "" } }
         }
+        .navigationTitle("Search")
+        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Albums, artists, songs")
+        .searchSuggestions {
+            if !query.isEmpty {
+                ForEach(recents.filter { $0.localizedCaseInsensitiveContains(query) && $0 != query }.prefix(5), id: \.self) { r in
+                    Label(r, systemImage: "clock.arrow.circlepath").searchCompletion(r)
+                }
+            }
+        }
+        .onSubmit(of: .search) { run(query) }
+        .onChange(of: query) { if query.isEmpty { submitted = "" } }
+        .task { if thisWeek.isEmpty { thisWeek = Array(((try? await AOTYAPI.shared.thisWeek()) ?? []).prefix(18)) } }
     }
 
-    // On-device mode: AOTY's own search page, with album taps opening the native page.
-    @ViewBuilder private var webResults: some View {
-        if let url = searchURL {
-            AOTYWebView(url: url, isLoading: $loading, onAlbumTap: { path.append($0) })
-                .overlay(alignment: .top) { if loading { ProgressView().padding(8) } }
-        } else {
-            ContentUnavailableView("Search AOTY", systemImage: "magnifyingglass",
-                                   description: Text("Results come from albumoftheyear.org. Tap an album to open it here."))
+    // MARK: Idle
+
+    private var idle: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                if !recents.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Recent").font(.title3.bold())
+                            Spacer()
+                            Button("Clear") { withAnimation { recentJSON = "[]" } }.font(.subheadline)
+                        }
+                        ForEach(recents, id: \.self) { r in
+                            HStack(spacing: 12) {
+                                Image(systemName: "clock.arrow.circlepath").foregroundStyle(.secondary)
+                                Text(r).foregroundStyle(.primary)
+                                Spacer()
+                                Button { remove(r) } label: { Image(systemName: "xmark").font(.caption).foregroundStyle(.tertiary) }
+                                    .buttonStyle(.borderless)
+                            }
+                            .padding(.vertical, 10)
+                            .contentShape(Rectangle())
+                            .onTapGesture { query = r; run(r) }
+                            Divider()
+                        }
+                    }
+                }
+
+                if !thisWeek.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("New This Week").font(.title3.bold())
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 16) {
+                            ForEach(thisWeek) { a in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    CachedImage(url: a.coverURL) { RoundedRectangle(cornerRadius: 8).fill(.quaternary) }
+                                        .aspectRatio(1, contentMode: .fill)
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    Text(a.title).font(.caption.weight(.semibold)).lineLimit(1)
+                                    Text(a.artist).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                }
+                                .tapAndHold(tap: { push(a) }, hold: {
+                                    Task { await MusicAppLink.open(artist: a.artist, album: a.title, song: nil, appleMusicURL: nil) }
+                                })
+                            }
+                        }
+                    }
+                }
+            }
+            .padding()
         }
+        .scrollDismissesKeyboard(.immediately)
     }
+
+    // MARK: Actions
 
     private var searchURL: URL? {
         guard !submitted.isEmpty else { return nil }
@@ -40,33 +106,18 @@ struct SearchView: View {
         return c.url
     }
 
-    // Community API mode: native list.
-    private var apiResults: some View {
-        List {
-            if let error { Text(error).foregroundStyle(.red).font(.callout) }
-            ForEach(results) { album in
-                Button { if let s = album.slug { path.append(s) } } label: { AlbumRow(album) }
-                    .buttonStyle(.plain)
-            }
-        }
-        .listStyle(.plain)
-        .overlay {
-            if loading { ProgressView() }
-            else if results.isEmpty && !submitted.isEmpty && error == nil { ContentUnavailableView.search(text: submitted) }
-            else if submitted.isEmpty {
-                ContentUnavailableView("Search albums", systemImage: "magnifyingglass",
-                                       description: Text("Press Search to look up an album or artist."))
-            }
-        }
-    }
-
-    private func run() async {
-        let q = query.trimmingCharacters(in: .whitespaces)
+    private func run(_ text: String) {
+        let q = text.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return }
         submitted = q
-        guard source != "device" else { return }
-        loading = true; error = nil; defer { loading = false }
-        do { results = try await AOTYAPI.shared.searchAlbums(q) }
-        catch { self.error = error.localizedDescription; results = [] }
+        var list = recents.filter { $0.caseInsensitiveCompare(q) != .orderedSame }
+        list.insert(q, at: 0)
+        save(Array(list.prefix(12)))
+    }
+
+    private func remove(_ r: String) { withAnimation { save(recents.filter { $0 != r }) } }
+
+    private func save(_ list: [String]) {
+        if let d = try? JSONEncoder().encode(list), let s = String(data: d, encoding: .utf8) { recentJSON = s }
     }
 }
