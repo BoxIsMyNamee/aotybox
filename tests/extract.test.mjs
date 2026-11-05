@@ -115,6 +115,15 @@ for (const [kind, path] of pages) {
   check(me2.username === "harbor", "slug from avatar filename");
 }
 
+// Challenge detection: background bot script must not count as a challenge
+{
+  const normal = '<html><head><title>harbor - Following - Album of The Year</title><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script></head><body><div class="listRow users"></div></body></html>';
+  const real = '<html><head><title>Just a moment...</title></head><body><script>window._cf_chl_opt={}</script></body></html>';
+  check(!aotyIsChallenge(normal, 200), "normal page with bot script is not a challenge");
+  check(aotyIsChallenge(real, 403), "real challenge detected");
+  console.log("\n=== challenge detection ok");
+}
+
 // Rated date + follows (synthetic markup mirroring AOTY's classes)
 {
   console.log("\n=== rated dates + follows (synthetic)");

@@ -53,6 +53,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
 
     enum ScrapeError: LocalizedError {
         case blocked
+        case stillBlocked
         case http(Int, String)
         case empty(String)
         case script(String)
@@ -62,6 +63,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         var errorDescription: String? {
             switch self {
             case .blocked: "AOTY wants a quick check. Complete it in the sheet, then tap Retry."
+            case .stillBlocked: "AOTY is still asking for a check. Wait a minute and tap Retry, or open the page in Settings → Sign in."
             case let .http(code, path): "AOTY returned HTTP \(code) for \(path)."
             case let .empty(info): "The page loaded but nothing could be read from it. \(info)"
             case let .script(msg): "Couldn't read the AOTY page: \(msg)"
@@ -151,7 +153,10 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     /// Called by the challenge sheet when the user closes it.
+    private var lastChallengeDone: Date?
+
     func challengeFinished() {
+        lastChallengeDone = Date()
         challenge = nil
         originReady = false
         clearCache()
@@ -173,6 +178,10 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         if case let .ok(data) = try await runOnLoadedPage(kind: kind, path: path) { return data }
 
         // Still challenged: ask the user to pass the check, and fail this request.
+        // If they just finished one, don't loop them straight back into the sheet.
+        if let done = lastChallengeDone, Date().timeIntervalSince(done) < 90 {
+            throw ScrapeError.stillBlocked
+        }
         challenge = Challenge(url: url)
         throw ScrapeError.blocked
     }

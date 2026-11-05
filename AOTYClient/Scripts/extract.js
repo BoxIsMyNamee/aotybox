@@ -554,9 +554,14 @@ function aotyFollows(doc) {
   return { users: out };
 }
 
+// A real Cloudflare challenge page, not a normal page that merely loads Cloudflare's
+// background bot script (/cdn-cgi/challenge-platform/…), which AOTY includes on some pages.
 function aotyIsChallenge(html, status) {
-  return status === 403 || status === 503 ||
-    /<title>\s*Just a moment/i.test(html) || /cf-challenge|challenge-platform|cf_chl_/i.test(html.slice(0, 20000));
+  var head = html.slice(0, 40000);
+  if (/<title>\s*(Just a moment|Attention Required|Please Wait)/i.test(head)) return true;
+  if (/window\._cf_chl_opt|id="challenge-form"|class="cf-turnstile"|cf-browser-verification/i.test(head)) return true;
+  if ((status === 403 || status === 503) && /cloudflare/i.test(head)) return true;
+  return false;
 }
 
 function aotyExtract(kind, html, pageURL) {
