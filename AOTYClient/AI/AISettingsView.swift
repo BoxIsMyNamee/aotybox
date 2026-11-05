@@ -42,6 +42,10 @@ struct AISettingsView: View {
         .navigationTitle("AI Assistant")
         .onAppear { key = AISettings.apiKey(provider) ?? "" }
         .onChange(of: providerRaw) { key = AISettings.apiKey(provider) ?? ""; model = ""; testResult = nil }
+        .onChange(of: model) {
+            UserDefaults.standard.removeObject(forKey: "aiGeminiResolvedModel")
+            UserDefaults.standard.removeObject(forKey: "aiGeminiSearchOff")
+        }
         .onDisappear { AISettings.setAPIKey(key, provider) }
     }
 
@@ -51,7 +55,7 @@ struct AISettingsView: View {
         do {
             let r = try await AIClient.reply(system: "Reply with one short sentence.",
                                              history: [ChatMessage(role: .user, text: "Say hi and name the model you are.")])
-            testResult = "Connected: " + r.text.prefix(120)
+            testResult = "Connected" + (r.model.map { " using \($0)" } ?? "") + ": " + r.text.prefix(120)
         } catch {
             testResult = error.localizedDescription
         }

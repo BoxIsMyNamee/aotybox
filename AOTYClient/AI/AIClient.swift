@@ -86,6 +86,7 @@ struct ChatMessage: Identifiable, Hashable {
     let role: Role
     var text: String
     var sources: [Source] = []
+    var model: String? = nil
 
     struct Source: Hashable { let title: String; let url: URL }
 }
@@ -129,15 +130,49 @@ enum AIClient {
         return obj
     }
 
+    /// Free-tier-friendly fallbacks, tried when the chosen model returns 429 (no free quota).
+    private static let geminiFallbacks = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
+    private static let resolvedModelKey = "aiGeminiResolvedModel"
+    private static let searchOffKey = "aiGeminiSearchOff"
+
     private static func gemini(key: String, system: String, history: [ChatMessage]) async throws -> ChatMessage {
-        let model = AISettings.model
+        let chosen = AISettings.model
+        let userPicked = !(UserDefaults.standard.string(forKey: AISettings.modelKey) ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+        var models = [chosen]
+        if !userPicked {
+            if let r = UserDefaults.standard.string(forKey: resolvedModelKey), r != chosen { models.insert(r, at: 0) }
+            models += geminiFallbacks.filter { !models.contains($0) }
+        }
+        var lastError: Error = AIError.empty
+        for model in models {
+            // With Google Search first (better answers), then without (search has its own quota).
+            let searchOrder = UserDefaults.standard.bool(forKey: searchOffKey) ? [false] : [true, false]
+            for search in searchOrder {
+                do {
+                    let reply = try await geminiOnce(key: key, model: model, search: search, system: system, history: history)
+                    if !userPicked { UserDefaults.standard.set(model, forKey: resolvedModelKey) }
+                    UserDefaults.standard.set(!search, forKey: searchOffKey)
+                    return reply
+                } catch let AIError.http(code, msg) where code == 429 || (code == 404 && !userPicked) || (code == 400 && msg.lowercased().contains("search")) {
+                    lastError = AIError.http(code, msg)
+                    continue
+                }
+            }
+        }
+        if case let AIError.http(429, _) = lastError {
+            throw AIError.http(429, "No free quota on any Gemini model for this key yet. Check limits at ai.dev/rate-limit, or try again later.")
+        }
+        throw lastError
+    }
+
+    private static func geminiOnce(key: String, model: String, search: Bool, system: String, history: [ChatMessage]) async throws -> ChatMessage {
         guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent") else { throw AIError.empty }
         let contents = history.map { ["role": $0.role == .user ? "user" : "model", "parts": [["text": $0.text]]] }
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "system_instruction": ["parts": [["text": system]]],
             "contents": contents,
-            "tools": [["google_search": [String: Any]()]],
         ]
+        if search { body["tools"] = [["google_search": [String: Any]()]] }
         let obj = try await post(url, headers: ["x-goog-api-key": key], body: body)
         let cand = (obj["candidates"] as? [[String: Any]])?.first
         let parts = ((cand?["content"] as? [String: Any])?["parts"] as? [[String: Any]]) ?? []
@@ -149,7 +184,9 @@ enum AIClient {
             guard let web = c["web"] as? [String: Any], let u = (web["uri"] as? String).flatMap(URL.init(string:)), seen.insert(u).inserted else { return nil }
             return .init(title: (web["title"] as? String) ?? u.host ?? "Source", url: u)
         }
-        return ChatMessage(role: .assistant, text: text, sources: sources)
+        var msg = ChatMessage(role: .assistant, text: text, sources: sources)
+        msg.model = model + (search ? " + Google Search" : "")
+        return msg
     }
 
     private static func anthropic(key: String, system: String, history: [ChatMessage]) async throws -> ChatMessage {
