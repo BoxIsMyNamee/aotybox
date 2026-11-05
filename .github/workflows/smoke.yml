@@ -36,7 +36,17 @@ jobs:
           nm -um "$B" | grep -i "libswiftWebKit" | awk '{print $NF}' | head -20 | xcrun swift-demangle
       - name: Boot, install, launch, and watch for crashes
         run: |
-          UDID=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in d.items() if 'iOS' in k for x in v if 'iPhone' in x['name']))")
+          # Build used Xcode 16.4 (same as the IPA); run it on the newest iOS simulator (iOS 26, like the phone).
+          NEWEST=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          echo "Simulator tooling: $NEWEST"
+          export DEVELOPER_DIR="$NEWEST/Contents/Developer"
+          xcrun simctl list runtimes | grep iOS
+          UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json,sys,re
+          d=json.load(sys.stdin)['devices']
+          keys=sorted([k for k in d if 'iOS' in k], key=lambda k:[int(x) for x in re.findall(r'\d+', k)], reverse=True)
+          print(next(x['udid'] for k in keys for x in d[k] if 'iPhone' in x['name']))")
+          echo "Runtime: $(xcrun simctl list devices -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(k for k,v in d.items() for x in v if x['udid']=='$UDID'))")"
           echo "Simulator $UDID"
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
