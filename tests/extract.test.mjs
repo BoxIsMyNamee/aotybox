@@ -25,7 +25,13 @@ for (const [kind, path] of pages) {
   console.log(`\n=== ${kind} ${path}`);
   let html = "";
   try {
-    const r = await fetch(url, { redirect: "follow", headers: { "User-Agent": "Mozilla/5.0 aotybox-ci" } });
+    let r;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { r = await fetch(url, { redirect: "follow", headers: { "User-Agent": "Mozilla/5.0 aotybox-ci" } }); } catch (e) { r = null; }
+      if (r && r.status !== 429 && r.status !== 503) break;
+      await new Promise(res => setTimeout(res, 15000));
+    }
+    if (!r) { console.log("  archive unreachable, skipping"); continue; }
     html = await r.text();
     console.log(`  archive HTTP ${r.status}, ${html.length} bytes, final ${r.url.slice(0, 110)}`);
     if (!r.ok || html.length < 5000) { console.log("  (no usable snapshot, skipping)"); continue; }
@@ -84,8 +90,8 @@ for (const [kind, path] of pages) {
   console.log("\n=== me (logged-out homepage)");
   let r, html = "";
   for (let attempt = 0; attempt < 4; attempt++) {
-    r = await fetch("https://web.archive.org/web/2026id_/https://www.albumoftheyear.org/", { headers: { "User-Agent": "Mozilla/5.0" } });
-    html = await r.text();
+    try { r = await fetch("https://web.archive.org/web/2026id_/https://www.albumoftheyear.org/", { headers: { "User-Agent": "Mozilla/5.0" } }); html = await r.text(); }
+    catch (e) { r = { ok: false, status: "unreachable" }; html = ""; }
     if (r.status !== 429) break;
     await new Promise(res => setTimeout(res, 25000));
   }
@@ -113,8 +119,8 @@ for (const [kind, path] of pages) {
   console.log("\n=== genius lyrics");
   let r, html = "";
   for (let attempt = 0; attempt < 4; attempt++) {
-    r = await fetch("https://web.archive.org/web/2026id_/https://genius.com/Kendrick-lamar-humble-lyrics", { headers: { "User-Agent": "Mozilla/5.0" } });
-    html = await r.text();
+    try { r = await fetch("https://web.archive.org/web/2026id_/https://genius.com/Kendrick-lamar-humble-lyrics", { headers: { "User-Agent": "Mozilla/5.0" } }); html = await r.text(); }
+    catch (e) { r = { ok: false, status: "unreachable" }; html = ""; }
     if (r.status !== 429) break;
     console.log("  archive rate-limited, waiting…");
     await new Promise(res => setTimeout(res, 25000));

@@ -51,7 +51,13 @@ jobs:
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
           xcrun simctl install "$UDID" build/Build/Products/Debug-iphonesimulator/AOTYClient.app
-          xcrun simctl launch --console-pty "$UDID" com.harper.aotyclient > launch.log 2>&1 &
+          # First boot runs data migration; give SpringBoard time, then launch with retries.
+          sleep 20
+          for attempt in 1 2 3; do
+            if xcrun simctl launch "$UDID" com.harper.aotyclient; then echo "launched (attempt $attempt)"; break; fi
+            echo "launch attempt $attempt failed; retrying"; sleep 15
+          done
+          xcrun simctl spawn "$UDID" log stream --level error --predicate 'process == "AOTYClient"' > launch.log 2>&1 &
           sleep 25
           echo "--- app output"; tail -40 launch.log || true
           if xcrun simctl spawn "$UDID" launchctl list | grep -q aotyclient; then
