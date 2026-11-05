@@ -55,6 +55,7 @@ enum MusicAppLink {
         s.lowercased()
             .folding(options: .diacriticInsensitive, locale: nil)
             .replacingOccurrences(of: #"\s*[\(\[].*?[\)\]]"#, with: "", options: .regularExpression)   // (feat. …), [Deluxe]
+            .replacingOccurrences(of: #"\s+(featuring|feat\.|ft\.|with)\s.*$"#, with: "", options: .regularExpression)   // "Guess featuring Billie Eilish - Single"
             .replacingOccurrences(of: #"\s+-\s+(single|ep)$"#, with: "", options: .regularExpression)
             .replacingOccurrences(of: "&", with: "and")
             .filter { $0.isLetter || $0.isNumber }
