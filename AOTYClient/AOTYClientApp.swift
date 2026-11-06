@@ -7,12 +7,6 @@ struct AOTYClientApp: App {
     @State private var musicLinkFailed = false
     @State private var tab = UserDefaults.standard.integer(forKey: "initialTab")
 
-    init() {
-        // Proof keeps nothing between launches; clear what older builds saved.
-        UserDefaults.standard.removeObject(forKey: "proofDraft")
-        UserDefaults.standard.removeObject(forKey: "proofAlbum")
-    }
-
     var body: some Scene {
         WindowGroup {
             TabView(selection: $tab) {
@@ -20,7 +14,7 @@ struct AOTYClientApp: App {
                 ChartsView().tabItem { Label("Charts", systemImage: "chart.bar") }.tag(1)
                 SearchView().tabItem { Label("Search", systemImage: "magnifyingglass") }.tag(2)
                 ProfileView().tabItem { Label("Profile", systemImage: "person.crop.circle") }.tag(3)
-                ProofView().tabItem { Label("Proof", systemImage: "text.badge.checkmark") }.tag(4)
+                ProofView().tabItem { Label("Notes", systemImage: "text.badge.checkmark") }.tag(4)
             }
             .tint(Color(hex: accentHex))
             .background(HiddenScraperHost().frame(width: 2, height: 2).allowsHitTesting(false))

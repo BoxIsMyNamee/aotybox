@@ -200,6 +200,10 @@ struct UserProfileView: View {
         if force { await AOTYScraper.shared.forget("/user/\(username)/") }
         do {
             let p = try await AOTYAPI.shared.profile(username: username)
+            await ImageCache.shared.warm([p.avatar.flatMap(URL.init(string:))]
+                + (p.reviews ?? []).prefix(5).map(\.coverURL)
+                + (p.recent ?? []).prefix(3).map(\.coverURL)
+                + (p.following ?? []).prefix(8).map { $0.avatar.flatMap(URL.init(string:)) })
             profile = p
             if let recent = p.recent, !recent.isEmpty {
                 ratings = recent           // AOTY's own mixed order
@@ -264,7 +268,11 @@ struct ProfileRatingsView: View {
 
     private func reload() async {
         loading = true; error = nil; defer { loading = false }
-        do { ratings = try await AOTYAPI.shared.ratings(path: listPath, page: 1); page = 1; more = !ratings.isEmpty }
+        do {
+            let r = try await AOTYAPI.shared.ratings(path: listPath, page: 1)
+            await ImageCache.shared.warm(r.prefix(10).map(\.coverURL))
+            ratings = r; page = 1; more = !ratings.isEmpty
+        }
         catch { self.error = error.localizedDescription }
     }
 
@@ -374,7 +382,11 @@ struct ProfileReviewsView: View {
 
     private func reload() async {
         loading = true; error = nil; defer { loading = false }
-        do { reviews = try await AOTYAPI.shared.profileReviews(username: username); page = 1; more = !reviews.isEmpty }
+        do {
+            let r = try await AOTYAPI.shared.profileReviews(username: username)
+            await ImageCache.shared.warm(r.prefix(6).map(\.coverURL))
+            reviews = r; page = 1; more = !reviews.isEmpty
+        }
         catch { self.error = error.localizedDescription }
     }
 

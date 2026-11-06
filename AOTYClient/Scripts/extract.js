@@ -238,6 +238,7 @@ function aotyUserReview(el) {
   return {
     reviewId: idm ? parseInt(idm[1], 10) : null,
     username: aotyTxt(nameEl),
+    userSlug: ((nameEl.getAttribute("href") || "").match(/\/user\/([^\/?#]+)/) || [])[1] || null,
     avatar: avatarImg ? (aotyImgSrc(avatarImg) || null) : null,
     rating: aotyNum(aotyTxt(el.querySelector(".rating"))),
     text: raw.replace(/\s*(\.\.\.|…)?\s*read more\s*$/i, "").trim(),

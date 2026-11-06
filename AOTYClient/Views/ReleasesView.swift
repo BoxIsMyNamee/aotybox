@@ -80,7 +80,6 @@ private struct FeedList: View {
             }
 
             if loading { ProgressView().frame(maxWidth: .infinity) }
-            if !albums.isEmpty && !canLoadMore { AttributionFooter() }
         }
         .listStyle(.plain)
         .refreshable { await reload() }
@@ -100,7 +99,10 @@ private struct FeedList: View {
         loading = true; defer { loading = false; loaded = true }
         do {
             var seen = Set<String>()
-            albums = try await fetch(1).filter { seen.insert($0.id).inserted }
+            let list = try await fetch(1).filter { seen.insert($0.id).inserted }
+            await ImageCache.shared.warm(list.prefix(10).map(\.coverURL))
+            albums = list
+            Task { await ImageCache.shared.warm(list.dropFirst(10).map(\.coverURL), timeout: 20) }
         } catch is CancellationError {
         } catch {
             let msg = error.localizedDescription
@@ -116,6 +118,7 @@ private struct FeedList: View {
         loading = true; defer { loading = false }
         do {
             let fresh = try await fetch(page + 1).filter { n in !albums.contains { $0.id == n.id } }
+            Task { await ImageCache.shared.warm(fresh.map(\.coverURL), timeout: 20) }
             if fresh.isEmpty { canLoadMore = false } else { albums += fresh; page += 1 }
         } catch { canLoadMore = false }
     }

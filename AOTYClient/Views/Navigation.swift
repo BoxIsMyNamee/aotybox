@@ -7,7 +7,8 @@ import UIKit
 
 struct AlbumRoute: Hashable { let slug: String?; let title: String }
 struct SongRoute: Hashable { let artist: String; let title: String; let album: String?; let cover: URL? }
-struct UserReviewsRoute: Hashable { let slug: String; let title: String }
+struct UserReviewsRoute: Hashable { let slug: String; let title: String; var range: String? = nil }
+struct UserRoute: Hashable { let username: String; let name: String; let avatar: String? }
 struct ProfileReviewsRoute: Hashable { let username: String }
 struct ProfileRatingsRoute: Hashable { let username: String; let path: String?; let isMe: Bool }
 
@@ -34,7 +35,11 @@ extension View {
             .navigationDestination(for: ChartItem.self) { AlbumDetailView(slug: $0.slug, fallbackTitle: $0.album) }
             .navigationDestination(for: AlbumRoute.self) { AlbumDetailView(slug: $0.slug, fallbackTitle: $0.title) }
             .navigationDestination(for: SongRoute.self) { SongView(artist: $0.artist, title: $0.title, album: $0.album, albumCover: $0.cover) }
-            .navigationDestination(for: UserReviewsRoute.self) { UserReviewsView(slug: $0.slug, title: $0.title) }
+            .navigationDestination(for: UserReviewsRoute.self) { UserReviewsView(slug: $0.slug, title: $0.title, rangeLabel: $0.range) }
+            .navigationDestination(for: UserRoute.self) { u in
+                UserProfileView(username: u.username, fallbackAvatar: u.avatar, isMe: false)
+                    .navigationTitle(u.name).navigationBarTitleDisplayMode(.inline)
+            }
             .navigationDestination(for: ProfileReviewsRoute.self) { ProfileReviewsView(username: $0.username) }
             .navigationDestination(for: ProfileRatingsRoute.self) { ProfileRatingsView(username: $0.username, path: $0.path, isMe: $0.isMe) }
             .navigationDestination(for: FollowUser.self) { u in

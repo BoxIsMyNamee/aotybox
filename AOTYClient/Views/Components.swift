@@ -27,7 +27,7 @@ struct Cover: View {
 
     var body: some View {
         CachedImage(url: url) {
-            Rectangle().fill(.quaternary).overlay(Image(systemName: "music.note").foregroundStyle(.secondary))
+            Rectangle().fill(.clear)
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: size > 100 ? 10 : 4))
@@ -112,15 +112,25 @@ struct UserReviewRow: View {
     let review: UserReview
     var lineLimit: Int? = 6
     @State private var showFull = false
+    @Environment(\.push) private var push
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                Avatar(url: review.avatarURL, name: review.username)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(review.username).font(.subheadline.weight(.semibold))
-                    if let d = review.date { Text(d).font(.caption2).foregroundStyle(.tertiary) }
+                Button {
+                    if let slug = review.userSlug { push(UserRoute(username: slug, name: review.username, avatar: review.avatar)) }
+                } label: {
+                    HStack(spacing: 10) {
+                        Avatar(url: review.avatarURL, name: review.username)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(review.username).font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                            if let d = review.date { Text(d).font(.caption2).foregroundStyle(.tertiary) }
+                        }
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .disabled(review.userSlug == nil)
                 Spacer()
                 if let r = review.rating {
                     Text(String(Int(r.rounded())))

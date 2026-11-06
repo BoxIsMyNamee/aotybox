@@ -1,13 +1,12 @@
 import SwiftUI
 import UIKit
 
-/// Proof: paste a review you wrote elsewhere and get proofreading notes.
-/// It never rewrites the review. Repeated words are counted on-device (exact);
-/// typos, punctuation, run-ons and comma issues come from the AI as pointers only.
+/// Notes: paste a review you wrote elsewhere and get proofreading notes. Never rewrites it.
+/// Repeated words are counted on-device; typos, punctuation, run-ons, commas and unquoted
+/// track names come from the AI (and an exact tracklist check when an album is given).
 struct ProofView: View {
-    // No memory: kept only while the app is running.
-    @State private var text = ""
-    @State private var albumQuery = ""
+    @AppStorage("notesText") private var text = ""
+    @AppStorage("notesAlbum") private var albumQuery = ""
     @State private var matchedAlbum: String?
     @State private var trackIssues: [ProofIssue] = []
     @State private var report: ProofReport?
@@ -15,159 +14,205 @@ struct ProofView: View {
     @State private var stats: ProofStats?
     @State private var checking = false
     @State private var error: String?
+    @State private var copied = false
     @State private var showAISettings = false
-    @FocusState private var editing: Bool
+    @FocusState private var focus: Field?
+    private enum Field { case text, album }
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    TextField("Paste your review here…", text: $text, axis: .vertical)
-                        .lineLimit(7, reservesSpace: true)
-                        .focused($editing)
-                        .font(.callout)
-                    HStack {
-                        PasteButton(payloadType: String.self) { strings in
-                            guard let s = strings.first, !s.isEmpty else { return }
-                            Task { @MainActor in
-                                text = s; report = nil; stats = nil; rawReply = nil; error = nil; trackIssues = []
-                            }
-                        }
-                        .labelStyle(.titleAndIcon)
-                        .buttonBorderShape(.capsule)
-                        .controlSize(.small)
-                        if !text.isEmpty {
-                            Button(role: .destructive) { text = ""; report = nil; stats = nil; rawReply = nil; error = nil; trackIssues = []; matchedAlbum = nil } label: {
-                                Label("Clear", systemImage: "xmark").lineLimit(1).fixedSize()
-                            }
-                            .buttonStyle(.bordered).controlSize(.small)
-                        }
-                        Spacer()
-                        if !text.isEmpty {
-                            Text("\(ProofStats.words(in: text).count) words").font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                    }
-                } footer: {
-                    Text("Proof only points things out. It never rewrites your review.")
-                }
-
-                Section {
-                    TextField("Album, e.g. the weeknd after hours", text: $albumQuery)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .onSubmit { matchedAlbum = nil }
-                    if let matchedAlbum { Text(matchedAlbum).font(.caption).foregroundStyle(.secondary) }
-                } header: {
-                    Text("Album (optional)")
-                } footer: {
-                    Text("With an album, Proof checks that every track name you mention is in quotes, like 'blinding lights'.")
-                }
-
-                Section {
-                    Button { Task { await check() } } label: {
-                        HStack {
-                            Spacer()
-                            if checking { ProgressView().padding(.trailing, 6); Text("Checking…") }
-                            else { Label("Check review", systemImage: "text.badge.checkmark").bold() }
-                            Spacer()
-                        }
-                    }
-                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || checking)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    editor
+                    albumField
                     if !AISettings.isConfigured {
-                        Button("Set up the AI (Gemini is free)") { showAISettings = true }
-                            .font(.footnote)
+                        Button("Set up the AI (Gemini is free)") { showAISettings = true }.font(.footnote)
                     }
                     if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+                    results
                 }
-
-                if let stats { statsSections(stats) }
-
-                if let report {
-                    if let s = report.summary, !s.isEmpty {
-                        Section { Text(s).font(.callout) }
-                    }
-                    issueSection("Track names not in quotes", "quote.opening", mergedTrackIssues(report))
-                    issueSection("Typos & spelling", "character.cursor.ibeam", report.typos + (stats?.doubled ?? []))
-                    issueSection("Punctuation", "exclamationmark.questionmark", report.punctuation)
-                    issueSection("Run-on sentences", "arrow.right.to.line", report.runOns)
-                    issueSection("Commas", "comma", report.commas)
-                    issueSection("Grammar & wording", "text.magnifyingglass", report.other)
-                    if report.isEmpty && (stats?.doubled ?? []).isEmpty && trackIssues.isEmpty {
-                        Section { Label("No problems found.", systemImage: "checkmark.seal").foregroundStyle(.green) }
-                    }
-                } else if let rawReply {
-                    issueSection("Track names not in quotes", "quote.opening", trackIssues)
-                    Section("Notes") { Text(LocalizedStringKey(rawReply)).textSelection(.enabled) }
-                } else if !trackIssues.isEmpty {
-                    issueSection("Track names not in quotes", "quote.opening", trackIssues)
-                }
+                .padding(.horizontal)
+                .padding(.bottom, 24)
             }
-            .tabTitle("Proof")
             .scrollDismissesKeyboard(.interactively)
+            .tabTitle("Notes")
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
-                    Button("Done") { editing = false }
+                    Button("Done") { focus = nil }
                 }
             }
             .sheet(isPresented: $showAISettings) { NavigationStack { AISettingsView() }.accentTint() }
         }
     }
 
-    // MARK: Sections
+    // MARK: Editor
+
+    private var editor: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(text.isEmpty ? "Your review" : "\(ProofStats.words(in: text).count) words")
+                    .font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                if !text.isEmpty {
+                    Button("Clear", role: .destructive) { text = ""; resetResults(); matchedAlbum = nil }
+                        .font(.caption.weight(.semibold))
+                }
+            }
+            ZStack(alignment: .topLeading) {
+                TextEditor(text: $text)
+                    .focused($focus, equals: .text)
+                    .font(.callout)
+                    .scrollContentBackground(.hidden)
+                    .padding(8)
+                if text.isEmpty {
+                    Text("Paste your review here…")
+                        .font(.callout).foregroundStyle(.tertiary)
+                        .padding(.horizontal, 13).padding(.vertical, 16)
+                        .allowsHitTesting(false)
+                }
+            }
+            .frame(height: 200)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+
+            HStack(spacing: 10) {
+                PasteButton(payloadType: String.self) { strings in
+                    guard let s = strings.first, !s.isEmpty else { return }
+                    Task { @MainActor in text = s; resetResults() }
+                }
+                .labelStyle(.iconOnly)
+                .buttonBorderShape(.capsule)
+                .frame(maxWidth: .infinity)
+
+                Button { Task { await check() } } label: {
+                    HStack(spacing: 6) {
+                        if checking { ProgressView().tint(.white) }
+                        Text(checking ? "Checking" : "Proof").bold()
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 34)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
+                .buttonBorderShape(.capsule)
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || checking)
+                .frame(maxWidth: .infinity)
+                .layoutPriority(1)
+
+                Button {
+                    UIPasteboard.general.string = text
+                    copied = true
+                    Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
+                } label: {
+                    Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+                        .labelStyle(.iconOnly)
+                        .frame(maxWidth: .infinity, minHeight: 34)
+                }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .disabled(text.isEmpty)
+                .frame(maxWidth: .infinity)
+            }
+            Text("Proof only points things out. It never rewrites your review.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var albumField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Album (optional)").font(.caption).foregroundStyle(.secondary)
+            TextField("e.g. the weeknd after hours", text: $albumQuery)
+                .focused($focus, equals: .album)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .padding(12)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                .onChange(of: albumQuery) { matchedAlbum = nil }
+            Text(matchedAlbum ?? "With an album, Proof checks that every track name you mention is in quotes, like 'blinding lights'.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: Results
+
+    @ViewBuilder private var results: some View {
+        if let stats { statsCards(stats) }
+        if let report {
+            if let s = report.summary, !s.isEmpty { card { Text(s).font(.callout) } }
+            issueCard("Track names not in quotes", "quote.opening", mergedTrackIssues(report))
+            issueCard("Typos & spelling", "character.cursor.ibeam", report.typos + (stats?.doubled ?? []))
+            issueCard("Punctuation", "exclamationmark.questionmark", report.punctuation)
+            issueCard("Run-on sentences", "arrow.right.to.line", report.runOns)
+            issueCard("Commas", "comma", report.commas)
+            issueCard("Grammar & wording", "text.magnifyingglass", report.other)
+            if report.isEmpty && (stats?.doubled ?? []).isEmpty && trackIssues.isEmpty {
+                card { Label("No problems found.", systemImage: "checkmark.seal").foregroundStyle(.green) }
+            }
+        } else {
+            issueCard("Track names not in quotes", "quote.opening", trackIssues)
+            issueCard("Typos & spelling", "character.cursor.ibeam", stats?.doubled ?? [])
+            if let rawReply { card { Text(LocalizedStringKey(rawReply)).textSelection(.enabled) } }
+        }
+    }
+
+    private func card<C: View>(_ title: String? = nil, _ icon: String? = nil, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let title {
+                Label(title, systemImage: icon ?? "circle").font(.subheadline.weight(.semibold))
+            }
+            content()
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+    }
 
     @ViewBuilder
-    private func statsSections(_ s: ProofStats) -> some View {
-        Section("Overview") {
-            LabeledContent("Words", value: "\(s.wordCount)")
-            LabeledContent("Sentences", value: "\(s.sentenceCount)")
-            LabeledContent("Average sentence", value: "\(s.averageSentence) words")
+    private func statsCards(_ s: ProofStats) -> some View {
+        card("Overview", "chart.bar.doc.horizontal") {
+            HStack {
+                stat("\(s.wordCount)", "words"); stat("\(s.sentenceCount)", "sentences"); stat("\(s.averageSentence)", "avg length")
+            }
             if let longest = s.longest, longest.count >= 35 {
-                VStack(alignment: .leading, spacing: 4) {
-                    LabeledContent("Longest sentence", value: "\(longest.count) words")
-                    Text("“\(longest.preview)”").font(.caption).foregroundStyle(.secondary).lineLimit(3)
-                }
+                Text("Longest sentence: \(longest.count) words").font(.caption.weight(.semibold))
+                Text("“\(longest.preview)”").font(.caption).foregroundStyle(.secondary).lineLimit(3)
             }
         }
         if !s.repeated.isEmpty {
-            Section {
+            card("Repeated words", "repeat") {
                 FlowChips(items: s.repeated.map { "\($0.word) ×\($0.count)" })
-                    .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
-            } header: {
-                Text("Repeated words")
-            } footer: {
-                Text("Words used 3+ times, leaving out common ones like “the” and “and”.")
+                Text("Words used 3+ times, leaving out common ones like “the” and “and”.").font(.caption).foregroundStyle(.secondary)
             }
         }
     }
 
+    private func stat(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(.headline.monospacedDigit())
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     @ViewBuilder
-    private func issueSection(_ title: String, _ icon: String, _ items: [ProofIssue]) -> some View {
+    private func issueCard(_ title: String, _ icon: String, _ items: [ProofIssue]) -> some View {
         if !items.isEmpty {
-            Section {
+            card("\(title) · \(items.count)", icon) {
                 ForEach(items) { i in
-                    VStack(alignment: .leading, spacing: 4) {
-                        if !i.text.isEmpty {
-                            Text("“\(i.text)”").font(.callout.weight(.medium)).textSelection(.enabled)
-                        }
-                        if let sug = i.suggestion, !sug.isEmpty {
-                            Text("→ \(sug)").font(.callout).foregroundStyle(.tint)
-                        }
-                        if !i.note.isEmpty {
-                            Text(i.note).font(.footnote).foregroundStyle(.secondary)
-                        }
+                    VStack(alignment: .leading, spacing: 3) {
+                        if !i.text.isEmpty { Text("“\(i.text)”").font(.callout.weight(.medium)).textSelection(.enabled) }
+                        if let sug = i.suggestion, !sug.isEmpty { Text("→ \(sug)").font(.callout).foregroundStyle(.green) }
+                        if !i.note.isEmpty { Text(i.note).font(.footnote).foregroundStyle(.secondary) }
                     }
-                    .padding(.vertical, 2)
+                    if i != items.last { Divider() }
                 }
-            } header: {
-                Label("\(title) · \(items.count)", systemImage: icon)
             }
         }
     }
 
     // MARK: Actions
 
-    /// On-device hits (exact, from the tracklist) plus any the AI spotted, without duplicates.
+    private func resetResults() { report = nil; stats = nil; rawReply = nil; error = nil; trackIssues = [] }
+
     private func mergedTrackIssues(_ r: ProofReport) -> [ProofIssue] {
         var seen = Set(trackIssues.map { $0.text.lowercased() })
         return trackIssues + r.trackNames.filter { seen.insert($0.text.lowercased()).inserted }
@@ -176,7 +221,7 @@ struct ProofView: View {
     private func check() async {
         let review = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !review.isEmpty else { return }
-        editing = false
+        focus = nil
         error = nil; report = nil; rawReply = nil; trackIssues = []
         stats = ProofStats(review)
         var tracklist: [String] = []
@@ -207,8 +252,7 @@ struct ProofView: View {
         } catch {
             self.error = error.localizedDescription
         }
-    }
-}
+    }}
 
 // MARK: - AI report
 

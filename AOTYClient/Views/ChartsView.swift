@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// Charts: Critics and Users as two pages you can switch by tapping the picker or swiping sideways.
 struct ChartsView: View {
     enum Source: String, CaseIterable, Identifiable {
         case critics = "6-highest-rated", users = "user-highest-rated"
@@ -9,11 +10,6 @@ struct ChartsView: View {
 
     @State private var source: Source = .critics
     @State private var period = String(Calendar.current.component(.year, from: .now))
-    @State private var items: [ChartItem] = []
-    @State private var page = 1
-    @State private var totalPages = 1
-    @State private var loading = false
-    @State private var error: String?
 
     private var periods: [String] {
         let year = Calendar.current.component(.year, from: .now)
@@ -22,32 +18,23 @@ struct ChartsView: View {
 
     var body: some View {
         AppStack {
-            List {
-                Section {
-                    Picker("Source", selection: $source) {
-                        ForEach(Source.allCases) { Text($0.label).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .listRowSeparator(.hidden)
+            VStack(spacing: 0) {
+                Picker("Source", selection: $source.animation(.easeInOut(duration: 0.25))) {
+                    ForEach(Source.allCases) { Text($0.label).tag($0) }
                 }
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
 
-                if let error, items.isEmpty { ErrorView(message: error) { await reload() } }
-
-                ForEach(items) { item in
-                    NavRow(value: item, artist: item.artist, album: item.album) {
-                        AlbumRow(artist: item.artist, title: item.album, cover: item.coverURL,
-                                 subtitle: [item.date, item.genres?.first].compactMap { $0 }.joined(separator: " · "),
-                                 rank: item.rank,
-                                 critic: source == .critics ? item.score : nil,
-                                 user: source == .users ? item.score : nil,
-                                 mustHear: item.mustHear ?? false)
+                TabView(selection: $source) {
+                    ForEach(Source.allCases) { s in
+                        ChartList(source: s, period: period)
+                            .id("\(s.rawValue)-\(period)")
+                            .tag(s)
                     }
-                    .onAppear { if item == items.last { Task { await loadMore() } } }
                 }
-                if loading { ProgressView().frame(maxWidth: .infinity) }
-                if !items.isEmpty && page >= totalPages { AttributionFooter() }
+                .tabViewStyle(.page(indexDisplayMode: .never))
             }
-            .listStyle(.plain)
             .tabTitle(period == "all" ? "All Time" : "Best of \(period)")
             .toolbar {
                 Menu {
@@ -56,16 +43,48 @@ struct ChartsView: View {
                     }
                 } label: { Label("Year", systemImage: "calendar") }
             }
-            .refreshable { await reload() }
-            .task(id: "\(source.rawValue)|\(period)") { await reload() }
         }
+    }
+}
+
+/// One chart page. Keeps its own data, so swiping back is instant.
+private struct ChartList: View {
+    let source: ChartsView.Source
+    let period: String
+    @State private var items: [ChartItem] = []
+    @State private var page = 1
+    @State private var totalPages = 1
+    @State private var loading = false
+    @State private var error: String?
+
+    var body: some View {
+        List {
+            if let error, items.isEmpty { ErrorView(message: error) { await reload() } }
+            ForEach(items) { item in
+                NavRow(value: item, artist: item.artist, album: item.album) {
+                    AlbumRow(artist: item.artist, title: item.album, cover: item.coverURL,
+                             subtitle: [item.date, item.genres?.first].compactMap { $0 }.joined(separator: " · "),
+                             rank: item.rank,
+                             critic: source == .critics ? item.score : nil,
+                             user: source == .users ? item.score : nil,
+                             mustHear: item.mustHear ?? false)
+                }
+                .onAppear { if item == items.last { Task { await loadMore() } } }
+            }
+            if loading { ProgressView().frame(maxWidth: .infinity).listRowSeparator(.hidden) }
+        }
+        .listStyle(.plain)
+        .refreshable { await reload() }
+        .task { if items.isEmpty { await reload() } }
     }
 
     private func reload() async {
         error = nil; loading = true; defer { loading = false }
         do {
             let res = try await AOTYAPI.shared.chart(source: source.rawValue, period: period, page: 1)
+            await ImageCache.shared.warm(res.items.prefix(10).map(\.coverURL))
             items = res.items; page = 1; totalPages = res.totalPages ?? 1
+            Task { await ImageCache.shared.warm(res.items.map(\.coverURL), timeout: 30) }
         } catch is CancellationError {
         } catch { self.error = error.localizedDescription; items = [] }
     }
@@ -74,8 +93,10 @@ struct ChartsView: View {
         guard !loading, page < totalPages else { return }
         loading = true; defer { loading = false }
         if let res = try? await AOTYAPI.shared.chart(source: source.rawValue, period: period, page: page + 1) {
+            await ImageCache.shared.warm(res.items.prefix(6).map(\.coverURL), timeout: 1.5)
             items += res.items.filter { n in !items.contains { $0.id == n.id } }
             page += 1
+            Task { await ImageCache.shared.warm(res.items.map(\.coverURL), timeout: 30) }
         } else { totalPages = page }
     }
 }

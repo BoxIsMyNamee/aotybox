@@ -51,7 +51,13 @@ struct AlbumDetailView: View {
     private func load() async {
         guard let slug else { error = "This item has no album link."; return }
         error = nil
-        do { album = try await AOTYAPI.shared.album(slug: slug) }
+        do {
+            let a = try await AOTYAPI.shared.album(slug: slug)
+            await ImageCache.shared.warm([a.coverURL]
+                + (a.popularUserReviews ?? []).prefix(3).map(\.avatarURL)
+                + (a.reviews ?? []).prefix(15).map { $0.image.flatMap(URL.init(string:)) })
+            album = a
+        }
         catch is CancellationError {}
         catch { self.error = error.localizedDescription }
         if let album, album.tracklist?.isEmpty ?? true, fallbackTracks.isEmpty { await loadFallbackTracks(album) }
@@ -230,7 +236,6 @@ struct AlbumDetailView: View {
                 }
             }
 
-            AttributionFooter()
         }
         .listStyle(.insetGrouped)
     }

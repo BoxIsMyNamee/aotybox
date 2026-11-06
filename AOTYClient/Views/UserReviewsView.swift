@@ -4,6 +4,18 @@ import SwiftUI
 struct UserReviewsView: View {
     let slug: String
     let title: String
+    /// A rating bucket from the distribution chart ("100", "90 - 99"): shows only those reviews.
+    var rangeLabel: String? = nil
+    @Environment(\.push) private var push
+
+    private var range: ClosedRange<Double>? {
+        guard let rangeLabel else { return nil }
+        let nums = rangeLabel.split(whereSeparator: { !$0.isNumber }).compactMap { Double($0) }
+        guard let lo = nums.first else { return nil }
+        return lo...(nums.count > 1 ? nums[1] + 0.999 : lo + 0.999)
+    }
+    private var sortParam: String { range.map { $0.lowerBound < 60 ? "worst" : "best" } ?? sort.param }
+    private func inRange(_ r: UserReview) -> Bool { range.map { r.rating.map($0.contains) ?? false } ?? true }
 
     enum Sort: String, CaseIterable, Identifiable {
         case best = "Popular", recent = "Recent", worst = "Lowest"
@@ -22,32 +34,41 @@ struct UserReviewsView: View {
 
     var body: some View {
         List {
-            Section {
-                Picker("Sort", selection: $sort) {
-                    ForEach(Sort.allCases) { Text($0.rawValue).tag($0) }
+            if range == nil {
+                Section {
+                    Picker("Sort", selection: $sort) {
+                        ForEach(Sort.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowBackground(Color.clear)
                 }
-                .pickerStyle(.segmented)
-                .listRowBackground(Color.clear)
-            }
 
-            if !distribution.isEmpty {
-                Section("Rating Distribution") { DistributionChart(rows: distribution) }
+                if !distribution.isEmpty {
+                    Section {
+                        DistributionChart(rows: distribution) { label in
+                            push(UserReviewsRoute(slug: slug, title: title, range: label))
+                        }
+                    } header: { Text("Rating Distribution") } footer: { Text("Tap a row to see those reviews.") }
+                }
             }
 
             if let error, reviews.isEmpty {
                 ErrorView(message: error) { await reload() }
             }
 
-            Section(total.map { "\($0.formatted()) user reviews" } ?? "") {
+            Section(range != nil ? "Rated \(rangeLabel ?? "")" : (total.map { "\($0.formatted()) user reviews" } ?? "")) {
                 ForEach(reviews) { r in
                     UserReviewRow(review: r, lineLimit: 10)
                         .onAppear { if r == reviews.last { Task { await loadMore() } } }
                 }
                 if loading { ProgressView().frame(maxWidth: .infinity) }
+                if range != nil && !loading && reviews.isEmpty && error == nil {
+                    Text("No reviews in this range.").foregroundStyle(.secondary)
+                }
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("User Reviews")
+        .navigationTitle(rangeLabel.map { "Rated \($0)" } ?? "User Reviews")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await reload() }
         .task(id: sort) { await reload() }
@@ -56,17 +77,33 @@ struct UserReviewsView: View {
     private func reload() async {
         error = nil; loading = true; defer { loading = false }
         do {
-            let p = try await AOTYAPI.shared.userReviews(slug: slug, sort: sort.param, page: 1)
-            reviews = p.reviews; page = 1; totalPages = p.totalPages ?? 1; total = p.total
+            let p = try await AOTYAPI.shared.userReviews(slug: slug, sort: sortParam, page: 1)
+            await ImageCache.shared.warm(p.reviews.prefix(10).map(\.avatarURL))
+            reviews = p.reviews.filter(inRange); page = 1; totalPages = p.totalPages ?? 1; total = p.total
             if let d = p.distribution, !d.isEmpty { distribution = d }
+            if range != nil { await scan(target: 10) }
         } catch is CancellationError {
         } catch { self.error = error.localizedDescription; reviews = [] }
+    }
+
+    /// Filtered view: AOTY can't filter by rating, so read more pages until enough match.
+    /// "Lowest" is sorted ascending, so it stops once ratings pass the range.
+    private func scan(target: Int) async {
+        guard let range else { return }
+        var pagesRead = 0
+        while reviews.count < target, page < totalPages, pagesRead < 12, !Task.isCancelled {
+            guard let p = try? await AOTYAPI.shared.userReviews(slug: slug, sort: sortParam, page: page + 1) else { totalPages = page; break }
+            page += 1; pagesRead += 1
+            reviews += p.reviews.filter(inRange).filter { n in !reviews.contains { $0.id == n.id } }
+            if sortParam == "worst", let maxR = p.reviews.compactMap(\.rating).max(), maxR > range.upperBound { totalPages = page; break }
+        }
     }
 
     private func loadMore() async {
         guard !loading, page < totalPages else { return }
         loading = true; defer { loading = false }
-        if let p = try? await AOTYAPI.shared.userReviews(slug: slug, sort: sort.param, page: page + 1) {
+        if range != nil { await scan(target: reviews.count + 10); return }
+        if let p = try? await AOTYAPI.shared.userReviews(slug: slug, sort: sortParam, page: page + 1) {
             reviews += p.reviews.filter { n in !reviews.contains { $0.id == n.id } }
             page += 1
         } else { totalPages = page }
@@ -75,11 +112,12 @@ struct UserReviewsView: View {
 
 struct DistributionChart: View {
     let rows: [DistributionRow]
+    var onSelect: ((String) -> Void)? = nil
     var body: some View {
         let maxCount = max(rows.map(\.count).max() ?? 1, 1)
         VStack(spacing: 6) {
             ForEach(rows, id: \.label) { row in
-                HStack(spacing: 8) {
+                Button { onSelect?(row.label) } label: { HStack(spacing: 8) {
                     Text(row.label).font(.caption.monospacedDigit()).foregroundStyle(.secondary).frame(width: 56, alignment: .trailing)
                     Text(row.count.formatted()).font(.caption2.monospacedDigit()).foregroundStyle(.tertiary).frame(width: 48, alignment: .trailing)
                     GeometryReader { g in
@@ -89,6 +127,10 @@ struct DistributionChart: View {
                     }
                     .frame(height: 12)
                 }
+                .padding(.vertical, 2)
+                .contentShape(Rectangle()) }
+                .buttonStyle(.plain)
+                .disabled(onSelect == nil || row.count == 0)
             }
         }
         .padding(.vertical, 4)

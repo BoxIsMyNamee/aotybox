@@ -36,6 +36,33 @@ final class ImageCache: @unchecked Sendable {
 
     func cached(_ url: URL) -> UIImage? { memory.object(forKey: url as NSURL) }
 
+    /// Memory, then the on-disk cache (decoded once, then kept in memory). No network.
+    func cachedIncludingDisk(_ url: URL) -> UIImage? {
+        if let hit = cached(url) { return hit }
+        guard let data = session.configuration.urlCache?.cachedResponse(for: URLRequest(url: url))?.data,
+              let image = UIImage(data: data) else { return nil }
+        let decoded = image.preparingForDisplay() ?? image
+        memory.setObject(decoded, forKey: url as NSURL, cost: data.count)
+        return decoded
+    }
+
+    /// Download images before a screen shows them, so nothing pops in. Waits at most `timeout`;
+    /// anything still loading keeps going in the background.
+    func warm(_ urls: [URL?], timeout: Double = 2.0) async {
+        let list = Array(Set(urls.compactMap { $0 })).filter { cached($0) == nil }
+        guard !list.isEmpty else { return }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                await withTaskGroup(of: Void.self) { inner in
+                    for u in list { inner.addTask { _ = await self.image(for: u) } }
+                }
+            }
+            group.addTask { try? await Task.sleep(for: .seconds(timeout)) }
+            await group.next()
+            group.cancelAll()
+        }
+    }
+
     func image(for url: URL) async -> UIImage? {
         if let hit = cached(url) { return hit }
         let session = self.session, memory = self.memory
@@ -76,10 +103,10 @@ struct CachedImage<Placeholder: View>: View {
         }
         .task(id: url) {
             guard let url else { image = nil; return }
-            if let hit = ImageCache.shared.cached(url) { image = hit; return }
+            if let hit = ImageCache.shared.cachedIncludingDisk(url) { image = hit; return }
             image = nil
             let loaded = await ImageCache.shared.image(for: url)
-            withAnimation(.easeIn(duration: 0.15)) { image = loaded }
+            withAnimation(.easeIn(duration: 0.2)) { image = loaded }
         }
     }
 
@@ -87,7 +114,7 @@ struct CachedImage<Placeholder: View>: View {
         self.url = url
         self.contentMode = contentMode
         self.placeholder = placeholder
-        _image = State(initialValue: url.flatMap { ImageCache.shared.cached($0) })
+        _image = State(initialValue: url.flatMap { ImageCache.shared.cachedIncludingDisk($0) })
     }
 }
 
@@ -98,8 +125,7 @@ struct Avatar: View {
 
     var body: some View {
         CachedImage(url: url) {
-            Circle().fill(.quaternary)
-                .overlay(Text(String(name.prefix(1)).uppercased()).font(.caption.bold()).foregroundStyle(.secondary))
+            Circle().fill(.clear)
         }
         .frame(width: size, height: size)
         .clipShape(Circle())

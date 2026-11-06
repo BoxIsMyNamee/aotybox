@@ -150,7 +150,7 @@ struct SongView: View {
     @ViewBuilder private var aboutView: some View {
         if let about = song?.about {
             VStack(alignment: .leading, spacing: 12) {
-                Text(about).font(.body).textSelection(.enabled)
+                GeniusRichText(text: about)
                 HStack(spacing: 16) {
                     if let n = song?.annotationCount { Label("\(n) annotations", systemImage: "text.quote") }
                     if let v = song?.pageviews { Label("\(v.formatted(.number.notation(.compactName))) views", systemImage: "eye") }
@@ -261,7 +261,7 @@ struct AnnotationSheet: View {
                         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
                     ForEach(referent.annotations) { a in
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(a.body).font(.body).textSelection(.enabled)
+                            GeniusRichText(text: a.body)
                             HStack(spacing: 10) {
                                 if a.verified { Label("Verified", systemImage: "checkmark.seal.fill").foregroundStyle(.tint) }
                                 if !a.authors.isEmpty { Text(a.authors.prefix(3).joined(separator: ", ")) }
@@ -385,5 +385,63 @@ struct SongChatView: View {
         } catch {
             self.error = error.localizedDescription
         }
+    }
+}
+
+
+// MARK: - Genius text with inline images
+
+/// Genius plain-text bodies put images on their own line as a bare URL. Show those as pictures
+/// (tap to view full screen) and everything else as text.
+struct GeniusRichText: View {
+    let text: String
+    @State private var viewing: Viewing?
+    private struct Viewing: Identifiable { let id: URL }
+
+    private enum Piece: Hashable { case text(String), image(URL) }
+
+    private static func isImage(_ line: String) -> URL? {
+        let t = line.trimmingCharacters(in: .whitespaces)
+        guard t.hasPrefix("http"), !t.contains(" "), let u = URL(string: t) else { return nil }
+        let host = u.host ?? "", path = u.path.lowercased()
+        let imageHost = host.contains("images.genius.com") || host.contains("images.rapgenius.com")
+            || host.contains("gstatic.com") || host.contains("googleusercontent.com") || host.contains("i.imgur.com")
+            || host.contains("pbs.twimg.com") || host.contains("media.giphy.com")
+        let imageExt = [".jpg", ".jpeg", ".png", ".gif", ".webp"].contains { path.hasSuffix($0) }
+        return (imageHost || imageExt) ? u : nil
+    }
+
+    private var pieces: [Piece] {
+        var out: [Piece] = []
+        var buffer: [String] = []
+        func flush() {
+            let joined = buffer.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !joined.isEmpty { out.append(.text(joined)) }
+            buffer = []
+        }
+        for line in text.components(separatedBy: "\n") {
+            if let u = Self.isImage(line) { flush(); out.append(.image(u)) } else { buffer.append(line) }
+        }
+        flush()
+        return out
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(pieces, id: \.self) { piece in
+                switch piece {
+                case .text(let t):
+                    Text(t).font(.body).textSelection(.enabled)
+                case .image(let u):
+                    CachedImage(url: u, contentMode: .fit) {
+                        RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.04)).frame(height: 180)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .onTapGesture { viewing = Viewing(id: u) }
+                }
+            }
+        }
+        .fullScreenCover(item: $viewing) { CoverViewer(url: $0.id, title: "").accentTint() }
     }
 }

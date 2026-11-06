@@ -156,6 +156,7 @@ struct CriticReview: Decodable, Identifiable, Hashable {
 struct UserReview: Decodable, Identifiable, Hashable {
     let reviewId: Int?
     let username: String
+    let userSlug: String?
     let avatar: String?
     let rating: Double?
     let text: String
