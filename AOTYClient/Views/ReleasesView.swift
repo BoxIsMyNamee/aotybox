@@ -16,6 +16,15 @@ struct ReleasesView: View {
     var body: some View {
         AppStack {
             VStack(spacing: 0) {
+                HStack(alignment: .center) {
+                    AOTYLogo().frame(height: 46)
+                    Spacer()
+                    KindToggle(singles: $singles, iconOnly: true)
+                }
+                .padding(.horizontal)
+                .padding(.top, 4)
+                .padding(.bottom, 12)
+
                 Picker("Feed", selection: $feed.animation(.easeInOut(duration: 0.25))) {
                     ForEach(feeds) { Text($0.rawValue).tag($0) }
                 }
@@ -32,12 +41,8 @@ struct ReleasesView: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
             }
-            .tabLogo(backTitle: singles ? "Singles" : "Releases")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    KindToggle(singles: $singles)
-                }
-            }
+            .navigationTitle(singles ? "Singles" : "Releases")
+            .toolbar(.hidden, for: .navigationBar)
             .onChange(of: singles) { if singles && feed == .upcoming { feed = .new } }
         }
     }
@@ -119,14 +124,45 @@ private struct FeedList: View {
 /// One-tap Albums ⇄ Singles switch.
 struct KindToggle: View {
     @Binding var singles: Bool
+    var iconOnly = false
     var body: some View {
-        Button {
-            UISelectionFeedbackGenerator().selectionChanged()
-            withAnimation { singles.toggle() }
-        } label: {
-            Label(singles ? "Singles" : "Albums", systemImage: singles ? "square.stack" : "music.note")
-                .labelStyle(.titleAndIcon)
-                .contentTransition(.symbolEffect(.replace))
+        if iconOnly {
+            Button(action: toggle) {
+                Image(systemName: icon)
+                    .font(.title2)
+                    .contentTransition(.symbolEffect(.replace))
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .accessibilityLabel(singles ? "Showing singles" : "Showing albums")
+        } else {
+            Button(action: toggle) {
+                Label(singles ? "Singles" : "Albums", systemImage: icon)
+                    .labelStyle(.titleAndIcon)
+                    .contentTransition(.symbolEffect(.replace))
+            }
         }
+    }
+    private var icon: String { singles ? "square.stack" : "music.note" }
+    private func toggle() {
+        UISelectionFeedbackGenerator().selectionChanged()
+        withAnimation { singles.toggle() }
+    }
+}
+
+/// The AOTY wordmark (template image, follows the text color).
+struct AOTYLogo: View {
+    var body: some View {
+        Group {
+            if let img = UIImage(named: "aoty-logo") {
+                Image(uiImage: img).renderingMode(.template).resizable().scaledToFit()
+            } else {
+                Text("AOTY").font(.largeTitle.bold())
+            }
+        }
+        .foregroundStyle(.primary)
+        .accessibilityLabel("Album of the Year")
+        .accessibilityAddTraits(.isHeader)
     }
 }
