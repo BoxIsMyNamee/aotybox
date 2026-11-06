@@ -147,7 +147,7 @@ struct AlbumDetailView: View {
                                 Task { await MusicAppLink.open(artist: a.artist, album: a.title, song: nil, appleMusicURL: appleMusicLink(a)) }
                             }
                             .buttonStyle(.borderedProminent)
-                            ForEach(a.streamingLinks ?? [], id: \.url) { link in
+                            ForEach((a.streamingLinks ?? []).filter { !$0.platform.lowercased().contains("apple") && !$0.url.contains("music.apple.com") }, id: \.url) { link in
                                 if let url = URL(string: link.url) {
                                     Button(link.platform.capitalized) { openURL(url) }.buttonStyle(.bordered)
                                 }

@@ -70,6 +70,9 @@ for (const [kind, path] of pages) {
     console.log("  first:", JSON.stringify(out.albums[0]));
     check(out.name && out.name.length < 60, "artist name");
     check(out.albums.length >= 5, "artist discography");
+    console.log("  info:", JSON.stringify({ c: out.criticScore, cc: out.criticCount, u: out.userScore, uc: out.userCount, f: out.followers, d: out.details }).slice(0, 600));
+    check(out.criticScore > 0 && out.userCount > 1000, "artist score box");
+    check((out.details || []).some(d => /genre/i.test(d.label)), "artist details");
   } else if (kind === "userReviews") {
     console.log(`  ${out.reviews.length} reviews, total ${out.total}, pages ${out.totalPages}, dist ${out.distribution.length}`);
     console.log("  first:", JSON.stringify(out.reviews[0])?.slice(0, 400));

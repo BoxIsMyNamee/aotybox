@@ -86,6 +86,7 @@ struct ProfileStat: Decodable, Hashable {
 struct Profile: Decodable {
     let username: String
     let displayName: String?
+    var nameColor: String? = nil
     let avatar: String?
     let stats: [ProfileStat]
     let about: String?
@@ -159,6 +160,7 @@ struct UserReview: Decodable, Identifiable, Hashable {
     let reviewId: Int?
     let username: String
     let userSlug: String?
+    var nameColor: String? = nil
     let avatar: String?
     let rating: Double?
     let text: String

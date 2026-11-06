@@ -115,7 +115,20 @@ actor AOTYAPI {
         return try await device(path, .userReviewList, ProfileReviewList.self).reviews
     }
 
-    struct Artist: Decodable { let name: String; let image: String?; let score: Double?; let albums: [AlbumBlock] }
+    struct Artist: Decodable {
+        struct Link: Decodable, Hashable { let text: String; let href: String }
+        struct Detail: Decodable, Hashable { let label: String; let value: String; let links: [Link]? }
+        let name: String
+        let image: String?
+        let score: Double?
+        var criticScore: Double? = nil
+        var criticCount: Int? = nil
+        var userScore: Double? = nil
+        var userCount: Int? = nil
+        var followers: String? = nil
+        var details: [Detail]? = nil
+        let albums: [AlbumBlock]
+    }
 
     enum LikeResult: Equatable { case ok, limited, failed(String) }
 

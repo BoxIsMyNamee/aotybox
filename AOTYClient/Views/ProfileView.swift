@@ -163,9 +163,10 @@ struct UserProfileView: View {
                 HStack(spacing: 16) {
                     Avatar(url: (profile?.avatar ?? fallbackAvatar).flatMap(URL.init(string:)), name: username, size: 80)
                     Text(profile?.displayName ?? username).font(.title3.bold()).lineLimit(3)
+                        .foregroundStyle(profile?.nameColor.map { Color(hex: $0) } ?? .primary)
                 }
                 if let about = profile?.about, !about.isEmpty {
-                    Text(about)
+                    Text(linkified(about))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
@@ -335,7 +336,7 @@ struct ProfileReviewRow: View {
             if !review.text.isEmpty {
                 let hasMore = review.text.count > 280 || review.isTruncated == true
                 HStack(alignment: .lastTextBaseline, spacing: 8) {
-                    Text(bodyText)
+                    Text(linkified(bodyText))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(expanded ? nil : 6)
@@ -361,10 +362,7 @@ struct ProfileReviewRow: View {
             }
         }
         .padding(.vertical, 4)
-        .swipeRow(
-            learn: { push(Learn.route(artist: review.artist, album: review.album, song: nil, isSingle: false, cover: review.coverURL)) },
-            open: { Task { await MusicAppLink.open(artist: review.artist, album: review.album, song: nil, appleMusicURL: nil) } }
-        )
+        .heartSwipe(reviewID: review.reviewId ?? Int(review.id), liked: review.liked ?? false, likes: review.likes ?? 0, enabled: !own)
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .sheet(isPresented: $showFull) {
             if let s = review.url, let u = URL(string: s) { AOTYWebSheet(url: u, title: review.album).accentTint() }

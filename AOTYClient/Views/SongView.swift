@@ -187,7 +187,7 @@ struct SongView: View {
                                 Spacer()
                                 if c.votes != 0 { Label("\(c.votes)", systemImage: "arrow.up").font(.caption).foregroundStyle(.secondary) }
                             }
-                            Text(c.body).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                            Text(linkified(c.body)).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
                         }
                     }
                     Divider()
@@ -328,12 +328,10 @@ struct SongChatView: View {
                 }
                 if let error { Text(error).font(.footnote).foregroundStyle(.red) }
                 if messages.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack {
-                            ForEach(suggestions, id: \.self) { s in
-                                Button(s) { input = s; Task { await send() } }
-                                    .buttonStyle(.bordered).font(.callout)
-                            }
+                    ChipLayout(spacing: 8) {
+                        ForEach(suggestions.prefix(3), id: \.self) { s in
+                            Button(s) { input = s; Task { await send() } }
+                                .buttonStyle(.bordered).font(.callout)
                         }
                     }
                 }
@@ -436,7 +434,7 @@ struct GeniusRichText: View {
             ForEach(pieces, id: \.self) { piece in
                 switch piece {
                 case .text(let t):
-                    Text(t).font(.body).textSelection(.enabled)
+                    Text(linkified(t)).font(.body).textSelection(.enabled)
                 case .image(let u):
                     CachedImage(url: u, contentMode: .fit) {
                         RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.04)).frame(height: 180)

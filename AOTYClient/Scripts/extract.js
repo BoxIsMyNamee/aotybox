@@ -243,6 +243,7 @@ function aotyUserReview(el) {
     reviewId: idm ? parseInt(idm[1], 10) : null,
     username: aotyTxt(nameEl),
     userSlug: ((nameEl.getAttribute("href") || "").match(/\/user\/([^\/?#]+)/) || [])[1] || null,
+    nameColor: aotyNameColor(nameEl),
     avatar: avatarImg ? (aotyImgSrc(avatarImg) || null) : null,
     rating: aotyNum(aotyTxt(el.querySelector(".rating"))),
     text: raw.replace(/\s*(\.\.\.|…)?\s*read more\s*$/i, "").trim(),
@@ -252,6 +253,27 @@ function aotyUserReview(el) {
     liked: !!el.querySelector(".review_like.liked, .heartLiked"),
     date: aotyTxt(el.querySelector(".review_date")).replace(/\*$/, "").trim() || null
   };
+}
+
+// Donor / staff name color AOTY puts on a username link: style="color: #921591".
+function aotyNameColor(el) {
+  for (var e = el, n = 0; e && n < 3; e = e.parentElement, n++) {
+    var m = (e.getAttribute && e.getAttribute("style") || "").match(/color:\s*(#[0-9a-f]{3,8})/i);
+    if (m) return m[1];
+    var inner = e.querySelector && e.querySelector("[style*='color']");
+    if (inner) { var m2 = (inner.getAttribute("style") || "").match(/color:\s*(#[0-9a-f]{3,8})/i); if (m2) return m2[1]; }
+  }
+  return null;
+}
+
+// "4y", "2d", "Mar 3, 2025" — whatever date-ish text a review row carries.
+function aotyReviewDate(el) {
+  var cands = el.querySelectorAll(".review_date, .reviewDate, .date, time, [class*='date']");
+  for (var i = 0; i < cands.length; i++) {
+    var t = aotyTxt(cands[i]).replace(/\*$/, "").trim();
+    if (t && t.length < 30) return t;
+  }
+  return null;
 }
 
 function aotyUserReviewsPage(doc, html) {
@@ -553,7 +575,8 @@ function aotyProfile(doc, html, pageURL) {
   }
   following = following.filter(function (f) { return f.username.toLowerCase() !== username.toLowerCase(); });
 
-  return { username: username, displayName: aotyTxt(nameEl) || username, avatar: avatar, stats: stats, about: about || null,
+  var nameColor = nameEl ? aotyNameColor(nameEl) : null;
+  return { username: username, nameColor: nameColor, displayName: aotyTxt(nameEl) || username, avatar: avatar, stats: stats, about: about || null,
            albums: albums.slice(0, 30), recent: recent, ratingsPath: viewAll, reviews: reviews, following: following };
 }
 
@@ -597,7 +620,7 @@ function aotyProfileReviewRows(doc) {
       likes: aotyCount(aotyTxt(el.querySelector(".review_likes"))),
       liked: !!el.querySelector(".review_like.liked, .heartLiked"),
       reviewId: (function () { var b = el.querySelector("[data-review-id]"); return b ? parseInt(b.getAttribute("data-review-id"), 10) : (idm ? parseInt(idm[1], 10) : null); })(),
-      date: aotyTxt(el.querySelector(".review_date")).replace(/\*$/, "").trim() || null
+      date: aotyReviewDate(el)
     };
     if (item.album || item.text) out.push(item);
   }
@@ -734,9 +757,30 @@ function aotyArtist(doc, pageURL) {
     if (heading) albums[i].mediaType = heading;
   }
   for (var j = 0; j < albums.length; j++) if (!albums[j].artist) albums[j].artist = name;
-  var score = null, sc = doc.querySelector(".artistCriticScore, .artistUserScore");
-  if (sc) score = aotyNum(aotyTxt(sc));
-  return { name: name, image: image, score: score, albums: albums };
+  function box(sel) {
+    var b = doc.querySelector(sel);
+    if (!b) return [null, null];
+    var v = aotyNum(aotyTxt(b.querySelector(".artistCriticScore, .artistUserScore")));
+    var st = b.querySelector(".text strong");
+    return [v, st ? aotyCount(aotyTxt(st)) : null];
+  }
+  var c = box(".artistCriticScoreBox"), u = box(".artistUserScoreBox");
+  var fc = aotyTxt(doc.querySelector(".followCount"));
+  var details = [];
+  var rows = doc.querySelectorAll(".artistTopBox.info .detailRow, .detailRow");
+  for (var d = 0; d < rows.length; d++) {
+    var row = rows[d], span = row.querySelector(":scope > span");
+    var label = span ? aotyTxt(span).replace(/^\/\s*/, "").trim() : "";
+    var clone = row.cloneNode(true);
+    clone.querySelectorAll(":scope > span, button").forEach(function (x) { x.remove(); });
+    var value = aotyTxt(clone).replace(/,\s*$/, "").trim();
+    var links = [];
+    clone.querySelectorAll("a[href]").forEach(function (a) { links.push({ text: aotyTxt(a), href: a.getAttribute("href") }); });
+    if (label && value) details.push({ label: label, value: value, links: links });
+  }
+  return { name: name, image: image, score: c[0],
+           criticScore: c[0], criticCount: c[1], userScore: u[0], userCount: u[1],
+           followers: fc || null, details: details, albums: albums };
 }
 
 function aotyExtract(kind, html, pageURL) {

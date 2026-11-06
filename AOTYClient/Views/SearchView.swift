@@ -1,8 +1,11 @@
 import SwiftUI
 
 struct SearchView: View {
+    @State private var resetID = UUID()
     var body: some View {
         AppStack { SearchContent() }
+            .id(resetID)
+            .onReceive(NotificationCenter.default.publisher(for: .resetSearch)) { _ in resetID = UUID() }
     }
 }
 

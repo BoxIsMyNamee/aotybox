@@ -4,15 +4,27 @@ import UIKit
 /// Apollo-style row swipe: the row slides with your finger over a full-width color. It stays muted
 /// until you pass the trigger point, then lights up with a light haptic tick; let go past it to fire.
 /// Swipe right = Learn (green), swipe left = Open (blue). One continuous gesture can go either way.
+/// One side of an Apollo-style swipe.
+struct SwipeAction {
+    let icon: String
+    let title: String
+    let color: Color
+    let perform: () -> Void
+}
+
+/// Apollo-style row swipe: the row slides with your finger over a full-width color. It stays muted
+/// until you pass the trigger point, then lights up with a light haptic tick; let go past it to fire.
+/// `leading` is revealed by swiping right, `trailing` by swiping left. A side with no action doesn't move.
 struct SwipeRow: ViewModifier {
-    let learn: () -> Void
-    let open: () -> Void
+    let leading: SwipeAction?
+    let trailing: SwipeAction?
     @Environment(\.swipeRowBackground) private var rowBackground
     @State private var offset: CGFloat = 0
     @State private var armed = false
     @State private var width: CGFloat = 390
 
     private var threshold: CGFloat { max(70, width * 0.22) }
+    private var active: SwipeAction? { offset > 0 ? leading : (offset < 0 ? trailing : nil) }
 
     func body(content: Content) -> some View {
         content
@@ -24,46 +36,44 @@ struct SwipeRow: ViewModifier {
             .background { actionBackground }
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
             .gesture(HorizontalPan(
-                onChange: { t in
-                    let nowArmed = abs(t) >= threshold
+                onChange: { raw in
+                    var t = raw
+                    if t > 0 && leading == nil { t = 0 }
+                    if t < 0 && trailing == nil { t = 0 }
+                    let nowArmed = t != 0 && abs(t) >= threshold
                     if nowArmed != armed {
                         armed = nowArmed
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
                     offset = t
                 },
-                onEnd: { t in
-                    let fire = abs(t) >= threshold
+                onEnd: { _ in
+                    let fire = armed ? active : nil
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { offset = 0 }
                     armed = false
-                    if fire { if t > 0 { learn() } else { open() } }
+                    fire?.perform()
                 }
             ))
             .listRowInsets(EdgeInsets())
     }
 
     @ViewBuilder private var actionBackground: some View {
-        let right = offset > 0
-        let color: Color = right ? .green : .blue
-        ZStack {
-            (offset == 0 ? Color.clear : (armed ? color : color.opacity(0.35)))
-            HStack {
-                if right {
-                    actionIcon("magnifyingglass", "Learn").padding(.leading, 22)
-                    Spacer()
-                } else if offset < 0 {
-                    Spacer()
-                    actionIcon("play.fill", "Open").padding(.trailing, 22)
+        if let a = active {
+            ZStack {
+                armed ? a.color : a.color.opacity(0.35)
+                HStack {
+                    if offset > 0 { icon(a).padding(.leading, 22); Spacer() }
+                    else { Spacer(); icon(a).padding(.trailing, 22) }
                 }
             }
+            .animation(.easeOut(duration: 0.12), value: armed)
         }
-        .animation(.easeOut(duration: 0.12), value: armed)
     }
 
-    private func actionIcon(_ symbol: String, _ title: String) -> some View {
+    private func icon(_ a: SwipeAction) -> some View {
         VStack(spacing: 3) {
-            Image(systemName: symbol).font(.title3.weight(.semibold))
-            Text(title).font(.caption2.weight(.semibold))
+            Image(systemName: a.icon).font(.title3.weight(.semibold))
+            Text(a.title).font(.caption2.weight(.semibold))
         }
         .foregroundStyle(.white)
         .scaleEffect(armed ? 1.15 : 0.9)
@@ -72,8 +82,13 @@ struct SwipeRow: ViewModifier {
 }
 
 extension View {
+    func swipeRow(leading: SwipeAction?, trailing: SwipeAction?) -> some View {
+        modifier(SwipeRow(leading: leading, trailing: trailing))
+    }
+    /// Albums and songs: right = Learn (green), left = Open in the music app (blue).
     func swipeRow(learn: @escaping () -> Void, open: @escaping () -> Void) -> some View {
-        modifier(SwipeRow(learn: learn, open: open))
+        modifier(SwipeRow(leading: SwipeAction(icon: "magnifyingglass", title: "Learn", color: .green, perform: learn),
+                          trailing: SwipeAction(icon: "play.fill", title: "Open", color: .blue, perform: open)))
     }
 }
 

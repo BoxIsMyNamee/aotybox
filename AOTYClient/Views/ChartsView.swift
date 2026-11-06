@@ -18,22 +18,18 @@ struct ChartsView: View {
 
     var body: some View {
         AppStack {
-            VStack(spacing: 0) {
-                Picker("Source", selection: $source.animation(.easeInOut(duration: 0.25))) {
-                    ForEach(Source.allCases) { Text($0.label).tag($0) }
+            ZStack {
+                ForEach(Source.allCases) { s in
+                    ChartList(source: s, period: period)
+                        .id("\(s.rawValue)-\(period)")
+                        .opacity(s == source ? 1 : 0)
+                        .allowsHitTesting(s == source)
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.bottom, 8)
-
-                TabView(selection: $source) {
-                    ForEach(Source.allCases) { s in
-                        ChartList(source: s, period: period)
-                            .id("\(s.rawValue)-\(period)")
-                            .tag(s)
-                    }
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+            }
+            .safeAreaInset(edge: .bottom) {
+                GlassSegmented(selection: $source, items: Source.allCases.map { ($0, $0.label) })
+                    .frame(maxWidth: 260)
+                    .padding(.bottom, 8)
             }
             .tabTitle(period == "all" ? "All Time" : "Best of \(period)")
             .toolbar {

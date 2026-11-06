@@ -1,49 +1,37 @@
 import SwiftUI
 
-/// Native artist page: big photo header, then the discography grouped by type. The floating
-/// filter button loads AOTY's own lists (Featured, LP, EP, Single, Reissue, Live…).
+/// Native artist page: wide photo, scores + details, then Albums / EPs / Singles (switch at the
+/// bottom). The filter button adds AOTY's other release types (reissues, live, …) into Albums.
 struct ArtistView: View {
     let path: String?
     let fallbackName: String
 
-    @State private var resolvedPath: String?
-    @State private var artist: AOTYAPI.Artist?
-    @State private var header: AOTYAPI.Artist?          // name + photo from the first load
-    @State private var error: String?
-    @State private var loading = false
-    @State private var type = "featured"
-    @AppStorage("artistHideEditions") private var hideEditions = false
-
-    private static let types: [(String, String)] = [
-        ("featured", "Featured"), ("all", "All"), ("lp", "LP"), ("ep", "EP"), ("single", "Single"),
-        ("mixtape", "Mixtape"), ("compilation", "Compilation"), ("live", "Live"), ("reissue", "Reissue"),
-        ("remix", "Remix"), ("demo", "Demo"), ("dj+mix", "DJ Mix"), ("instrumental", "Instrumental"),
-        ("miscellaneous", "Miscellaneous"),
+    enum Category: String, CaseIterable, Identifiable {
+        case albums = "Albums", eps = "EPs", singles = "Singles"
+        var id: String { rawValue }
+        var aotyType: String { switch self { case .albums: "lp"; case .eps: "ep"; case .singles: "single" } }
+    }
+    /// Extra AOTY types that can be folded into Albums.
+    static let extras: [(String, String)] = [
+        ("reissue", "Reissues & Deluxes"), ("live", "Live"), ("compilation", "Compilations"),
+        ("mixtape", "Mixtapes"), ("remix", "Remixes"), ("demo", "Demos"), ("miscellaneous", "Miscellaneous"),
     ]
-    private static let editionPattern = #"(?i)\b(deluxe|remaster(ed)?|anniversary|expanded|edition|reissue|bonus)\b"#
-    private static let order = ["lp", "ep", "mixtape", "single", "compilation", "live", "remix", "soundtrack", "other"]
 
-    private func typeKey(_ a: AlbumBlock) -> String {
-        let t = (a.mediaType ?? "").lowercased()
-        for k in ["live", "compilation", "remix", "soundtrack", "mixtape", "single", "ep", "lp", "album"] where t.contains(k) {
-            return k == "album" ? "lp" : k
-        }
-        return "other"
+    @State private var base: String?
+    @State private var artist: AOTYAPI.Artist?          // featured page: header, info
+    @State private var lists: [String: [AlbumBlock]] = [:]   // by AOTY type
+    @State private var loadingTypes: Set<String> = []
+    @State private var error: String?
+    @State private var category: Category = .albums
+    @AppStorage("artistExtras") private var extrasRaw = ""
+    @Environment(\.push) private var push
+    @Environment(\.openURL) private var openURL
+
+    private var extrasOn: Set<String> { Set(extrasRaw.split(separator: ",").map(String.init)) }
+    private func setExtra(_ t: String, _ on: Bool) {
+        var s = extrasOn; if on { s.insert(t) } else { s.remove(t) }
+        extrasRaw = s.sorted().joined(separator: ",")
     }
-    private func sectionTitle(_ key: String) -> String {
-        switch key {
-        case "lp": "Albums"
-        case "ep": "EPs"
-        case "mixtape": "Mixtapes"
-        case "single": "Singles"
-        case "compilation": "Compilations"
-        case "live": "Live"
-        case "remix": "Remixes"
-        case "soundtrack": "Soundtracks"
-        default: "Other"
-        }
-    }
-    private var typeName: String { Self.types.first { $0.0 == type }?.1 ?? "Featured" }
 
     var body: some View {
         Group {
@@ -51,106 +39,178 @@ struct ArtistView: View {
             else if let error { ErrorView(message: error) { await load() } }
             else { ProgressView() }
         }
-        .navigationTitle(header?.name ?? fallbackName)
+        .navigationTitle(artist?.name ?? fallbackName)
         .navigationBarTitleDisplayMode(.inline)
-        .overlay(alignment: .bottomTrailing) {
+        .safeAreaInset(edge: .bottom) {
             if artist != nil {
-                Menu {
-                    Picker("Type", selection: $type) {
-                        ForEach(Self.types, id: \.0) { Text($0.1).tag($0.0) }
+                HStack(spacing: 12) {
+                    GlassSegmented(selection: $category, items: Category.allCases.map { ($0, $0.rawValue) })
+                    Menu {
+                        Section("Also show in Albums") {
+                            ForEach(Self.extras, id: \.0) { t in
+                                Toggle(t.1, isOn: Binding(get: { extrasOn.contains(t.0) }, set: { setExtra(t.0, $0) }))
+                            }
+                        }
+                    } label: {
+                        FloatingIcon(symbol: extrasOn.isEmpty ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
                     }
-                    Divider()
-                    Toggle("Hide deluxe & reissues", isOn: $hideEditions)
-                } label: {
-                    FloatingIcon(symbol: type == "featured" && !hideEditions
-                                 ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
+                    .menuStyle(.button)
+                    .floatingGlass()
                 }
-                .menuStyle(.button)
-                .floatingGlass()
-                .padding(.trailing, 20)
-                .padding(.bottom, 16)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
             }
         }
         .task { if artist == nil { await load() } }
-        .onChange(of: type) { Task { await load() } }
+        .onChange(of: category) { Task { await ensureLoaded() } }
+        .onChange(of: extrasRaw) { Task { await ensureLoaded() } }
     }
 
-    private func visible(_ a: AOTYAPI.Artist) -> [AlbumBlock] {
+    // MARK: Content
+
+    private var shown: [AlbumBlock] {
+        var types = [category.aotyType]
+        if category == .albums { types += Self.extras.map(\.0).filter { extrasOn.contains($0) } }
         var seen = Set<String>()
-        return a.albums.filter { seen.insert($0.url).inserted }
-            .filter { !hideEditions || type == "reissue" || $0.title.range(of: Self.editionPattern, options: .regularExpression) == nil }
+        let all = types.flatMap { lists[$0] ?? [] }.filter { seen.insert($0.url).inserted }
+        // Newest first (blocks carry "2026 • Label").
+        return all.sorted { year($0) > year($1) }
+    }
+    private func year(_ a: AlbumBlock) -> Int { Int((a.releaseDate ?? "").prefix(4)) ?? 0 }
+    private var isLoadingCategory: Bool {
+        !loadingTypes.isDisjoint(with: [category.aotyType] + (category == .albums ? Array(extrasOn) : []))
     }
 
     @ViewBuilder private func content(_ a: AOTYAPI.Artist) -> some View {
-        let albums = visible(a)
-        // Featured/All come mixed: group them. A single type is one list.
-        let grouped = (type == "featured" || type == "all")
-        let groups = grouped ? Dictionary(grouping: albums) { typeKey($0) } : [typeName: albums]
-        let keys = grouped ? Self.order.filter { groups[$0] != nil } : [typeName]
         List {
-            Section { hero(header ?? a, count: albums.count) }
+            Section { hero(a) }
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
-            if loading {
-                Section { ProgressView().frame(maxWidth: .infinity) }
-            } else if albums.isEmpty {
-                Section { Text("Nothing under \(typeName) for this artist.").foregroundStyle(.secondary) }
-            }
-            if !loading {
-                ForEach(keys, id: \.self) { key in
-                    Section(grouped ? sectionTitle(key) : key) {
-                        ForEach(groups[key] ?? []) { album in
-                            NavRow(value: album, artist: album.artist, album: album.title,
-                                   isSingle: key == "single" || type == "single", cover: album.coverURL) {
-                                AlbumRow(album, coverSize: 64)
-                            }
-                        }
+
+            if a.criticScore != nil || a.userScore != nil || a.followers != nil {
+                Section {
+                    HStack(spacing: 0) {
+                        scoreCell("Critic", a.criticScore, a.criticCount.map { "\($0.formatted()) reviews" })
+                        Divider().frame(height: 44)
+                        scoreCell("User", a.userScore, a.userCount.map { "\($0.formatted()) ratings" })
                     }
+                    if let f = a.followers { Label(f, systemImage: "person.2").font(.subheadline).foregroundStyle(.secondary) }
                 }
             }
-            Color.clear.frame(height: 60).listRowBackground(Color.clear)   // room for the floating button
+
+            if let details = a.details, !details.isEmpty {
+                Section("Details") {
+                    ForEach(details, id: \.self) { d in detailRow(d) }
+                }
+            }
+
+            Section {
+                if isLoadingCategory && shown.isEmpty {
+                    ProgressView().frame(maxWidth: .infinity)
+                } else if shown.isEmpty {
+                    Text("No \(category.rawValue.lowercased()) on AOTY.").foregroundStyle(.secondary)
+                }
+                ForEach(shown) { album in
+                    NavRow(value: album, artist: album.artist, album: album.title,
+                           isSingle: category == .singles, cover: album.coverURL) {
+                        AlbumRow(artist: album.artist, title: album.title, cover: album.coverURL, subtitle: album.releaseDate,
+                                 critic: album.criticScore, user: album.userScore, mustHear: album.mustHear ?? false, coverSize: 64)
+                    }
+                }
+            } header: {
+                HStack {
+                    Text(category.rawValue)
+                    if category == .albums && !extrasOn.isEmpty { Text("+ \(extrasOn.count) filter\(extrasOn.count == 1 ? "" : "s")").foregroundStyle(.tint) }
+                    Spacer()
+                    if isLoadingCategory && !shown.isEmpty { ProgressView().controlSize(.mini) }
+                }
+            }
         }
         .listStyle(.insetGrouped)
         .environment(\.swipeRowBackground, Color(.secondarySystemGroupedBackground))
     }
 
-    /// Wide photo across the top with the name over a soft fade.
-    private func hero(_ a: AOTYAPI.Artist, count: Int) -> some View {
+    private func hero(_ a: AOTYAPI.Artist) -> some View {
         ZStack(alignment: .bottomLeading) {
-            CachedImage(url: a.image.flatMap(URL.init(string:))) {
-                Rectangle().fill(.quaternary.opacity(0.5))
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 300)
-            .clipped()
+            CachedImage(url: a.image.flatMap(URL.init(string:))) { Rectangle().fill(.quaternary.opacity(0.5)) }
+                .frame(maxWidth: .infinity).frame(height: 300).clipped()
             LinearGradient(colors: [.clear, .black.opacity(0.75)], startPoint: .center, endPoint: .bottom)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(a.name).font(.largeTitle.bold()).foregroundStyle(.white).lineLimit(2).minimumScaleFactor(0.6)
-                Text("\(typeName) · \(count) release\(count == 1 ? "" : "s")")
-                    .font(.subheadline.weight(.medium)).foregroundStyle(.white.opacity(0.8))
-            }
-            .padding(16)
+            Text(a.name).font(.largeTitle.bold()).foregroundStyle(.white).lineLimit(2).minimumScaleFactor(0.6)
+                .padding(16)
         }
         .frame(height: 300)
         .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
+    private func scoreCell(_ label: String, _ score: Double?, _ sub: String?) -> some View {
+        VStack(spacing: 4) {
+            Text(label.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+            Text(score.map { String(Int($0.rounded())) } ?? "NR")
+                .font(.system(.title, design: .rounded).weight(.bold)).foregroundStyle(scoreColor(score))
+            if let sub { Text(sub).font(.caption2).foregroundStyle(.tertiary) }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder private func detailRow(_ d: AOTYAPI.Artist.Detail) -> some View {
+        let artistLinks = (d.links ?? []).filter { $0.href.contains("/artist/") }
+        VStack(alignment: .leading, spacing: 4) {
+            Text(d.label).font(.caption).foregroundStyle(.secondary)
+            if !artistLinks.isEmpty {
+                ChipLayout(spacing: 6) {
+                    ForEach(artistLinks, id: \.self) { l in
+                        Button(l.text) { push(ArtistRoute(path: URL(string: l.href, relativeTo: URL(string: "https://www.albumoftheyear.org"))?.path ?? l.href, name: l.text)) }
+                            .buttonStyle(.bordered).controlSize(.small)
+                    }
+                }
+            } else if d.label.lowercased().contains("website"), let l = d.links?.first,
+                      let u = URL(string: l.href.hasPrefix("//") ? "https:" + l.href : l.href) {
+                Button(d.value) { openURL(u) }
+            } else {
+                Text(d.value).font(.body)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    // MARK: Loading
+
     private func load() async {
         error = nil
         do {
-            var p = resolvedPath ?? path
+            var p = base ?? path
             if p == nil { p = await AOTYAPI.shared.findArtistPath(name: fallbackName) }
-            guard let base = p else { error = "Couldn't find \(fallbackName) on AOTY."; return }
-            resolvedPath = base
-            loading = artist != nil
-            defer { loading = false }
-            let cleanBase = base.components(separatedBy: "?").first ?? base
-            let a = try await AOTYAPI.shared.artist(path: type == "featured" ? cleanBase : cleanBase + "?type=" + type)
-            await ImageCache.shared.warm([a.image.flatMap(URL.init(string:))] + a.albums.prefix(6).map(\.coverURL))
-            if header == nil { header = a }
+            guard let b = p?.components(separatedBy: "?").first else { error = "Couldn't find \(fallbackName) on AOTY."; return }
+            base = b
+            let a = try await AOTYAPI.shared.artist(path: b)
+            await ImageCache.shared.warm([a.image.flatMap(URL.init(string:))])
             artist = a
-            Task { await ImageCache.shared.warm(a.albums.map(\.coverURL), timeout: 30) }
+            // The featured page already lists albums/EPs; use it until the full lists arrive.
+            let groupedLP = a.albums.filter { ($0.mediaType ?? "").lowercased().contains("album") || ($0.mediaType ?? "").lowercased() == "lp" }
+            if lists["lp"] == nil, !groupedLP.isEmpty { lists["lp"] = groupedLP }
+            await ensureLoaded()
         } catch is CancellationError {
         } catch { self.error = error.localizedDescription }
     }
+
+    /// Fetch AOTY's full list for the current category (and enabled extras) if we don't have it.
+    private func ensureLoaded() async {
+        guard let base else { return }
+        var types = [category.aotyType]
+        if category == .albums { types += Array(extrasOn) }
+        await withTaskGroup(of: Void.self) { group in
+            for t in types where !loadingTypes.contains(t) && (lists[t] == nil || (t == "lp" && !fullLP)) {
+                loadingTypes.insert(t)
+                group.addTask { @MainActor in
+                    if let a = try? await AOTYAPI.shared.artist(path: base + "?type=" + t) {
+                        lists[t] = a.albums
+                        if t == "lp" { fullLP = true }
+                        Task { await ImageCache.shared.warm(a.albums.prefix(12).map(\.coverURL), timeout: 30) }
+                    }
+                    loadingTypes.remove(t)
+                }
+            }
+        }
+    }
+    @State private var fullLP = false
 }

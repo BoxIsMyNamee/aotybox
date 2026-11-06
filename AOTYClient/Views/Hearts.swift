@@ -65,3 +65,44 @@ struct HeartButton: View {
         .help(limited ? "AOTY's hourly like limit reached" : "")
     }
 }
+
+/// Reviews: swipe left to heart (or un-heart). Swiping right does nothing.
+struct HeartSwipe: ViewModifier {
+    let reviewID: Int?
+    let liked: Bool
+    let likes: Int
+    var enabled = true
+    @ObservedObject private var store = LikeStore.shared
+
+    func body(content: Content) -> some View {
+        let isLiked = store.liked(reviewID, default: liked)
+        let count = store.count(reviewID, default: likes)
+        content.swipeRow(
+            leading: nil,
+            trailing: (enabled && reviewID != nil) ? SwipeAction(
+                icon: isLiked ? "heart.slash.fill" : "heart.fill",
+                title: isLiked ? "Unlike" : "Like",
+                color: .pink,
+                perform: { if let id = reviewID { Task { _ = await store.toggle(id: id, liked: isLiked, count: count) } } }
+            ) : nil
+        )
+    }
+}
+
+extension View {
+    func heartSwipe(reviewID: Int?, liked: Bool, likes: Int, enabled: Bool = true) -> some View {
+        modifier(HeartSwipe(reviewID: reviewID, liked: liked, likes: likes, enabled: enabled))
+    }
+}
+
+/// Text with every web link tappable.
+func linkified(_ s: String) -> AttributedString {
+    var a = AttributedString(s)
+    guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return a }
+    for m in detector.matches(in: s, range: NSRange(s.startIndex..., in: s)) {
+        guard let url = m.url, let r = Range(m.range, in: s), let ar = Range(r, in: a) else { continue }
+        a[ar].link = url
+        a[ar].underlineStyle = .single
+    }
+    return a
+}

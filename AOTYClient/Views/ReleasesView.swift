@@ -24,27 +24,24 @@ struct ReleasesView: View {
                 .padding(.top, 4)
                 .padding(.bottom, 12)
 
-                Picker("Feed", selection: $feed.animation(.easeInOut(duration: 0.25))) {
-                    ForEach(feeds) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.bottom, 8)
-
-                TabView(selection: $feed) {
+                // Every feed stays alive (instant switching); only the selected one shows.
+                ZStack {
                     ForEach(feeds) { f in
                         FeedList(feed: f, singles: singles)
                             .id("\(f.rawValue)-\(singles)")
-                            .tag(f)
+                            .opacity(f == feed ? 1 : 0)
+                            .allowsHitTesting(f == feed)
                     }
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
             }
-            .overlay(alignment: .bottomTrailing) {
-                // Floating Albums/Singles switch, bottom right above the tab bar.
-                KindToggle(singles: $singles, iconOnly: true)
-                    .padding(.trailing, 20)
-                    .padding(.bottom, 16)
+            .safeAreaInset(edge: .bottom) {
+                // Feed switcher + Albums/Singles, floating above the tab bar.
+                HStack(spacing: 12) {
+                    GlassSegmented(selection: $feed, items: feeds.map { ($0, $0.rawValue) })
+                    KindToggle(singles: $singles, iconOnly: true)
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
             }
             .navigationTitle(singles ? "Singles" : "Releases")
             .toolbar(.hidden, for: .navigationBar)
@@ -76,11 +73,14 @@ private struct FeedList: View {
             ForEach(albums) { album in
                 NavRow(value: album, artist: album.artist, album: album.title,
                        isSingle: singles || (album.mediaType?.lowercased().contains("single") ?? false), cover: album.coverURL) {
+                    let date = album.releaseDate ?? genreStore.date(for: album.slug)
                     if feed == .upcoming {
-                        AlbumRow(artist: album.artist, title: album.title, cover: album.coverURL, subtitle: album.releaseDate,
+                        AlbumRow(artist: album.artist, title: album.title, cover: album.coverURL, subtitle: date,
                                  coverSize: 84, genres: genreStore.label(for: album.slug))
                     } else {
-                        AlbumRow(album, coverSize: 84, genres: genreStore.label(for: album.slug))
+                        AlbumRow(artist: album.artist, title: album.title, cover: album.coverURL, subtitle: date,
+                                 critic: album.criticScore, user: album.userScore, mustHear: album.mustHear ?? false,
+                                 coverSize: 84, genres: genreStore.label(for: album.slug))
                     }
                 }
                     .onAppear {

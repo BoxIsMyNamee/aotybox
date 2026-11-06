@@ -10,7 +10,10 @@ struct AOTYClientApp: App {
 
     var body: some Scene {
         WindowGroup {
-            TabView(selection: $tab) {
+            TabView(selection: Binding(get: { tab }, set: { new in
+                if new == tab && new == 2 { NotificationCenter.default.post(name: .resetSearch, object: nil) }
+                tab = new
+            })) {
                 ReleasesView().tabItem { Label("Releases", systemImage: "square.stack") }.tag(0)
                 ChartsView().tabItem { Label("Charts", systemImage: "chart.bar") }.tag(1)
                 SearchView().tabItem { Label("Search", systemImage: "magnifyingglass") }.tag(2)
@@ -168,4 +171,9 @@ enum Appearance: String, CaseIterable, Identifiable {
             }
         }
     }
+}
+
+extension Notification.Name {
+    /// Tapping the Search tab while on it: back to a fresh search.
+    static let resetSearch = Notification.Name("resetSearch")
 }
