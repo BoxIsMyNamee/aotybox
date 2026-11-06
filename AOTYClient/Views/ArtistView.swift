@@ -11,7 +11,10 @@ struct ArtistView: View {
 
     private func typeKey(_ a: AlbumBlock) -> String {
         let t = (a.mediaType ?? a.releaseDate ?? "").lowercased()
-        for k in Self.order where t.contains(k) { return k }
+        // Most specific first, so "Live Albums" isn't filed under Albums.
+        for k in ["live", "compilation", "remix", "soundtrack", "mixtape", "single", "ep", "lp", "album"] where t.contains(k) {
+            return k == "album" ? "lp" : k
+        }
         return "other"
     }
     private func title(_ key: String) -> String {
@@ -40,14 +43,16 @@ struct ArtistView: View {
     }
 
     @ViewBuilder private func content(_ a: AOTYAPI.Artist) -> some View {
-        let groups = Dictionary(grouping: a.albums) { typeKey($0) == "album" ? "lp" : typeKey($0) }
+        var seen = Set<String>()
+        let unique = a.albums.filter { seen.insert($0.url).inserted }
+        let groups = Dictionary(grouping: unique) { typeKey($0) }
         let keys = (Self.order + ["other"]).filter { groups[$0] != nil }
         List {
             Section {
                 VStack(spacing: 10) {
                     Avatar(url: a.image.flatMap(URL.init(string:)), name: a.name, size: 120)
                     Text(a.name).font(.title2.bold()).multilineTextAlignment(.center)
-                    Text("\(a.albums.count) releases").font(.caption).foregroundStyle(.secondary)
+                    Text("\(unique.count) releases").font(.caption).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
                 .listRowBackground(Color.clear)
