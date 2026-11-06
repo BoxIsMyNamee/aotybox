@@ -7,6 +7,12 @@ struct AOTYClientApp: App {
     @State private var musicLinkFailed = false
     @State private var tab = UserDefaults.standard.integer(forKey: "initialTab")
 
+    init() {
+        // Proof keeps nothing between launches; clear what older builds saved.
+        UserDefaults.standard.removeObject(forKey: "proofDraft")
+        UserDefaults.standard.removeObject(forKey: "proofAlbum")
+    }
+
     var body: some Scene {
         WindowGroup {
             TabView(selection: $tab) {
@@ -31,6 +37,8 @@ struct AOTYClientApp: App {
 
 struct SettingsView: View {
     @State private var showLogin = false
+    @State private var cacheBytes: Int64?
+    @State private var clearing = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -64,8 +72,24 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Button("Clear cache") { Task { await AOTYAPI.shared.clearCache() } }
+                    LabeledContent("Cache size") {
+                        if let cacheBytes { Text(ByteCountFormatter.string(fromByteCount: cacheBytes, countStyle: .file)) }
+                        else { ProgressView().controlSize(.small) }
+                    }
+                    Button {
+                        Task {
+                            clearing = true
+                            await AOTYAPI.shared.clearCache()
+                            cacheBytes = await CacheSize.total()
+                            clearing = false
+                        }
+                    } label: {
+                        HStack { Text("Clear cache"); if clearing { Spacer(); ProgressView().controlSize(.small) } }
+                    }
+                    .disabled(clearing)
                     NavigationLink("Diagnostics") { DiagnosticsView() }
+                } footer: {
+                    Text("Album art, pages and lyrics saved on this phone so things load fast. Safe to clear; they'll download again.")
                 }
 
                 Section("About") {
@@ -74,10 +98,28 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .task { cacheBytes = await CacheSize.total() }
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .sheet(isPresented: $showLogin) {
                 AOTYWebSheet(url: AOTYSession.home, title: "AOTY").accentTint()
             }
         }
+    }
+}
+
+/// Everything in the app's Caches folder (image cache, page cache, web data caches).
+enum CacheSize {
+    static func total() async -> Int64 {
+        await Task.detached(priority: .utility) {
+            let fm = FileManager.default
+            guard let dir = fm.urls(for: .cachesDirectory, in: .userDomainMask).first,
+                  let e = fm.enumerator(at: dir, includingPropertiesForKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey]) else { return 0 }
+            var sum: Int64 = 0
+            for case let url as URL in e {
+                guard let v = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey]), v.isRegularFile == true else { continue }
+                sum += Int64(v.totalFileAllocatedSize ?? 0)
+            }
+            return sum
+        }.value
     }
 }

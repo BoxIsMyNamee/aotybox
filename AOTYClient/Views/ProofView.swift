@@ -5,8 +5,9 @@ import UIKit
 /// It never rewrites the review. Repeated words are counted on-device (exact);
 /// typos, punctuation, run-ons and comma issues come from the AI as pointers only.
 struct ProofView: View {
-    @AppStorage("proofDraft") private var text = ""
-    @AppStorage("proofAlbum") private var albumQuery = ""
+    // No memory: kept only while the app is running.
+    @State private var text = ""
+    @State private var albumQuery = ""
     @State private var matchedAlbum: String?
     @State private var trackIssues: [ProofIssue] = []
     @State private var report: ProofReport?
@@ -29,21 +30,21 @@ struct ProofView: View {
                         }
                         TextEditor(text: $text)
                             .focused($editing)
-                            .frame(minHeight: 180)
+                            .frame(height: 150)
                             .scrollContentBackground(.hidden)
                     }
                     HStack {
-                        Button { paste() } label: { Label("Paste", systemImage: "doc.on.clipboard") }
-                            .buttonStyle(.bordered)
+                        Button { paste() } label: { Label("Paste", systemImage: "doc.on.clipboard").lineLimit(1).fixedSize() }
+                            .buttonStyle(.bordered).controlSize(.small)
                         if !text.isEmpty {
                             Button(role: .destructive) { text = ""; report = nil; stats = nil; rawReply = nil; error = nil; trackIssues = []; matchedAlbum = nil } label: {
-                                Label("Clear", systemImage: "xmark")
+                                Label("Clear", systemImage: "xmark").lineLimit(1).fixedSize()
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.bordered).controlSize(.small)
                         }
                         Spacer()
                         if !text.isEmpty {
-                            Text("\(ProofStats.words(in: text).count) words").font(.caption).foregroundStyle(.secondary)
+                            Text("\(ProofStats.words(in: text).count) words").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }
                 } footer: {
