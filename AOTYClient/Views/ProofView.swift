@@ -22,20 +22,20 @@ struct ProofView: View {
         NavigationStack {
             List {
                 Section {
-                    ZStack(alignment: .topLeading) {
-                        if text.isEmpty {
-                            Text("Paste your review here…")
-                                .foregroundStyle(.tertiary)
-                                .padding(.top, 8).padding(.leading, 5)
-                        }
-                        TextEditor(text: $text)
-                            .focused($editing)
-                            .frame(height: 150)
-                            .scrollContentBackground(.hidden)
-                    }
+                    TextField("Paste your review here…", text: $text, axis: .vertical)
+                        .lineLimit(7, reservesSpace: true)
+                        .focused($editing)
+                        .font(.callout)
                     HStack {
-                        Button { paste() } label: { Label("Paste", systemImage: "doc.on.clipboard").lineLimit(1).fixedSize() }
-                            .buttonStyle(.bordered).controlSize(.small)
+                        PasteButton(payloadType: String.self) { strings in
+                            guard let s = strings.first, !s.isEmpty else { return }
+                            Task { @MainActor in
+                                text = s; report = nil; stats = nil; rawReply = nil; error = nil; trackIssues = []
+                            }
+                        }
+                        .labelStyle(.titleAndIcon)
+                        .buttonBorderShape(.capsule)
+                        .controlSize(.small)
                         if !text.isEmpty {
                             Button(role: .destructive) { text = ""; report = nil; stats = nil; rawReply = nil; error = nil; trackIssues = []; matchedAlbum = nil } label: {
                                 Label("Clear", systemImage: "xmark").lineLimit(1).fixedSize()
@@ -171,12 +171,6 @@ struct ProofView: View {
     private func mergedTrackIssues(_ r: ProofReport) -> [ProofIssue] {
         var seen = Set(trackIssues.map { $0.text.lowercased() })
         return trackIssues + r.trackNames.filter { seen.insert($0.text.lowercased()).inserted }
-    }
-
-    private func paste() {
-        if let s = UIPasteboard.general.string, !s.isEmpty {
-            text = s; report = nil; stats = nil; rawReply = nil; error = nil; trackIssues = []
-        }
     }
 
     private func check() async {
