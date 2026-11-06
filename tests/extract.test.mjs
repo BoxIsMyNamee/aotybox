@@ -18,6 +18,9 @@ const pages = [
   ["userReviews", "/album/2915-outkast-aquemini/user-reviews/"],
   ["userReviews", "/album/1998-kanye-west-my-beautiful-dark-twisted-fantasy/user-reviews/"],
   ["artist", "/artist/183-kanye-west/"],
+  ["artist", "/artist/183-kanye-west/?type=single"],
+  ["artist", "/artist/183-kanye-west/?type=reissue"],
+  ["artist", "/artist/183-kanye-west/?type=ep"],
   ["artist", "/artist/2049-outkast/"],
 ];
 
@@ -69,7 +72,8 @@ for (const [kind, path] of pages) {
     console.log(`  name ${JSON.stringify(out.name)}, image ${out.image ? "yes" : "no"}, ${out.albums.length} albums, types ${JSON.stringify(types)}`);
     console.log("  first:", JSON.stringify(out.albums[0]));
     check(out.name && out.name.length < 60, "artist name");
-    check(out.albums.length >= 5, "artist discography");
+    check(out.albums.length >= 1, "artist discography");
+    console.log("  sample:", JSON.stringify(out.albums.slice(0, 3).map(a => [a.title, a.url, a.mediaType, a.cover ? "cover" : "NOCOVER"])));
     console.log("  info:", JSON.stringify({ c: out.criticScore, cc: out.criticCount, u: out.userScore, uc: out.userCount, f: out.followers, d: out.details }).slice(0, 600));
     check(out.criticScore > 0 && out.userCount > 1000, "artist score box");
     check((out.details || []).some(d => /genre/i.test(d.label)), "artist details");
