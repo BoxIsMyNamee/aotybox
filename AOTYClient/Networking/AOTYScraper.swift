@@ -89,7 +89,8 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         do {
             let data = try await serialized { try await self.withTimeout(30) { try await self.fetchJSON(path: path, kind: kind) } }
             let value = try JSONDecoder().decode(T.self, from: data)
-            store(path, data)
+            // Never save an empty list (it may just not have loaded yet).
+            if !String(decoding: data.prefix(4000), as: UTF8.self).contains("\"albums\":[]") { store(path, data) }
             return value
         } catch {
             if let stale = cached(path, allowStale: true), let value = try? JSONDecoder().decode(T.self, from: stale) {
@@ -210,7 +211,16 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
 
         // Attempt 1: same-origin fetch from the hidden web view.
         try await ensureOrigin()
-        if case let .ok(data) = try await runFetch(path: path, kind: kind) { return data }
+        if case let .ok(data) = try await runFetch(path: path, kind: kind) {
+            // A filtered artist list came back empty: load the page for real (in case the list
+            // is filled in by the site's own scripts) before believing it's empty.
+            if kind == .artist, path.contains("?type="), String(decoding: data, as: UTF8.self).contains("\"albums\":[]") {
+                try? await navigate(to: url)
+                originReady = true
+                if case let .ok(d2) = try await runOnLoadedPage(kind: kind, path: path, waitForBlocks: true) { return d2 }
+            }
+            return data
+        }
 
         // Challenged on fetch: try loading the page for real in the hidden view
         // (a full navigation sometimes passes where fetch() doesn't).
@@ -248,9 +258,10 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         return try await evaluate(body, args: ["path": path, "kind": kind.rawValue], path: path)
     }
 
-    private func runOnLoadedPage(kind: Kind, path: String) async throws -> Outcome {
+    private func runOnLoadedPage(kind: Kind, path: String, waitForBlocks: Bool = false) async throws -> Outcome {
         let body = extractorJS + """
 
+        if (wait) { for (let i = 0; i < 20 && !document.querySelector(".albumBlock"); i++) await new Promise(r => setTimeout(r, 200)); }
         const html = document.documentElement.outerHTML;
         if (aotyIsChallenge(html, 200)) return JSON.stringify({ __challenge: true });
         const out = aotyExtract(kind, html, location.href);
@@ -258,7 +269,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         if (n === 0 && (kind === "blocks" || kind === "chart" || kind === "album")) return JSON.stringify({ __empty: "Page: " + (document.title || "untitled").trim().slice(0, 60) + " · " + html.length + " bytes (loaded)" });
         return JSON.stringify(out);
         """
-        return try await evaluate(body, args: ["kind": kind.rawValue], path: path)
+        return try await evaluate(body, args: ["kind": kind.rawValue, "wait": waitForBlocks], path: path)
     }
 
     private func evaluate(_ body: String, args: [String: Any], path: String) async throws -> Outcome {

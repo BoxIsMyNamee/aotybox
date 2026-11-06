@@ -189,7 +189,8 @@ struct ArtistView: View {
         do {
             var p = base ?? path
             if p == nil { p = await AOTYAPI.shared.findArtistPath(name: fallbackName) }
-            guard let b = p?.components(separatedBy: "?").first else { error = "Couldn't find \(fallbackName) on AOTY."; return }
+            guard var b = p?.components(separatedBy: "?").first else { error = "Couldn't find \(fallbackName) on AOTY."; return }
+            if !b.hasSuffix("/") { b += "/" }    // "/artist/123-name?type=ep" without the slash doesn't load the list
             base = b
             let a = try await AOTYAPI.shared.artist(path: b)
             await ImageCache.shared.warm([a.image.flatMap(URL.init(string:))])

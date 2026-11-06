@@ -1,3 +1,4 @@
+// parser rev 2026-11-06b
 // AOTY page extractors. Run inside the app's hidden WKWebView (same-origin with
 // albumoftheyear.org) and in CI under linkedom for tests.
 // Selectors ported from edideaur/AOTY-api's scrapers.

@@ -172,8 +172,10 @@ actor AOTYAPI {
 
     /// An artist page: "/artist/183-kanye-west/".
     func artist(path: String) async throws -> Artist {
-        let p = (path.contains("?") || path.hasSuffix("/")) ? path : path + "/"
-        return try await device(p, .artist, Artist.self)
+        // Always "/artist/123-name/" (+ "?type=…"): without the slash AOTY drops the filter.
+        var parts = path.components(separatedBy: "?")
+        if !parts[0].hasSuffix("/") { parts[0] += "/" }
+        return try await device(parts.joined(separator: "?"), .artist, Artist.self)
     }
 
     /// The full text of a review whose preview AOTY cut short.
