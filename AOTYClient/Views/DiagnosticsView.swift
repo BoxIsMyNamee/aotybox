@@ -28,14 +28,14 @@ struct DiagnosticsView: View {
                 Text("Loads each page the app uses and reports what came back. Takes a few seconds.")
             }
             Section {
-                Button(capturing ? "Capturing…" : "Capture heart button info") { Task { await captureHeart() } }
+                Button(capturing ? "Capturing…" : "Capture AOTY button info") { Task { await captureHeart() } }
                     .disabled(capturing)
                 if let heartInfo {
                     Text(heartInfo.prefix(1500) + (heartInfo.count > 1500 ? "…" : ""))
                         .font(.caption2.monospaced()).textSelection(.enabled)
                 }
             } header: {
-                Text("Hearts")
+                Text("AOTY buttons")
             } footer: {
                 Text(heartInfo == nil ? "Reads how AOTY's like button works while you're signed in. The result is copied so you can paste it to Claude. It only contains page code, no password."
                                       : "Copied to clipboard. Paste it into the chat.")
@@ -64,12 +64,16 @@ struct DiagnosticsView: View {
           const t = s.textContent; const re = /like/gi; let m, n = 0;
           while ((m = re.exec(t)) && n < 4) { out.push("INLINE: " + t.slice(Math.max(0, m.index - 300), m.index + 700)); re.lastIndex = m.index + 700; n++; }
         });
-        const srcs = [...doc.querySelectorAll("script[src]")].map(s => s.getAttribute("src")).filter(s => s && s.startsWith("/scripts/") && !s.includes("vendor"));
+        const artistPage = await (await fetch("/artist/183-kanye-west/", { credentials: "include" })).text();
+        const adoc = new DOMParser().parseFromString(artistPage, "text/html");
+        const credit = adoc.querySelector(".artistCreditList");
+        out.push("CREDIT BUTTON: " + (credit ? credit.outerHTML : "none"));
+        const srcs = [...new Set([...doc.querySelectorAll("script[src]"), ...adoc.querySelectorAll("script[src]")].map(s => s.getAttribute("src")))].filter(s => s && s.startsWith("/scripts/") && !s.includes("vendor"));
         out.push("SCRIPTS: " + srcs.join(" "));
         for (const src of srcs) {
           const js = await (await fetch(src, { credentials: "include" })).text();
-          const re = /like/gi; let m, n = 0;
-          while ((m = re.exec(js)) && n < 8) { out.push("JS " + src + ": " + js.slice(Math.max(0, m.index - 300), m.index + 700)); re.lastIndex = m.index + 700; n++; }
+          const re = /artistCreditList|insertReviewLike/gi; let m, n = 0;
+          while ((m = re.exec(js)) && n < 6) { out.push("JS " + src + ": " + js.slice(Math.max(0, m.index - 300), m.index + 700)); re.lastIndex = m.index + 700; n++; }
         }
         return out.join("\n\n").slice(0, 30000);
         """#
