@@ -13,5 +13,4 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm install --no-save linkedom@0.18
-      - run: node tests/probe.mjs || true
       - run: node tests/extract.test.mjs
