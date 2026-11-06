@@ -108,6 +108,8 @@ struct ProfileReview: Decodable, Identifiable, Hashable {
     let isTruncated: Bool?
     let url: String?
     let likes: Int?
+    var liked: Bool? = nil
+    var reviewId: Int? = nil
     let date: String?
     var slug: String? { albumUrl.flatMap(AlbumSlug.from) }
     var coverURL: URL? { cover.flatMap(URL.init(string:)) }
@@ -163,6 +165,7 @@ struct UserReview: Decodable, Identifiable, Hashable {
     let isTruncated: Bool?
     let url: String?
     let likes: Int?
+    var liked: Bool? = nil
     let date: String?
     var avatarURL: URL? { avatar.flatMap(URL.init(string:)) }
     var id: String { reviewId.map(String.init) ?? username + (date ?? "") }

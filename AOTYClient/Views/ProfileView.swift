@@ -344,7 +344,7 @@ struct ProfileReviewRow: View {
                         .disabled(loadingFull)
                     }
                     Spacer()
-                    if let l = review.likes, l > 0 { Label("\(l)", systemImage: "heart").font(.caption).foregroundStyle(.tertiary) }
+                    HeartButton(reviewID: review.reviewId ?? Int(review.id), liked: review.liked ?? false, likes: review.likes ?? 0)
                 }
                 .font(.caption.weight(.semibold))
                 .buttonStyle(.borderless)

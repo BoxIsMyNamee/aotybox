@@ -63,6 +63,11 @@ struct AlbumDetailView: View {
         if let album, album.tracklist?.isEmpty ?? true, fallbackTracks.isEmpty { await loadFallbackTracks(album) }
     }
 
+    private func artistPath(_ a: AlbumDetail) -> String? {
+        guard let s = a.artistUrl, let u = URL(string: s, relativeTo: URL(string: "https://www.albumoftheyear.org")) else { return nil }
+        return u.path.hasPrefix("/artist/") ? u.path : nil
+    }
+
     private func isSingle(_ a: AlbumDetail) -> Bool { (a.format ?? "").lowercased().contains("single") }
 
     private func tracks(_ a: AlbumDetail) -> [Track] {
@@ -96,7 +101,10 @@ struct AlbumDetailView: View {
                         .accessibilityHint("Hold to ask the AI about this \(isSingle(a) ? "single" : "album")")
                     VStack(spacing: 4) {
                         Text(a.title).font(.title2.bold()).multilineTextAlignment(.center)
-                        Text(a.artist).font(.headline).foregroundStyle(.secondary)
+                        Button { push(ArtistRoute(path: artistPath(a) ?? "", name: a.artist)) } label: {
+                            Text(a.artist).font(.headline).foregroundStyle(.tint)
+                        }
+                        .buttonStyle(.plain)
                         Text([a.datePublished, a.format, a.label].compactMap { $0 }.joined(separator: " · "))
                             .font(.caption).foregroundStyle(.tertiary).multilineTextAlignment(.center)
                     }
@@ -154,7 +162,7 @@ struct AlbumDetailView: View {
             if !trackList.isEmpty {
                 Section {
                     ForEach(showAllTracks ? trackList : Array(trackList.prefix(8))) { t in
-                        NavRow(value: SongRoute(artist: a.artist, title: t.title, album: a.title, cover: a.coverURL),
+                        NavRow(value: SongRoute(artist: a.artist, title: t.title, album: a.title, cover: a.coverURL, artistPath: artistPath(a)),
                                artist: a.artist, album: a.title, song: t.title, appleMusicURL: appleMusicLink(a), cover: a.coverURL) {
                             HStack {
                                 Text("\(t.number)").foregroundStyle(.secondary).monospacedDigit().frame(width: 24, alignment: .trailing)

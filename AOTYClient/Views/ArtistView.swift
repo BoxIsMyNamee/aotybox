@@ -2,12 +2,16 @@ import SwiftUI
 
 /// Native artist page: photo, name, and the discography grouped by type (LPs, EPs, singles…).
 struct ArtistView: View {
-    let path: String
+    let path: String?
     let fallbackName: String
     @State private var artist: AOTYAPI.Artist?
     @State private var error: String?
+    @State private var filter: String = "all"
+    @AppStorage("artistHideEditions") private var hideEditions = false
 
-    private static let order = ["lp", "album", "ep", "mixtape", "single", "compilation", "live", "remix", "soundtrack"]
+    private static let editionPattern = #"(?i)\b(deluxe|remaster(ed)?|anniversary|expanded|edition|reissue|bonus)\b"#
+
+    private static let order = ["lp", "ep", "mixtape", "single", "compilation", "live", "remix", "soundtrack"]
 
     private func typeKey(_ a: AlbumBlock) -> String {
         let t = (a.mediaType ?? a.releaseDate ?? "").lowercased()
@@ -39,20 +43,46 @@ struct ArtistView: View {
         }
         .navigationTitle(artist?.name ?? fallbackName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let artist {
+                Menu {
+                    Picker("Type", selection: $filter) {
+                        Text("All").tag("all")
+                        ForEach(keys(for: artist), id: \.self) { k in Text("\(title(k)) (\(groups(for: artist)[k]?.count ?? 0))").tag(k) }
+                    }
+                    Toggle("Hide deluxe & reissues", isOn: $hideEditions)
+                } label: {
+                    Image(systemName: filter == "all" && !hideEditions ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                }
+            }
+        }
         .task { if artist == nil { await load() } }
     }
 
-    @ViewBuilder private func content(_ a: AOTYAPI.Artist) -> some View {
+    private func unique(_ a: AOTYAPI.Artist) -> [AlbumBlock] {
         var seen = Set<String>()
-        let unique = a.albums.filter { seen.insert($0.url).inserted }
-        let groups = Dictionary(grouping: unique) { typeKey($0) }
-        let keys = (Self.order + ["other"]).filter { groups[$0] != nil }
+        return a.albums.filter { seen.insert($0.url).inserted }
+            .filter { !hideEditions || $0.title.range(of: Self.editionPattern, options: .regularExpression) == nil }
+    }
+    private func groups(for a: AOTYAPI.Artist) -> [String: [AlbumBlock]] { Dictionary(grouping: unique(a)) { typeKey($0) } }
+    private func keys(for a: AOTYAPI.Artist) -> [String] {
+        let g = groups(for: a)
+        return (Self.order + ["other"]).filter { g[$0] != nil }
+    }
+
+    @ViewBuilder private func content(_ a: AOTYAPI.Artist) -> some View {
+        let unique = unique(a)
+        let groups = groups(for: a)
+        let keys = keys(for: a).filter { filter == "all" || $0 == filter }
         List {
             Section {
                 VStack(spacing: 10) {
                     Avatar(url: a.image.flatMap(URL.init(string:)), name: a.name, size: 120)
                     Text(a.name).font(.title2.bold()).multilineTextAlignment(.center)
                     Text("\(unique.count) releases").font(.caption).foregroundStyle(.secondary)
+                    if filter != "all" || hideEditions {
+                        Button("Clear filters") { filter = "all"; hideEditions = false }.font(.caption.weight(.semibold))
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .listRowBackground(Color.clear)
@@ -75,7 +105,10 @@ struct ArtistView: View {
     private func load() async {
         error = nil
         do {
-            let a = try await AOTYAPI.shared.artist(path: path)
+            var p = path
+            if p == nil { p = await AOTYAPI.shared.findArtistPath(name: fallbackName) }
+            guard let p else { error = "Couldn't find \(fallbackName) on AOTY."; return }
+            let a = try await AOTYAPI.shared.artist(path: p)
             await ImageCache.shared.warm([a.image.flatMap(URL.init(string:))] + a.albums.prefix(6).map(\.coverURL))
             artist = a
             Task { await ImageCache.shared.warm(a.albums.map(\.coverURL), timeout: 30) }

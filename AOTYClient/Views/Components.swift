@@ -143,9 +143,7 @@ struct UserReviewRow: View {
                 Text(review.text).font(.callout).foregroundStyle(.secondary).lineLimit(lineLimit)
             }
             HStack(spacing: 14) {
-                if let likes = review.likes, likes > 0 {
-                    Label("\(likes)", systemImage: "heart").font(.caption).foregroundStyle(.tertiary)
-                }
+                HeartButton(reviewID: review.reviewId, liked: review.liked ?? false, likes: review.likes ?? 0)
                 if review.isTruncated == true || (lineLimit != nil && review.text.count > 280) {
                     Text("Read full review").font(.caption.weight(.semibold)).foregroundStyle(.tint)
                 }

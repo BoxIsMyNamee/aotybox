@@ -226,5 +226,20 @@ for (const [kind, path] of pages) {
   check(!hit.includes("menu menu"), "nav excluded");
 }
 
+// Signed-in review markup (from the user's capture): liked state and review id
+{
+  console.log("\n=== review like markup (synthetic)");
+  const html = `<html><body><div class="albumReviewRow" id="review_997831"><div class="userReviewName"><a href="/user/rollo-p/">Rollo_P</a></div>
+    <div class="rating">99</div><div class="albumReviewText user"><p>Great.</p></div>
+    <div class="albumReviewLinks user"><div class="actionContainer"><div class="review_like liked" id="review_like_997831"><button class="likeUserReview" data-review-id="997831"><span class="heartLiked"><i class="fas fa-heart"></i></span></button></div>
+    <div class="review_likes_container" id="review_likes_997831"><div class="review_likes"><button class="showUserReviewLikes" data-review-id="997831">185</button></div></div></div></div></div></body></html>`;
+  const out = aotyExtract("userReviews", html, "x");
+  const r = out.reviews[0] || {};
+  console.log("  ", JSON.stringify({ id: r.reviewId, liked: r.liked, likes: r.likes, slug: r.userSlug }));
+  check(r.reviewId === 997831 && r.liked === true && r.likes === 185 && r.userSlug === "rollo-p", "liked + id + count + slug");
+  const s2 = aotyExtract("artistSearch", `<a href="/artist/183-kanye-west/">Kanye West</a><a href="/artist/183-kanye-west/">x</a><a href="/artist/9-other/">y</a>`, "x");
+  check(s2.paths[0] === "/artist/183-kanye-west/" && s2.paths.length === 2, "artist search paths");
+}
+
 console.log(`\n${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

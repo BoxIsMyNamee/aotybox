@@ -245,6 +245,7 @@ function aotyUserReview(el) {
     isTruncated: /read more\s*$/i.test(raw),
     url: revLink ? aotyAbs(revLink) : null,
     likes: aotyCount(aotyTxt(el.querySelector(".review_likes"))),
+    liked: !!el.querySelector(".review_like.liked, .heartLiked"),
     date: aotyTxt(el.querySelector(".review_date")).replace(/\*$/, "").trim() || null
   };
 }
@@ -590,6 +591,8 @@ function aotyProfileReviewRows(doc) {
       isTruncated: /read more\s*$/i.test(raw),
       url: reviewLink ? aotyAbs(reviewLink) : null,
       likes: aotyCount(aotyTxt(el.querySelector(".review_likes"))),
+      liked: !!el.querySelector(".review_like.liked, .heartLiked"),
+      reviewId: (function () { var b = el.querySelector("[data-review-id]"); return b ? parseInt(b.getAttribute("data-review-id"), 10) : (idm ? parseInt(idm[1], 10) : null); })(),
       date: aotyTxt(el.querySelector(".review_date")).replace(/\*$/, "").trim() || null
     };
     if (item.album || item.text) out.push(item);
@@ -747,6 +750,15 @@ function aotyExtract(kind, html, pageURL) {
   if (kind === "follows") return aotyFollows(doc, false);
   if (kind === "textBlocks") return aotyTextBlocks(doc);
   if (kind === "artist") return aotyArtist(doc, pageURL);
+  if (kind === "artistSearch") {
+    var links = doc.querySelectorAll("a[href^='/artist/'], a[href*='albumoftheyear.org/artist/']");
+    var paths = [];
+    for (var q = 0; q < links.length; q++) {
+      var m = (links[q].getAttribute("href") || "").match(/\/artist\/\d+[^\/?#]*\/?/);
+      if (m && paths.indexOf(m[0]) < 0) paths.push(m[0]);
+    }
+    return { paths: paths.slice(0, 5) };
+  }
   if (kind === "userReviewList") {
     var rv = aotyProfileReviewRows(doc);
     return { reviews: rv };

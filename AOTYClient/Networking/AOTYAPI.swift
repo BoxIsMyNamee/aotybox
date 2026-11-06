@@ -116,6 +116,29 @@ actor AOTYAPI {
 
     struct Artist: Decodable { let name: String; let image: String?; let score: Double?; let albums: [AlbumBlock] }
 
+    enum LikeResult { case ok, limited, failed }
+
+    /// Heart / un-heart a user review (same requests AOTY's own button sends, using your session).
+    func setReviewLike(_ reviewID: Int, liked: Bool) async -> LikeResult {
+        let js = """
+        const r = await fetch(endpoint, { method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest" },
+          body: "reviewID=" + encodeURIComponent(id) });
+        return r.status + "|" + (await r.text()).slice(0, 200);
+        """
+        let endpoint = liked ? "/scripts/insertReviewLike.php" : "/scripts/deleteReviewLike.php"
+        guard let out = try? await AOTYScraper.shared.runJS(js, args: ["endpoint": endpoint, "id": String(reviewID)]) else { return .failed }
+        if out.contains("Limited") { return .limited }
+        return out.hasPrefix("200") ? .ok : .failed
+    }
+
+    /// Best guess at an artist's AOTY page from their name.
+    func findArtistPath(name: String) async -> String? {
+        let q = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
+        struct R: Decodable { let paths: [String] }
+        return (try? await device("/search/artists/?q=\(q)", .artistSearch, R.self))?.paths.first
+    }
+
     /// An artist page: "/artist/183-kanye-west/".
     func artist(path: String) async throws -> Artist {
         try await device(path.hasSuffix("/") ? path : path + "/", .artist, Artist.self)

@@ -7,6 +7,8 @@ struct SongView: View {
     let title: String
     let album: String?
     let albumCover: URL?
+    var artistPath: String? = nil
+    @Environment(\.push) private var pushArtist
 
     enum Tab: String, CaseIterable, Identifiable {
         case lyrics = "Lyrics", about = "About", comments = "Comments", ask = "Ask AI"
@@ -69,7 +71,10 @@ struct SongView: View {
             Cover(url: song?.art ?? hit?.art ?? albumCover, size: 84)
             VStack(alignment: .leading, spacing: 3) {
                 Text(song?.title ?? title).font(.title3.bold()).lineLimit(2)
-                Text(song?.artist ?? artist).font(.subheadline).foregroundStyle(.secondary)
+                Button { pushArtist(ArtistRoute(path: artistPath ?? "", name: artist)) } label: {
+                    Text(song?.artist ?? artist).font(.subheadline).foregroundStyle(.tint)
+                }
+                .buttonStyle(.plain)
                 if let a = song?.album ?? album { Text(a).font(.caption).foregroundStyle(.tertiary) }
                 if let d = song?.releaseDate { Text(d).font(.caption).foregroundStyle(.tertiary) }
             }
