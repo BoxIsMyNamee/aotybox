@@ -17,7 +17,9 @@ struct GlassSegmented<T: Hashable>: View {
                     .font(.subheadline.weight(on ? .semibold : .medium))
                     .foregroundStyle(on ? Color.primary : Color.secondary)
                     .lineLimit(1)
-                    .padding(.horizontal, 14)
+                    .minimumScaleFactor(0.8)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 6)
                     .frame(maxWidth: .infinity, minHeight: 40)
                     .background {
                         if on {
