@@ -86,6 +86,8 @@ struct ProfileView: View {
 struct UserProfileView: View {
     let username: String
     var fallbackAvatar: String? = nil
+    /// The name as shown where you tapped (keeps its real capitals while the profile loads).
+    var fallbackName: String? = nil
     var isMe: Bool = false
     var onChangeUser: (() -> Void)? = nil
     var onAutoDetect: (() -> Void)? = nil
@@ -103,6 +105,13 @@ struct UserProfileView: View {
         List {
             header
 
+            // One spinner until the profile is in, instead of sections popping in one by one.
+            if profile == nil && error == nil {
+                Section { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 30) }
+                    .listRowBackground(Color.clear)
+            }
+
+            if profile != nil || error != nil {
             if let reviews = profile?.reviews, !reviews.isEmpty {
                 Section("Reviews") {
                     ForEach(reviews.prefix(5)) { r in ProfileReviewRow(review: r, own: isMe) }
@@ -133,6 +142,7 @@ struct UserProfileView: View {
             Section {
                 Button { showFullProfile = true } label: { Label("Open full profile on AOTY", systemImage: "safari") }
             }
+            }
         }
         .listStyle(.insetGrouped)
         .environment(\.swipeRowBackground, Color(.secondarySystemGroupedBackground))
@@ -159,9 +169,11 @@ struct UserProfileView: View {
 
     /// "harbor 🎧 (HarperSeemsCool)" → name "harbor 🎧", handle "(HarperSeemsCool)".
     static func splitName(_ full: String) -> (name: String, handle: String?) {
-        guard full.hasSuffix(")"), let open = full.range(of: " (", options: .backwards) else { return (full, nil) }
-        let name = String(full[..<open.lowerBound]).trimmingCharacters(in: .whitespaces)
-        return name.isEmpty ? (full, nil) : (name, String(full[open.upperBound...]).dropLast().description.isEmpty ? nil : "(" + String(full[open.upperBound...]))
+        let clean = full.replacingOccurrences(of: "\u{00A0}", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let m = clean.firstMatch(of: /^([\s\S]*?)\s*\(([^()]+)\)\s*$/) else { return (clean, nil) }
+        let name = String(m.1).trimmingCharacters(in: .whitespacesAndNewlines)
+        let handle = String(m.2).trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty || handle.isEmpty ? (clean, nil) : (name, "(" + handle + ")")
     }
 
     @ViewBuilder private var header: some View {
@@ -169,7 +181,7 @@ struct UserProfileView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 16) {
                     Avatar(url: (profile?.avatar ?? fallbackAvatar).flatMap(URL.init(string:)), name: username, size: 80)
-                    let full = profile?.displayName ?? username
+                    let full = profile?.displayName ?? fallbackName ?? username
                     let parts = Self.splitName(full)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(parts.name)
@@ -222,15 +234,17 @@ struct UserProfileView: View {
                 + (p.reviews ?? []).prefix(5).map(\.coverURL)
                 + (p.recent ?? []).prefix(3).map(\.coverURL)
                 + (p.following ?? []).prefix(8).map { $0.avatar.flatMap(URL.init(string:)) })
-            profile = p
-            if let recent = p.recent, !recent.isEmpty {
-                ratings = recent           // AOTY's own mixed order
-            } else {
-                ratings = (try? await AOTYAPI.shared.userRatings(username: username, page: 1)) ?? []
+            // Gather everything first, then show it all at once (no sections popping in).
+            var newRatings = p.recent ?? []          // AOTY's own mixed order
+            if newRatings.isEmpty { newRatings = (try? await AOTYAPI.shared.userRatings(username: username, page: 1)) ?? [] }
+            var newFriends = excludeSelf(p.following ?? [])
+            if newFriends.isEmpty { newFriends = excludeSelf((try? await AOTYAPI.shared.following(username: username)) ?? []) }
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) {
+                profile = p
+                ratings = newRatings
+                friends = newFriends
             }
-            let preview = excludeSelf(p.following ?? [])
-            if !preview.isEmpty { friends = preview }
-            else { friends = excludeSelf((try? await AOTYAPI.shared.following(username: username)) ?? []) }
         } catch {
             self.error = error.localizedDescription
         }
