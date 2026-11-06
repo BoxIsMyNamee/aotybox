@@ -14,10 +14,12 @@ targets:
     platform: iOS
     sources:
       - path: AOTYClient
-        excludes: ["Scripts/**"]
+        excludes: ["Scripts/**", "Art/**"]
       - path: AOTYClient/Scripts/extract.js
         buildPhase: resources
       - path: AOTYClient/Scripts/genius.js
+        buildPhase: resources
+      - path: AOTYClient/Art/aoty-logo@3x.png
         buildPhase: resources
     settings:
       base:

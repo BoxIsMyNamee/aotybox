@@ -32,7 +32,7 @@ struct ReleasesView: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
             }
-            .tabTitle(singles ? "Singles" : "Releases")
+            .tabLogo(backTitle: singles ? "Singles" : "Releases")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     KindToggle(singles: $singles)
@@ -124,7 +124,7 @@ struct KindToggle: View {
             UISelectionFeedbackGenerator().selectionChanged()
             withAnimation { singles.toggle() }
         } label: {
-            Label(singles ? "Singles" : "Albums", systemImage: singles ? "music.note" : "square.stack")
+            Label(singles ? "Singles" : "Albums", systemImage: singles ? "square.stack" : "music.note")
                 .labelStyle(.titleAndIcon)
                 .contentTransition(.symbolEffect(.replace))
         }
