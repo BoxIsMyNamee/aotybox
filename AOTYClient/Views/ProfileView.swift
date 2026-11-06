@@ -157,13 +157,29 @@ struct UserProfileView: View {
         .task { if profile == nil && ratings.isEmpty { await load(force: false) } }
     }
 
+    /// "harbor 🎧 (HarperSeemsCool)" → name "harbor 🎧", handle "(HarperSeemsCool)".
+    static func splitName(_ full: String) -> (name: String, handle: String?) {
+        guard full.hasSuffix(")"), let open = full.range(of: " (", options: .backwards) else { return (full, nil) }
+        let name = String(full[..<open.lowerBound]).trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? (full, nil) : (name, String(full[open.upperBound...]).dropLast().description.isEmpty ? nil : "(" + String(full[open.upperBound...]))
+    }
+
     @ViewBuilder private var header: some View {
         Section {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 16) {
                     Avatar(url: (profile?.avatar ?? fallbackAvatar).flatMap(URL.init(string:)), name: username, size: 80)
-                    Text(profile?.displayName ?? username).font(.title3.bold()).lineLimit(3)
-                        .foregroundStyle(profile?.nameColor.map { Color(hex: $0) } ?? .primary)
+                    let full = profile?.displayName ?? username
+                    let parts = Self.splitName(full)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(parts.name)
+                            .font(.system(.title, design: .default).weight(.bold))
+                            .lineLimit(2).minimumScaleFactor(0.7)
+                            .foregroundStyle(profile?.nameColor.map { Color(hex: $0) } ?? .primary)
+                        if let handle = parts.handle {
+                            Text(handle).font(.subheadline.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
                 }
                 if let about = profile?.about, !about.isEmpty {
                     Text(linkified(about))
