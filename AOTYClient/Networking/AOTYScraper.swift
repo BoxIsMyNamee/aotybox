@@ -50,6 +50,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         }
         super.init()
         webView.navigationDelegate = self
+        pruneOldCache()
     }
 
     enum Kind: String { case blocks, chart, album, userReviews, me, profile, follows, userReviewList, textBlocks, artist, artistSearch }
@@ -344,9 +345,25 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
 
     // MARK: - Cache
 
+    /// Saved pages are tied to the parser version, so an app update never shows pages read the old way.
+    private lazy var parserVersion: String = {
+        var h: UInt64 = 1469598103934665603             // FNV-1a over extract.js
+        for b in extractorJS.utf8 { h = (h ^ UInt64(b)) &* 1099511628211 }
+        return String(h, radix: 36)
+    }()
+
+    private func pruneOldCache() {
+        let prefix = parserVersion + "-"
+        let dir = cacheDir
+        Task.detached(priority: .background) {
+            let files = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+            for f in files where !f.hasPrefix(prefix) { try? FileManager.default.removeItem(at: dir.appendingPathComponent(f)) }
+        }
+    }
+
     private func key(_ path: String) -> URL {
         let safe = path.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? String(path.hashValue)
-        return cacheDir.appendingPathComponent(String(safe.prefix(200)) + ".json")
+        return cacheDir.appendingPathComponent(parserVersion + "-" + String(safe.prefix(200)) + ".json")
     }
 
     private func cached(_ path: String, allowStale: Bool = false) -> Data? {

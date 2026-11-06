@@ -22,6 +22,7 @@ struct ArtistView: View {
     @State private var artist: AOTYAPI.Artist?          // featured page: header, info
     @State private var lists: [String: [AlbumBlock]] = [:]   // by AOTY type
     @State private var loadingTypes: Set<String> = []
+    @State private var failedTypes: Set<String> = []
     @State private var error: String?
     @State private var category: Category = .albums
     @AppStorage("artistExtras") private var extrasRaw = ""
@@ -78,6 +79,7 @@ struct ArtistView: View {
         return category == .appears ? all : all.sorted { year($0) > year($1) }
     }
     private func year(_ a: AlbumBlock) -> Int { Int((a.releaseDate ?? "").prefix(4)) ?? 0 }
+    private var currentTypes: Set<String> { Set([category.aotyType] + (category == .albums ? Array(extrasOn) : [])) }
     private var isLoadingCategory: Bool {
         !loadingTypes.isDisjoint(with: [category.aotyType] + (category == .albums ? Array(extrasOn) : []))
     }
@@ -108,6 +110,12 @@ struct ArtistView: View {
             Section {
                 if isLoadingCategory && shown.isEmpty {
                     ProgressView().frame(maxWidth: .infinity)
+                } else if shown.isEmpty && !failedTypes.isDisjoint(with: currentTypes) {
+                    HStack {
+                        Text("Couldn't load \(category.rawValue.lowercased()).").foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Retry") { failedTypes.subtract(currentTypes); Task { await ensureLoaded() } }
+                    }
                 } else if shown.isEmpty {
                     Text("No \(category.rawValue.lowercased()) on AOTY.").foregroundStyle(.secondary)
                 }
@@ -200,20 +208,21 @@ struct ArtistView: View {
         var types = [category.aotyType]
         if category == .albums { types += Array(extrasOn) }
         await withTaskGroup(of: Void.self) { group in
-            for t in types where !loadingTypes.contains(t) && (lists[t] == nil || (t == "lp" && !fullLP)) {
+            for t in types where !loadingTypes.contains(t) && !failedTypes.contains(t) && (lists[t] == nil || (t == "lp" && !fullLP)) {
                 loadingTypes.insert(t)
                 group.addTask { @MainActor in
-                    if t == "appears" {
-                        lists[t] = (try? await AOTYAPI.shared.appearsOn(artistPath: base)) ?? []
-                        loadingTypes.remove(t)
-                        return
-                    }
-                    if let a = try? await AOTYAPI.shared.artist(path: base + "?type=" + t) {
-                        lists[t] = a.albums
+                    defer { loadingTypes.remove(t) }
+                    do {
+                        let albums: [AlbumBlock]
+                        if t == "appears" { albums = try await AOTYAPI.shared.appearsOn(artistPath: base) }
+                        else { albums = try await AOTYAPI.shared.artist(path: base + "?type=" + t).albums }
+                        lists[t] = albums.filter { !$0.url.isEmpty && !$0.title.isEmpty }
+                        failedTypes.remove(t)
                         if t == "lp" { fullLP = true }
-                        Task { await ImageCache.shared.warm(a.albums.prefix(12).map(\.coverURL), timeout: 30) }
+                        Task { await ImageCache.shared.warm(albums.prefix(12).map(\.coverURL), timeout: 30) }
+                    } catch {
+                        failedTypes.insert(t)
                     }
-                    loadingTypes.remove(t)
                 }
             }
         }

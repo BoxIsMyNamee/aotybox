@@ -21,7 +21,28 @@ struct AlbumBlock: Decodable, Identifiable, Hashable {
 
     var id: String { url }
     var slug: String? { AlbumSlug.from(url) }
-    var coverURL: URL? { URL(string: cover) }
+    var coverURL: URL? { cover.isEmpty ? nil : URL(string: cover) }
+
+    enum CodingKeys: String, CodingKey {
+        case url, artist, title, cover, mediaType, releaseDate, criticScore, criticCount, userScore, userCount, rating, ratedDate, mustHear
+    }
+    /// Lenient: one release with a missing cover or odd field never empties a whole list.
+    init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        url = (try? c.decode(String.self, forKey: .url)) ?? ""
+        artist = (try? c.decode(String.self, forKey: .artist)) ?? ""
+        title = (try? c.decode(String.self, forKey: .title)) ?? ""
+        cover = (try? c.decode(String.self, forKey: .cover)) ?? ""
+        mediaType = try? c.decode(String.self, forKey: .mediaType)
+        releaseDate = try? c.decode(String.self, forKey: .releaseDate)
+        criticScore = (try? c.decode(Double.self, forKey: .criticScore)).flatMap { (0...100).contains($0) ? $0 : nil }
+        criticCount = try? c.decode(Int.self, forKey: .criticCount)
+        userScore = (try? c.decode(Double.self, forKey: .userScore)).flatMap { (0...100).contains($0) ? $0 : nil }
+        userCount = try? c.decode(Int.self, forKey: .userCount)
+        rating = try? c.decode(Double.self, forKey: .rating)
+        ratedDate = try? c.decode(String.self, forKey: .ratedDate)
+        mustHear = try? c.decode(Bool.self, forKey: .mustHear)
+    }
 }
 
 struct FollowUser: Decodable, Identifiable, Hashable {
