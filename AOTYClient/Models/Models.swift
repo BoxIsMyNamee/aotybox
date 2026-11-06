@@ -26,6 +26,14 @@ struct AlbumBlock: Decodable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case url, artist, title, cover, mediaType, releaseDate, criticScore, criticCount, userScore, userCount, rating, ratedDate, mustHear
     }
+    /// Scores are 0–100. If a review count got glued on the front ("6" + "85" = 685), keep the score.
+    static func fixScore(_ v: Double?) -> Double? {
+        guard let v, v >= 0 else { return nil }
+        if v <= 100 { return v }
+        let digits = String(Int(v))
+        return digits.hasSuffix("100") ? 100 : Double(digits.suffix(2))
+    }
+
     /// Lenient: one release with a missing cover or odd field never empties a whole list.
     init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
@@ -35,9 +43,9 @@ struct AlbumBlock: Decodable, Identifiable, Hashable {
         cover = (try? c.decode(String.self, forKey: .cover)) ?? ""
         mediaType = try? c.decode(String.self, forKey: .mediaType)
         releaseDate = try? c.decode(String.self, forKey: .releaseDate)
-        criticScore = (try? c.decode(Double.self, forKey: .criticScore)).flatMap { (0...100).contains($0) ? $0 : nil }
+        criticScore = Self.fixScore(try? c.decode(Double.self, forKey: .criticScore))
         criticCount = try? c.decode(Int.self, forKey: .criticCount)
-        userScore = (try? c.decode(Double.self, forKey: .userScore)).flatMap { (0...100).contains($0) ? $0 : nil }
+        userScore = Self.fixScore(try? c.decode(Double.self, forKey: .userScore))
         userCount = try? c.decode(Int.self, forKey: .userCount)
         rating = try? c.decode(Double.self, forKey: .rating)
         ratedDate = try? c.decode(String.self, forKey: .ratedDate)
