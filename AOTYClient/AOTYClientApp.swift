@@ -4,6 +4,7 @@ import SwiftUI
 struct AOTYClientApp: App {
     @StateObject private var scraper = AOTYScraper.shared
     @AppStorage(Theme.key) private var accentHex = Theme.defaultHex
+    @AppStorage(Appearance.key) private var appearance = Appearance.dark.rawValue
     @State private var musicLinkFailed = false
     @State private var tab = UserDefaults.standard.integer(forKey: "initialTab")
 
@@ -17,6 +18,9 @@ struct AOTYClientApp: App {
                 ProofView().tabItem { Label("Notes", systemImage: "text.badge.checkmark") }.tag(4)
             }
             .tint(Color(hex: accentHex))
+            .preferredColorScheme(Appearance(rawValue: appearance)?.scheme)
+            .onAppear { Appearance.apply(appearance) }
+            .onChange(of: appearance) { Appearance.apply(appearance) }
             .background(HiddenScraperHost().frame(width: 2, height: 2).allowsHitTesting(false))
             .sheet(item: $scraper.challenge) { ChallengeSheet(url: $0.url).accentTint() }
             .onReceive(NotificationCenter.default.publisher(for: .musicAppOpenFailed)) { _ in musicLinkFailed = true }
@@ -32,6 +36,8 @@ struct AOTYClientApp: App {
 struct SettingsView: View {
     @State private var showLogin = false
     @State private var cacheBytes: Int64?
+    @AppStorage(Appearance.key) private var appearance = Appearance.dark.rawValue
+    @AppStorage("notesAlbumCheck") private var albumCheckOn = false
     @State private var clearing = false
     @Environment(\.dismiss) private var dismiss
 
@@ -40,6 +46,24 @@ struct SettingsView: View {
             Form {
                 Section("Accent Color") {
                     AccentColorPicker()
+                }
+
+                Section {
+                    Picker("Theme", selection: $appearance) {
+                        ForEach(Appearance.allCases) { Text($0.name).tag($0.rawValue) }
+                    }
+                } header: {
+                    Text("Appearance")
+                } footer: {
+                    Text("Black is pure black (best on OLED). Dim uses softer dark grays.")
+                }
+
+                Section {
+                    Toggle("Album track-name check", isOn: $albumCheckOn)
+                } header: {
+                    Text("Notes")
+                } footer: {
+                    Text("Shows an Album field in Notes that checks every track name you mention is in quotes.")
                 }
 
                 Section {
@@ -115,5 +139,33 @@ enum CacheSize {
             }
             return sum
         }.value
+    }
+}
+
+/// Dark-mode levels. Black = iOS dark (pure black). Dim lifts every background a step
+/// by using iOS's "elevated" interface level (the softer grays sheets use).
+enum Appearance: String, CaseIterable, Identifiable {
+    case system, light, dark, dim
+    static let key = "appearance"
+    var id: String { rawValue }
+    var name: String {
+        switch self {
+        case .system: "Match iPhone"
+        case .light: "Light"
+        case .dark: "Black"
+        case .dim: "Dim"
+        }
+    }
+    var scheme: ColorScheme? {
+        switch self { case .system: nil; case .light: .light; default: .dark }
+    }
+
+    @MainActor static func apply(_ raw: String) {
+        let a = Appearance(rawValue: raw) ?? .dark
+        for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
+            for window in scene.windows {
+                window.traitOverrides.userInterfaceLevel = a == .dim ? .elevated : .base
+            }
+        }
     }
 }

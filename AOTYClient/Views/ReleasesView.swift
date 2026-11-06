@@ -17,7 +17,7 @@ struct ReleasesView: View {
         AppStack {
             VStack(spacing: 0) {
                 HStack(alignment: .center) {
-                    AOTYLogo().frame(height: 36)
+                    AOTYLogo().frame(height: 30)
                     Spacer()
                     KindToggle(singles: $singles, iconOnly: true)
                 }
@@ -69,8 +69,14 @@ private struct FeedList: View {
             }
 
             ForEach(albums) { album in
-                NavRow(value: album, artist: album.artist, album: album.title) {
-                    AlbumRow(album, coverSize: 84, genres: genreStore.label(for: album.slug))
+                NavRow(value: album, artist: album.artist, album: album.title,
+                       isSingle: singles || (album.mediaType?.lowercased().contains("single") ?? false), cover: album.coverURL) {
+                    if feed == .upcoming {
+                        AlbumRow(artist: album.artist, title: album.title, cover: album.coverURL, subtitle: album.releaseDate,
+                                 coverSize: 84, genres: genreStore.label(for: album.slug))
+                    } else {
+                        AlbumRow(album, coverSize: 84, genres: genreStore.label(for: album.slug))
+                    }
                 }
                     .onAppear {
                         genreStore.appeared(album.slug)
@@ -132,9 +138,9 @@ struct KindToggle: View {
         if iconOnly {
             Button(action: toggle) {
                 Image(systemName: icon)
-                    .font(.title2)
+                    .font(.title3)
                     .contentTransition(.symbolEffect(.replace))
-                    .frame(width: 44, height: 44)
+                    .frame(width: 36, height: 36)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)

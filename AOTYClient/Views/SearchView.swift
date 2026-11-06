@@ -84,9 +84,8 @@ private struct SearchContent: View {
                                     Text(a.title).font(.caption.weight(.semibold)).lineLimit(1)
                                     Text(a.artist).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                                 }
-                                .tapAndHold(tap: { push(a) }, hold: {
-                                    Task { await MusicAppLink.open(artist: a.artist, album: a.title, song: nil, appleMusicURL: nil) }
-                                })
+                                .contentShape(Rectangle())
+                                .onTapGesture { push(a) }
                             }
                         }
                     }

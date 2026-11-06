@@ -8,6 +8,7 @@ import UIKit
 struct AlbumRoute: Hashable { let slug: String?; let title: String }
 struct SongRoute: Hashable { let artist: String; let title: String; let album: String?; let cover: URL? }
 struct UserReviewsRoute: Hashable { let slug: String; let title: String; var range: String? = nil }
+struct LearnAlbumRoute: Hashable { let artist: String; let album: String; let cover: URL? }
 struct UserRoute: Hashable { let username: String; let name: String; let avatar: String? }
 struct ProfileReviewsRoute: Hashable { let username: String }
 struct ProfileRatingsRoute: Hashable { let username: String; let path: String?; let isMe: Bool }
@@ -36,6 +37,7 @@ extension View {
             .navigationDestination(for: AlbumRoute.self) { AlbumDetailView(slug: $0.slug, fallbackTitle: $0.title) }
             .navigationDestination(for: SongRoute.self) { SongView(artist: $0.artist, title: $0.title, album: $0.album, albumCover: $0.cover) }
             .navigationDestination(for: UserReviewsRoute.self) { UserReviewsView(slug: $0.slug, title: $0.title, rangeLabel: $0.range) }
+            .navigationDestination(for: LearnAlbumRoute.self) { LearnAlbumView(artist: $0.artist, album: $0.album, cover: $0.cover) }
             .navigationDestination(for: UserRoute.self) { u in
                 UserProfileView(username: u.username, fallbackAvatar: u.avatar, isMe: false)
                     .navigationTitle(u.name).navigationBarTitleDisplayMode(.inline)
@@ -113,6 +115,8 @@ struct NavRow<Label: View>: View {
     var album: String? = nil
     var song: String? = nil
     var appleMusicURL: String? = nil
+    var isSingle: Bool = false
+    var cover: URL? = nil
     @ViewBuilder var label: () -> Label
     @Environment(\.push) private var push
 
@@ -121,8 +125,31 @@ struct NavRow<Label: View>: View {
             label()
             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
         }
-        .tapAndHold(tap: { push(value) }, hold: {
-            Task { await MusicAppLink.open(artist: artist, album: album, song: song, appleMusicURL: appleMusicURL) }
-        })
+        .contentShape(Rectangle())
+        .onTapGesture { push(value) }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button {
+                Task { await MusicAppLink.open(artist: artist, album: album, song: song, appleMusicURL: appleMusicURL) }
+            } label: { SwiftUI.Label("Open", systemImage: "play.fill") }
+            .tint(.blue)
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button { push(Learn.route(artist: artist, album: album, song: song, isSingle: isSingle, cover: cover)) } label: {
+                SwiftUI.Label("Learn", systemImage: "sparkles")
+            }
+            .tint(.green)
+        }
+    }
+}
+
+/// Where "Learn" goes: a song's Genius page (lyrics, notes, Ask AI), or the album's.
+enum Learn {
+    static func cleanTitle(_ t: String) -> String {
+        t.replacingOccurrences(of: #"\s+-\s+(Single|EP)$"#, with: "", options: [.regularExpression, .caseInsensitive])
+    }
+    static func route(artist: String, album: String?, song: String?, isSingle: Bool, cover: URL?) -> any Hashable {
+        if let song { return SongRoute(artist: artist, title: song, album: album, cover: cover) }
+        if isSingle, let album { return SongRoute(artist: artist, title: cleanTitle(album), album: album, cover: cover) }
+        return LearnAlbumRoute(artist: artist, album: album ?? "", cover: cover)
     }
 }

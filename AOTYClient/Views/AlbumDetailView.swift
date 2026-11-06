@@ -123,14 +123,23 @@ struct AlbumDetailView: View {
                 } label: {
                     Label("Rate or review on AOTY", systemImage: "star.bubble")
                 }
+                Button {
+                    push(Learn.route(artist: a.artist, album: a.title, song: nil, isSingle: isSingle(a), cover: a.coverURL))
+                } label: {
+                    Label("Learn about this \(isSingle(a) ? "Song" : "Album")", systemImage: "sparkles")
+                }
             }
 
             // Listen
-            if let links = a.streamingLinks, !links.isEmpty {
+            if true {
                 Section("Listen") {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack {
-                            ForEach(links, id: \.url) { link in
+                            Button(MusicAppLink.name) {
+                                Task { await MusicAppLink.open(artist: a.artist, album: a.title, song: nil, appleMusicURL: appleMusicLink(a)) }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            ForEach(a.streamingLinks ?? [], id: \.url) { link in
                                 if let url = URL(string: link.url) {
                                     Button(link.platform.capitalized) { openURL(url) }.buttonStyle(.bordered)
                                 }
@@ -146,7 +155,7 @@ struct AlbumDetailView: View {
                 Section {
                     ForEach(showAllTracks ? trackList : Array(trackList.prefix(8))) { t in
                         NavRow(value: SongRoute(artist: a.artist, title: t.title, album: a.title, cover: a.coverURL),
-                               artist: a.artist, album: a.title, song: t.title, appleMusicURL: appleMusicLink(a)) {
+                               artist: a.artist, album: a.title, song: t.title, appleMusicURL: appleMusicLink(a), cover: a.coverURL) {
                             HStack {
                                 Text("\(t.number)").foregroundStyle(.secondary).monospacedDigit().frame(width: 24, alignment: .trailing)
                                 VStack(alignment: .leading) {
@@ -231,7 +240,7 @@ struct AlbumDetailView: View {
             if let similar = a.similarAlbums, !similar.isEmpty {
                 Section("Similar Albums") {
                     ForEach(similar.prefix(10)) { s in
-                        NavRow(value: s, artist: s.artist, album: s.title) { AlbumRow(s) }
+                        NavRow(value: s, artist: s.artist, album: s.title, cover: s.coverURL) { AlbumRow(s) }
                     }
                 }
             }

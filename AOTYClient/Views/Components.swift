@@ -14,7 +14,7 @@ struct ScoreBadge: View {
                 .frame(minWidth: 40, minHeight: 28)
                 .background(color, in: RoundedRectangle(cornerRadius: 6))
             Text(label).font(.caption2).foregroundStyle(.secondary)
-            if let count { Text("\(count)").font(.caption2).foregroundStyle(.tertiary) }
+            Text(count.map { "\($0)" } ?? " ").font(.caption2).foregroundStyle(.tertiary)
         }
     }
 
@@ -152,6 +152,7 @@ struct UserReviewRow: View {
             }
         }
         .padding(.vertical, 4)
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .contentShape(Rectangle())
         .onTapGesture { if review.url != nil { showFull = true } }
         .sheet(isPresented: $showFull) {

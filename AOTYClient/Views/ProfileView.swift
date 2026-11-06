@@ -226,7 +226,8 @@ struct RatingRow: View {
     let album: AlbumBlock
     let isMe: Bool
     var body: some View {
-        NavRow(value: album, artist: album.artist, album: album.title) {
+        NavRow(value: album, artist: album.artist, album: album.title,
+               isSingle: album.mediaType?.lowercased().contains("single") ?? false, cover: album.coverURL) {
             HStack {
                 AlbumRow(artist: album.artist, title: album.title, cover: album.coverURL,
                          subtitle: [album.releaseDate, album.ratedDate].compactMap { $0 }.joined(separator: " · "),
@@ -301,13 +302,13 @@ struct ProfileReviewRow: View {
     }
 
     private func toggle() async {
-        if expanded { withAnimation(.easeInOut) { expanded = false }; return }
+        if expanded { expanded = false; return }
         if needsFetch, let url = review.url {
             loadingFull = true; defer { loadingFull = false }
             if let t = try? await AOTYAPI.shared.fullReview(url: url, preview: review.text) { fullText = t }
             else { showFull = true; return }            // couldn't read it: open the review page
         }
-        withAnimation(.easeInOut) { expanded = true }
+        expanded = true
     }
 
     var body: some View {
@@ -322,8 +323,8 @@ struct ProfileReviewRow: View {
                 Spacer()
                 if let r = review.rating { MiniScore(label: "", score: r) }
             }
-            .tapAndHold(tap: { if let s = review.slug { push(AlbumRoute(slug: s, title: review.album)) } },
-                        hold: { Task { await MusicAppLink.open(artist: review.artist, album: review.album, song: nil, appleMusicURL: nil) } })
+            .contentShape(Rectangle())
+            .onTapGesture { if let s = review.slug { push(AlbumRoute(slug: s, title: review.album)) } }
 
             if !review.text.isEmpty {
                 Text(bodyText)
@@ -349,6 +350,17 @@ struct ProfileReviewRow: View {
             }
         }
         .padding(.vertical, 4)
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button { Task { await MusicAppLink.open(artist: review.artist, album: review.album, song: nil, appleMusicURL: nil) } } label: {
+                Label("Open", systemImage: "play.fill")
+            }.tint(.blue)
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button { push(Learn.route(artist: review.artist, album: review.album, song: nil, isSingle: false, cover: review.coverURL)) } label: {
+                Label("Learn", systemImage: "sparkles")
+            }.tint(.green)
+        }
         .sheet(isPresented: $showFull) {
             if let s = review.url, let u = URL(string: s) { AOTYWebSheet(url: u, title: review.album).accentTint() }
         }

@@ -61,7 +61,7 @@ private struct ChartList: View {
         List {
             if let error, items.isEmpty { ErrorView(message: error) { await reload() } }
             ForEach(items) { item in
-                NavRow(value: item, artist: item.artist, album: item.album) {
+                NavRow(value: item, artist: item.artist, album: item.album, cover: item.coverURL) {
                     AlbumRow(artist: item.artist, title: item.album, cover: item.coverURL,
                              subtitle: [item.date, item.genres?.first].compactMap { $0 }.joined(separator: " · "),
                              rank: item.rank,

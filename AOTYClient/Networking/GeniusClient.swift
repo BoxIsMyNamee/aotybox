@@ -104,10 +104,11 @@ enum GeniusClient {
 
     // MARK: Album tracklist (fallback when AOTY has none)
 
-    static func albumTracks(artist: String, album: String) async -> [Track] {
+    /// Genius album id for an artist + title (search, then match names).
+    static func findAlbumID(artist: String, album: String) async -> Int? {
         let q = "\(artist) \(album)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         guard let resp = try? await json("/api/search/album?q=\(q)&per_page=5"),
-              let sections = resp["sections"] as? [[String: Any]] else { return [] }
+              let sections = resp["sections"] as? [[String: Any]] else { return nil }
         let results = sections.flatMap { ($0["hits"] as? [[String: Any]]) ?? [] }.compactMap { $0["result"] as? [String: Any] }
         let norm = { (s: String) in
             s.lowercased().folding(options: .diacriticInsensitive, locale: nil)
@@ -118,13 +119,36 @@ enum GeniusClient {
         func artistName(_ r: [String: Any]) -> String { ((r["artist"] as? [String: Any])?["name"] as? String) ?? (r["artist_names"] as? String) ?? "" }
         let pick = results.first { norm(($0["name"] as? String) ?? "") == t && norm(artistName($0)).contains(a.prefix(6)) }
             ?? results.first { norm(($0["name"] as? String) ?? "").hasPrefix(t.prefix(10)) && norm(artistName($0)).contains(a.prefix(5)) }
-        guard let id = pick?["id"] as? Int,
-              let tr = try? await json("/api/albums/\(id)/tracks?per_page=50"),
+        return pick?["id"] as? Int
+    }
+
+    static func albumTracks(artist: String, album: String) async -> [Track] {
+        guard let id = await findAlbumID(artist: artist, album: album) else { return [] }
+        return await albumTracks(id: id)
+    }
+
+    static func albumTracks(id: Int) async -> [Track] {
+        guard let tr = try? await json("/api/albums/\(id)/tracks?per_page=50"),
               let tracks = tr["tracks"] as? [[String: Any]] else { return [] }
         return tracks.enumerated().compactMap { i, x in
             guard let song = x["song"] as? [String: Any], let title = song["title"] as? String else { return nil }
             return Track(number: (x["number"] as? Int) ?? i + 1, title: title, length: nil, rating: nil, features: nil)
         }
+    }
+
+    struct AlbumInfo { let id: Int; let about: String?; let url: URL?; let releaseDate: String? }
+
+    /// The album's Genius write-up, if it has one.
+    static func albumInfo(id: Int) async -> AlbumInfo? {
+        guard let resp = try? await json("/api/albums/\(id)?text_format=plain"),
+              let al = resp["album"] as? [String: Any] else { return nil }
+        let fromAnnotation = (((al["description_annotation"] as? [String: Any])?["annotations"] as? [[String: Any]])?.first?["body"] as? [String: Any])?["plain"] as? String
+        let fromDescription = (al["description"] as? [String: Any])?["plain"] as? String
+        let about = [fromDescription, fromAnnotation, al["description_preview"] as? String]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty && $0 != "?" }
+        return AlbumInfo(id: id, about: about, url: (al["url"] as? String).flatMap(URL.init(string:)),
+                         releaseDate: al["release_date_for_display"] as? String)
     }
 
     // MARK: Song

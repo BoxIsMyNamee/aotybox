@@ -7,6 +7,7 @@ import UIKit
 struct ProofView: View {
     @AppStorage("notesText") private var text = ""
     @AppStorage("notesAlbum") private var albumQuery = ""
+    @AppStorage("notesAlbumCheck") private var albumCheckOn = false
     @State private var matchedAlbum: String?
     @State private var trackIssues: [ProofIssue] = []
     @State private var report: ProofReport?
@@ -24,7 +25,7 @@ struct ProofView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     editor
-                    albumField
+                    if albumCheckOn { albumField }
                     if !AISettings.isConfigured {
                         Button("Set up the AI (Gemini is free)") { showAISettings = true }.font(.footnote)
                     }
@@ -76,12 +77,14 @@ struct ProofView: View {
             .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
 
             HStack(spacing: 10) {
-                PasteButton(payloadType: String.self) { strings in
-                    guard let s = strings.first, !s.isEmpty else { return }
-                    Task { @MainActor in text = s; resetResults() }
+                Button {
+                    if let s = UIPasteboard.general.string, !s.isEmpty { text = s; resetResults() }
+                } label: {
+                    iconLabel("doc.on.clipboard")
                 }
-                .labelStyle(.iconOnly)
+                .buttonStyle(.bordered)
                 .buttonBorderShape(.capsule)
+                .accessibilityLabel("Paste")
                 .frame(maxWidth: .infinity)
 
                 Button { Task { await check() } } label: {
@@ -103,10 +106,9 @@ struct ProofView: View {
                     copied = true
                     Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
                 } label: {
-                    Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
-                        .labelStyle(.iconOnly)
-                        .frame(maxWidth: .infinity, minHeight: 34)
+                    iconLabel(copied ? "checkmark" : "doc.on.doc")
                 }
+                .accessibilityLabel(copied ? "Copied" : "Copy")
                 .buttonStyle(.bordered)
                 .buttonBorderShape(.capsule)
                 .disabled(text.isEmpty)
@@ -115,6 +117,15 @@ struct ProofView: View {
             Text("Proof only points things out. It never rewrites your review.")
                 .font(.caption).foregroundStyle(.secondary)
         }
+    }
+
+    /// Same size and shape for Paste and Copy, whatever the icon.
+    private func iconLabel(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(.body.weight(.medium))
+            .frame(width: 24, height: 24)
+            .frame(maxWidth: .infinity, minHeight: 34)
+            .contentTransition(.symbolEffect(.replace))
     }
 
     private var albumField: some View {
@@ -225,7 +236,7 @@ struct ProofView: View {
         error = nil; report = nil; rawReply = nil; trackIssues = []
         stats = ProofStats(review)
         var tracklist: [String] = []
-        let q = albumQuery.trimmingCharacters(in: .whitespaces)
+        let q = albumCheckOn ? albumQuery.trimmingCharacters(in: .whitespaces) : ""
         if !q.isEmpty {
             checking = true
             if let found = await MusicAppLink.searchAlbum(q) {
