@@ -9,6 +9,9 @@ struct DiagnosticsView: View {
         ("Upcoming", "/upcoming/", .blocks),
         ("Charts (critics)", "/ratings/6-highest-rated/\(Calendar.current.component(.year, from: .now))/1", .chart),
         ("Album", "/album/2915-outkast-aquemini.php", .album),
+        ("Artist", "/artist/183-kanye-west/", .artist),
+        ("Artist singles", "/artist/183-kanye-west/?type=single", .artist),
+        ("Artist reissues", "/artist/183-kanye-west/?type=reissue", .artist),
     ]
     @State private var results: [String: String] = [:]
     @State private var running = false
