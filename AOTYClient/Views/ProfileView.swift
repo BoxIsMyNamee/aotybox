@@ -135,6 +135,7 @@ struct UserProfileView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .environment(\.swipeRowBackground, Color(.secondarySystemGroupedBackground))
         .listSectionSpacing(.compact)
         .contentMargins(.top, 4, for: .scrollContent)
         .refreshable { await load(force: true) }
@@ -350,17 +351,11 @@ struct ProfileReviewRow: View {
             }
         }
         .padding(.vertical, 4)
+        .swipeRow(
+            learn: { push(Learn.route(artist: review.artist, album: review.album, song: nil, isSingle: false, cover: review.coverURL)) },
+            open: { Task { await MusicAppLink.open(artist: review.artist, album: review.album, song: nil, appleMusicURL: nil) } }
+        )
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button { Task { await MusicAppLink.open(artist: review.artist, album: review.album, song: nil, appleMusicURL: nil) } } label: {
-                Label("Open", systemImage: "play.fill")
-            }.tint(.blue)
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            Button { push(Learn.route(artist: review.artist, album: review.album, song: nil, isSingle: false, cover: review.coverURL)) } label: {
-                Label("Learn", systemImage: "sparkles")
-            }.tint(.green)
-        }
         .sheet(isPresented: $showFull) {
             if let s = review.url, let u = URL(string: s) { AOTYWebSheet(url: u, title: review.album).accentTint() }
         }
@@ -386,6 +381,7 @@ struct ProfileReviewsView: View {
             if loading { ProgressView().frame(maxWidth: .infinity) }
         }
         .listStyle(.insetGrouped)
+        .environment(\.swipeRowBackground, Color(.secondarySystemGroupedBackground))
         .navigationTitle("Reviews")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await reload() }

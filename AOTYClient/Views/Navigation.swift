@@ -127,18 +127,10 @@ struct NavRow<Label: View>: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { push(value) }
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button {
-                Task { await MusicAppLink.open(artist: artist, album: album, song: song, appleMusicURL: appleMusicURL) }
-            } label: { SwiftUI.Label("Open", systemImage: "play.fill") }
-            .tint(.blue)
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            Button { push(Learn.route(artist: artist, album: album, song: song, isSingle: isSingle, cover: cover)) } label: {
-                SwiftUI.Label("Learn", systemImage: "sparkles")
-            }
-            .tint(.green)
-        }
+        .swipeRow(
+            learn: { push(Learn.route(artist: artist, album: album, song: song, isSingle: isSingle, cover: cover)) },
+            open: { Task { await MusicAppLink.open(artist: artist, album: album, song: song, appleMusicURL: appleMusicURL) } }
+        )
     }
 }
 

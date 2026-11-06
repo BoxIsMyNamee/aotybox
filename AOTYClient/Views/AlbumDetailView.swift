@@ -126,7 +126,7 @@ struct AlbumDetailView: View {
                 Button {
                     push(Learn.route(artist: a.artist, album: a.title, song: nil, isSingle: isSingle(a), cover: a.coverURL))
                 } label: {
-                    Label("Learn about this \(isSingle(a) ? "Song" : "Album")", systemImage: "sparkles")
+                    Label("Learn about this \(isSingle(a) ? "Song" : "Album")", systemImage: "magnifyingglass")
                 }
             }
 
@@ -247,6 +247,7 @@ struct AlbumDetailView: View {
 
         }
         .listStyle(.insetGrouped)
+        .environment(\.swipeRowBackground, Color(.secondarySystemGroupedBackground))
     }
 }
 
