@@ -154,6 +154,15 @@ actor AOTYAPI {
         }
     }
 
+    /// Releases by other artists that this artist appears on (AOTY's "Appears On" credits list).
+    func appearsOn(artistPath: String) async throws -> [AlbumBlock] {
+        guard let id = artistPath.firstMatch(of: /\/artist\/(\d+)/)?.1 else { return [] }
+        struct R: Decodable { let albums: [AlbumBlock] }
+        return try await AOTYScraper.shared.postExtract("/scripts/artistCreditList.php",
+            form: ["artistID": String(id), "type": "Appears On", "albumClass": "0", "sort": ""],
+            kind: .blocks, as: R.self).albums
+    }
+
     /// Best guess at an artist's AOTY page from their name.
     func findArtistPath(name: String) async -> String? {
         let q = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name

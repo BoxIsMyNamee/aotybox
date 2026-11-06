@@ -172,6 +172,36 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         clearCache()
     }
 
+    /// POST a form the way AOTY's own buttons do, then run the extractor on the HTML it returns.
+    func postExtract<T: Decodable>(_ path: String, form: [String: String], kind: Kind, as type: T.Type) async throws -> T {
+        let body = form.map { k, v in
+            (k.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? k) + "=" + (v.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? v)
+        }.joined(separator: "&")
+        let js = extractorJS + """
+
+        const r = await fetch(path, { method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest" },
+          body: form });
+        const html = "<html><body>" + (await r.text()) + "</body></html>";
+        if (aotyIsChallenge(html, r.status)) return JSON.stringify({ __challenge: true });
+        if (!r.ok) return JSON.stringify({ __http: r.status });
+        return JSON.stringify(aotyExtract(kind, html, location.href));
+        """
+        let out: String = try await serialized {
+            try await self.withTimeout(30) {
+                try await self.ensureOrigin()
+                try await self.throttle()
+                guard let s = try await self.webView.runAsyncJS(js, args: ["path": path, "form": body, "kind": kind.rawValue]) as? String else {
+                    throw ScrapeError.script("no result")
+                }
+                return s
+            }
+        }
+        if out.contains("\"__challenge\"") { throw ScrapeError.blocked }
+        if out.contains("\"__http\"") { throw ScrapeError.http(0, path) }
+        return try JSONDecoder().decode(T.self, from: Data(out.utf8))
+    }
+
     // MARK: - Core
 
     private func fetchJSON(path: String, kind: Kind) async throws -> Data {

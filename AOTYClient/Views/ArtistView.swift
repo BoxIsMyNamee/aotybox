@@ -7,9 +7,10 @@ struct ArtistView: View {
     let fallbackName: String
 
     enum Category: String, CaseIterable, Identifiable {
-        case albums = "Albums", eps = "EPs", singles = "Singles"
+        case albums = "Albums", eps = "EPs", singles = "Singles", appears = "Appears On"
         var id: String { rawValue }
-        var aotyType: String { switch self { case .albums: "lp"; case .eps: "ep"; case .singles: "single" } }
+        var aotyType: String { switch self { case .albums: "lp"; case .eps: "ep"; case .singles: "single"; case .appears: "appears" } }
+        var short: String { self == .appears ? "Features" : rawValue }
     }
     /// Extra AOTY types that can be folded into Albums.
     static let extras: [(String, String)] = [
@@ -44,7 +45,7 @@ struct ArtistView: View {
         .safeAreaInset(edge: .bottom) {
             if artist != nil {
                 HStack(spacing: 12) {
-                    GlassSegmented(selection: $category, items: Category.allCases.map { ($0, $0.rawValue) })
+                    GlassSegmented(selection: $category, items: Category.allCases.map { ($0, $0.short) })
                     Menu {
                         Section("Also show in Albums") {
                             ForEach(Self.extras, id: \.0) { t in
@@ -73,8 +74,8 @@ struct ArtistView: View {
         if category == .albums { types += Self.extras.map(\.0).filter { extrasOn.contains($0) } }
         var seen = Set<String>()
         let all = types.flatMap { lists[$0] ?? [] }.filter { seen.insert($0.url).inserted }
-        // Newest first (blocks carry "2026 • Label").
-        return all.sorted { year($0) > year($1) }
+        // Newest first (blocks carry "2026 • Label"); Appears On keeps AOTY's order.
+        return category == .appears ? all : all.sorted { year($0) > year($1) }
     }
     private func year(_ a: AlbumBlock) -> Int { Int((a.releaseDate ?? "").prefix(4)) ?? 0 }
     private var isLoadingCategory: Bool {
@@ -202,6 +203,11 @@ struct ArtistView: View {
             for t in types where !loadingTypes.contains(t) && (lists[t] == nil || (t == "lp" && !fullLP)) {
                 loadingTypes.insert(t)
                 group.addTask { @MainActor in
+                    if t == "appears" {
+                        lists[t] = (try? await AOTYAPI.shared.appearsOn(artistPath: base)) ?? []
+                        loadingTypes.remove(t)
+                        return
+                    }
                     if let a = try? await AOTYAPI.shared.artist(path: base + "?type=" + t) {
                         lists[t] = a.albums
                         if t == "lp" { fullLP = true }
