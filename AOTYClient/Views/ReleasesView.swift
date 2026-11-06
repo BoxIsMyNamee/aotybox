@@ -17,7 +17,7 @@ struct ReleasesView: View {
         AppStack {
             VStack(spacing: 0) {
                 HStack(alignment: .center) {
-                    AOTYLogo().frame(height: 46)
+                    AOTYLogo().frame(height: 36)
                     Spacer()
                     KindToggle(singles: $singles, iconOnly: true)
                 }
