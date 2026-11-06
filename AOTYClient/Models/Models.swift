@@ -26,12 +26,11 @@ struct AlbumBlock: Decodable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case url, artist, title, cover, mediaType, releaseDate, criticScore, criticCount, userScore, userCount, rating, ratedDate, mustHear
     }
-    /// Scores are 0–100. If a review count got glued on the front ("6" + "85" = 685), keep the score.
+    /// AOTY scores are 0–100, read from AOTY's own score. Anything else means the page wasn't read
+    /// right, so show no score rather than a guess.
     static func fixScore(_ v: Double?) -> Double? {
-        guard let v, v >= 0 else { return nil }
-        if v <= 100 { return v }
-        let digits = String(Int(v))
-        return digits.hasSuffix("100") ? 100 : Double(digits.suffix(2))
+        guard let v, (0...100).contains(v) else { return nil }
+        return v
     }
 
     /// Lenient: one release with a missing cover or odd field never empties a whole list.

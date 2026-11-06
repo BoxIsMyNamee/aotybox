@@ -83,7 +83,7 @@ function aotyAlbumBlocks(root) {
       var bar = row.querySelector(".ratingBar [style*='width'], .ratingBar[style*='width']");
       var bw = bar ? (bar.getAttribute("style") || "").match(/width:\s*([\d.]+)%/) : null;
       if (bw) val = String(Math.round(parseFloat(bw[1])));
-      else if (aotyNum(val) > 100) { var tail = String(val).replace(/[^\d]/g, "").match(/(100|\d{1,2})$/); val = tail ? tail[1] : ""; }
+      else if (aotyNum(val) > 100) val = "";   // never guess: no score beats a wrong one
       var texts = Array.prototype.map.call(row.querySelectorAll(".ratingText"), aotyTxt);
       var label = (texts[0] || "").toLowerCase();
       var cnt = null;
