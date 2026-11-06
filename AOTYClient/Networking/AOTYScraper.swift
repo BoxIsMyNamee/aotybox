@@ -24,6 +24,9 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
     private var originReady = false
     private var navContinuation: CheckedContinuation<Void, Error>?
     private var queueTail: Task<Void, Never> = Task {}
+    /// Requests queued or running. Background work (genre lookups) waits until this is 0,
+    /// so pages you open never sit behind it.
+    private var pending = 0
     private var lastFetch = Date.distantPast
     private let minGap: TimeInterval = 0.4
 
@@ -75,9 +78,12 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
 
     // MARK: - Public
 
-    func fetch<T: Decodable>(_ path: String, kind: Kind, as type: T.Type) async throws -> T {
-        if let fresh = cached(path), let value = try? JSONDecoder().decode(T.self, from: fresh) {
+    func fetch<T: Decodable>(_ path: String, kind: Kind, as type: T.Type, background: Bool = false) async throws -> T {
+        if (background || Date() > bypassUntil), let fresh = cached(path), let value = try? JSONDecoder().decode(T.self, from: fresh) {
             return value
+        }
+        if background {
+            while pending > 0 { try await Task.sleep(for: .milliseconds(300)) }
         }
         do {
             let data = try await serialized { try await self.withTimeout(30) { try await self.fetchJSON(path: path, kind: kind) } }
@@ -145,6 +151,10 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         memory[path] = nil
         try? FileManager.default.removeItem(at: key(path))
     }
+
+    /// Pull to refresh: for a few seconds, fetch pages fresh instead of using saved copies.
+    private var bypassUntil = Date.distantPast
+    func bypassCache(for seconds: TimeInterval = 4) { bypassUntil = Date().addingTimeInterval(seconds) }
 
     func clearCache() {
         memory.removeAll()
@@ -292,7 +302,9 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
     /// Run operations one at a time, in order.
     private func serialized<T>(_ op: @escaping @MainActor () async throws -> T) async throws -> T {
         let previous = queueTail
+        pending += 1
         let task = Task { @MainActor () throws -> T in
+            defer { self.pending -= 1 }
             _ = await previous.value
             return try await op()
         }

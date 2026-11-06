@@ -52,7 +52,7 @@ final class GenreStore: ObservableObject {
             Task {
                 defer { working = false; pump() }
                 do {
-                    let album = try await AOTYAPI.shared.album(slug: next)
+                    let album = try await AOTYAPI.shared.album(slug: next, background: true)
                     if let g = album.genres, !g.isEmpty {
                         genres[next] = g
                         retryAfter[next] = nil

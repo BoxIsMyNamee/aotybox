@@ -79,7 +79,7 @@ private struct ChartList: View {
     }
 
     private func refresh() async {
-        await AOTYScraper.shared.clearCache()
+        AOTYScraper.shared.bypassCache()
         let started = Date()
         if let res = try? await AOTYAPI.shared.chart(source: source.rawValue, period: period, page: 1), !res.items.isEmpty {
             await ImageCache.shared.warm(res.items.prefix(6).map(\.coverURL), timeout: 0.6)

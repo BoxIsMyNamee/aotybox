@@ -77,7 +77,8 @@ actor AOTYAPI {
     }
 
     /// `minimal=true` skips the extra stats/credits fetches the worker would otherwise make.
-    func album(slug: String) async throws -> AlbumDetail {
+    func album(slug: String, background: Bool = false) async throws -> AlbumDetail {
+        if background { return try await AOTYScraper.shared.fetch("/album/\(slug).php", kind: .album, as: AlbumDetail.self, background: true) }
         if Self.usesDevice { return try await device("/album/\(slug).php", .album, AlbumDetail.self) }
         return try await get("/album", ["slug": slug, "minimal": "true"], as: AlbumDetail.self)
     }

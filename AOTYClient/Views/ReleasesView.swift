@@ -106,7 +106,7 @@ private struct FeedList: View {
     }
 
     private func refresh() async {
-        await AOTYScraper.shared.clearCache()
+        AOTYScraper.shared.bypassCache()
         let started = Date()
         var seen = Set<String>()
         if let list = try? await fetch(1).filter({ seen.insert($0.id).inserted }), !list.isEmpty {
