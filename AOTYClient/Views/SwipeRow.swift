@@ -67,7 +67,7 @@ struct SwipeRow: ViewModifier {
         }
         .foregroundStyle(.white)
         .scaleEffect(armed ? 1.15 : 0.9)
-        .opacity(min(1, abs(offset) / 50))
+        .opacity(Double(min(CGFloat(1), abs(offset) / CGFloat(50))))
     }
 }
 
