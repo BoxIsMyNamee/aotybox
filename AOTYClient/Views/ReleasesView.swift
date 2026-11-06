@@ -19,7 +19,6 @@ struct ReleasesView: View {
                 HStack(alignment: .center) {
                     AOTYLogo().frame(height: 30)
                     Spacer()
-                    KindToggle(singles: $singles, iconOnly: true)
                 }
                 .padding(.horizontal)
                 .padding(.top, 4)
@@ -40,6 +39,12 @@ struct ReleasesView: View {
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
+            }
+            .overlay(alignment: .bottomTrailing) {
+                // Floating Albums/Singles switch, bottom right above the tab bar.
+                KindToggle(singles: $singles, iconOnly: true)
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 16)
             }
             .navigationTitle(singles ? "Singles" : "Releases")
             .toolbar(.hidden, for: .navigationBar)
@@ -138,12 +143,13 @@ struct KindToggle: View {
         if iconOnly {
             Button(action: toggle) {
                 Image(systemName: icon)
-                    .font(.body.weight(.medium))
+                    .font(.title3)
                     .contentTransition(.symbolEffect(.replace))
-                    .frame(width: 26, height: 26)
+                    .frame(width: 36, height: 36)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
+            .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
             .accessibilityLabel(singles ? "Showing singles" : "Showing albums")
         } else {
             Button(action: toggle) {
