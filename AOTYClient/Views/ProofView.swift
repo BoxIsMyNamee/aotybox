@@ -6,6 +6,9 @@ import UIKit
 /// typos, punctuation, run-ons and comma issues come from the AI as pointers only.
 struct ProofView: View {
     @AppStorage("proofDraft") private var text = ""
+    @AppStorage("proofAlbum") private var albumQuery = ""
+    @State private var matchedAlbum: String?
+    @State private var trackIssues: [ProofIssue] = []
     @State private var report: ProofReport?
     @State private var rawReply: String?
     @State private var stats: ProofStats?
@@ -33,7 +36,7 @@ struct ProofView: View {
                         Button { paste() } label: { Label("Paste", systemImage: "doc.on.clipboard") }
                             .buttonStyle(.bordered)
                         if !text.isEmpty {
-                            Button(role: .destructive) { text = ""; report = nil; stats = nil; rawReply = nil; error = nil } label: {
+                            Button(role: .destructive) { text = ""; report = nil; stats = nil; rawReply = nil; error = nil; trackIssues = []; matchedAlbum = nil } label: {
                                 Label("Clear", systemImage: "xmark")
                             }
                             .buttonStyle(.bordered)
@@ -45,6 +48,18 @@ struct ProofView: View {
                     }
                 } footer: {
                     Text("Proof only points things out. It never rewrites your review.")
+                }
+
+                Section {
+                    TextField("Album, e.g. the weeknd after hours", text: $albumQuery)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .onSubmit { matchedAlbum = nil }
+                    if let matchedAlbum { Text(matchedAlbum).font(.caption).foregroundStyle(.secondary) }
+                } header: {
+                    Text("Album (optional)")
+                } footer: {
+                    Text("With an album, Proof checks that every track name you mention is in quotes, like 'blinding lights'.")
                 }
 
                 Section {
@@ -70,19 +85,23 @@ struct ProofView: View {
                     if let s = report.summary, !s.isEmpty {
                         Section { Text(s).font(.callout) }
                     }
+                    issueSection("Track names not in quotes", "quote.opening", mergedTrackIssues(report))
                     issueSection("Typos & spelling", "character.cursor.ibeam", report.typos + (stats?.doubled ?? []))
                     issueSection("Punctuation", "exclamationmark.questionmark", report.punctuation)
                     issueSection("Run-on sentences", "arrow.right.to.line", report.runOns)
                     issueSection("Commas", "comma", report.commas)
                     issueSection("Grammar & wording", "text.magnifyingglass", report.other)
-                    if report.isEmpty && (stats?.doubled ?? []).isEmpty {
+                    if report.isEmpty && (stats?.doubled ?? []).isEmpty && trackIssues.isEmpty {
                         Section { Label("No problems found.", systemImage: "checkmark.seal").foregroundStyle(.green) }
                     }
                 } else if let rawReply {
+                    issueSection("Track names not in quotes", "quote.opening", trackIssues)
                     Section("Notes") { Text(LocalizedStringKey(rawReply)).textSelection(.enabled) }
+                } else if !trackIssues.isEmpty {
+                    issueSection("Track names not in quotes", "quote.opening", trackIssues)
                 }
             }
-            .navigationTitle("Proof")
+            .tabTitle("Proof")
             .scrollDismissesKeyboard(.interactively)
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
@@ -147,9 +166,15 @@ struct ProofView: View {
 
     // MARK: Actions
 
+    /// On-device hits (exact, from the tracklist) plus any the AI spotted, without duplicates.
+    private func mergedTrackIssues(_ r: ProofReport) -> [ProofIssue] {
+        var seen = Set(trackIssues.map { $0.text.lowercased() })
+        return trackIssues + r.trackNames.filter { seen.insert($0.text.lowercased()).inserted }
+    }
+
     private func paste() {
         if let s = UIPasteboard.general.string, !s.isEmpty {
-            text = s; report = nil; stats = nil; rawReply = nil; error = nil
+            text = s; report = nil; stats = nil; rawReply = nil; error = nil; trackIssues = []
         }
     }
 
@@ -157,15 +182,30 @@ struct ProofView: View {
         let review = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !review.isEmpty else { return }
         editing = false
-        error = nil; report = nil; rawReply = nil
+        error = nil; report = nil; rawReply = nil; trackIssues = []
         stats = ProofStats(review)
+        var tracklist: [String] = []
+        let q = albumQuery.trimmingCharacters(in: .whitespaces)
+        if !q.isEmpty {
+            checking = true
+            if let found = await MusicAppLink.searchAlbum(q) {
+                matchedAlbum = "Matched: \(found.title) by \(found.artist) · \(found.tracks.count) tracks"
+                tracklist = found.tracks.map(\.title)
+                trackIssues = ProofStats.unquotedTracks(in: review, tracks: tracklist)
+            } else {
+                matchedAlbum = "Couldn't find that album on Apple Music."
+            }
+            checking = false
+        }
         guard AISettings.isConfigured else {
             error = "Repeated words are counted above. For typo and punctuation notes, set up the AI."
             return
         }
         checking = true; defer { checking = false }
         do {
-            let reply = try await AIClient.reply(system: ProofReport.systemPrompt,
+            let system = ProofReport.systemPrompt + (tracklist.isEmpty ? "" :
+                "\n\nThe review is about an album with these tracks: " + tracklist.joined(separator: "; "))
+            let reply = try await AIClient.reply(system: system,
                                                  history: [ChatMessage(role: .user, text: review)],
                                                  webSearch: false)
             if let r = ProofReport.parse(reply.text) { report = r } else { rawReply = reply.text }
@@ -200,10 +240,11 @@ struct ProofReport: Decodable {
     var runOns: [ProofIssue] = []
     var commas: [ProofIssue] = []
     var other: [ProofIssue] = []
+    var trackNames: [ProofIssue] = []
 
-    var isEmpty: Bool { typos.isEmpty && punctuation.isEmpty && runOns.isEmpty && commas.isEmpty && other.isEmpty }
+    var isEmpty: Bool { typos.isEmpty && punctuation.isEmpty && runOns.isEmpty && commas.isEmpty && other.isEmpty && trackNames.isEmpty }
 
-    enum CodingKeys: String, CodingKey { case summary, typos, punctuation, runOns, commas, other }
+    enum CodingKeys: String, CodingKey { case summary, typos, punctuation, runOns, commas, other, trackNames }
     init(from d: Decoder) throws {
         let c = try d.container(keyedBy: CodingKeys.self)
         summary = try? c.decode(String.self, forKey: .summary)
@@ -212,6 +253,7 @@ struct ProofReport: Decodable {
         runOns = (try? c.decode([ProofIssue].self, forKey: .runOns)) ?? []
         commas = (try? c.decode([ProofIssue].self, forKey: .commas)) ?? []
         other = (try? c.decode([ProofIssue].self, forKey: .other)) ?? []
+        trackNames = (try? c.decode([ProofIssue].self, forKey: .trackNames)) ?? []
     }
 
     static func parse(_ reply: String) -> ProofReport? {
@@ -234,6 +276,9 @@ struct ProofReport: Decodable {
     - commas: lingering or trailing commas, commas before a period, missing commas after introductory \
       phrases, commas that split a subject from its verb.
     - other: clear grammar slips (subject-verb agreement, wrong tense mid-sentence, missing words).
+    - trackNames: the writer always puts song titles in single quotes, like 'blinding lights'. List any \
+      song title mentioned in the body that is NOT wrapped in quotes. Only flag text that is clearly being \
+      used as a song title, not ordinary words.
 
     Respect intentional style: deliberate lowercase, slang, album/artist stylizations, fragments used for \
     effect, and profanity are not errors. When unsure, leave it out.
@@ -244,7 +289,8 @@ struct ProofReport: Decodable {
      "punctuation": [{"text": "exact short snippet", "note": "what's wrong"}],
      "runOns": [{"text": "first few words of the sentence", "note": "where it could break"}],
      "commas": [{"text": "exact short snippet", "note": "what's wrong"}],
-     "other": [{"text": "exact short snippet", "note": "what's wrong"}]}
+     "other": [{"text": "exact short snippet", "note": "what's wrong"}],
+     "trackNames": [{"text": "the song title as written", "note": "short reason"}]}
     Snippets must be copied exactly from the review and kept under 12 words. Use empty arrays when there is nothing.
     """
 }
@@ -309,6 +355,42 @@ struct ProofStats {
             }
         }
         doubled = found
+    }
+}
+
+extension ProofStats {
+    /// Track titles that appear in the review without quotes around them.
+    static func unquotedTracks(in review: String, tracks: [String]) -> [ProofIssue] {
+        let quotes = Set("'\"‘’“”`")
+        let text = review as NSString
+        var out: [ProofIssue] = []
+        var seen = Set<String>()
+        for raw in tracks {
+            let title = raw
+                .replacingOccurrences(of: #"\s*[\(\[].*?[\)\]]"#, with: "", options: .regularExpression)   // (feat. …)
+                .replacingOccurrences(of: #"\s+-\s+.*$"#, with: "", options: .regularExpression)               // - Remastered
+                .trimmingCharacters(in: .whitespaces)
+            guard title.count >= 3, seen.insert(title.lowercased()).inserted else { continue }
+            let singleWord = !title.contains(" ")
+            var searchRange = NSRange(location: 0, length: text.length)
+            while true {
+                let r = text.range(of: title, options: [.caseInsensitive, .diacriticInsensitive], range: searchRange)
+                if r.location == NSNotFound { break }
+                searchRange = NSRange(location: r.location + r.length, length: text.length - r.location - r.length)
+                let before = r.location > 0 ? Character(text.substring(with: NSRange(location: r.location - 1, length: 1))) : nil
+                let after = r.location + r.length < text.length ? Character(text.substring(with: NSRange(location: r.location + r.length, length: 1))) : nil
+                // whole words only
+                if let b = before, b.isLetter || b.isNumber { continue }
+                if let a = after, a.isLetter || a.isNumber { continue }
+                let quoted = (before.map { quotes.contains($0) } ?? false) || (after.map { quotes.contains($0) } ?? false)
+                if !quoted {
+                    out.append(ProofIssue(text: text.substring(with: r), suggestion: "'\(text.substring(with: r))'",
+                                          note: singleWord ? "Track name without quotes (if you meant the song)." : "Track name without quotes."))
+                    break
+                }
+            }
+        }
+        return out
     }
 }
 

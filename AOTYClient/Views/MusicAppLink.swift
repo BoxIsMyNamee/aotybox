@@ -152,6 +152,17 @@ enum MusicAppLink {
         }
     }
 
+    /// Free-text album lookup ("the weeknd after hours") → name, artist and tracks. Used by Proof.
+    static func searchAlbum(_ term: String) async -> (title: String, artist: String, tracks: [Track])? {
+        let hits = await itunes("search", [URLQueryItem(name: "term", value: term),
+                                           URLQueryItem(name: "entity", value: "album"), URLQueryItem(name: "limit", value: "5")])
+        guard let best = hits.first(where: { $0.collectionId != nil }), let id = best.collectionId else { return nil }
+        let tracks = await tracklist(artist: best.artistName ?? "", album: best.collectionName ?? "",
+                                     appleMusicURL: "https://music.apple.com/us/album/x/\(id)")
+        let title = (best.collectionName ?? "").replacingOccurrences(of: #"\s+-\s+(Single|EP)$"#, with: "", options: .regularExpression)
+        return (title, best.artistName ?? "", tracks)
+    }
+
     // MARK: Opening
 
     @MainActor

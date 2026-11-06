@@ -30,7 +30,7 @@ private struct SearchContent: View {
                 idle
             }
         }
-        .navigationTitle("Search")
+        .tabTitle("Search")
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Albums, artists, songs")
         .searchSuggestions {
             if !query.isEmpty {

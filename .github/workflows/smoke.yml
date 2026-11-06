@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   smoke:
     runs-on: macos-15
@@ -85,6 +88,18 @@ jobs:
             exit 1
           fi
           xcrun simctl io "$UDID" screenshot launch.png
+          # One screenshot per tab (the app reads -initialTab N), pushed to the ci-screens branch.
+          mkdir -p screens
+          for t in 0 1 2 3 4; do
+            xcrun simctl terminate "$UDID" com.harper.aotyclient || true
+            xcrun simctl launch "$UDID" com.harper.aotyclient -initialTab $t || true
+            sleep 8
+            xcrun simctl io "$UDID" screenshot screens/tab$t.png
+          done
+          sips -Z 900 screens/*.png >/dev/null
+          cd screens && git init -q && git checkout -q -b ci-screens && git add . \
+            && git -c user.name=ci -c user.email=ci@local commit -qm "screens ${GITHUB_SHA::7}" \
+            && git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" ci-screens
       - uses: actions/upload-artifact@v4
         if: always()
         with:

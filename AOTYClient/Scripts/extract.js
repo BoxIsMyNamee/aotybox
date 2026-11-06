@@ -673,6 +673,37 @@ function aotyIsChallenge(html, status) {
   return false;
 }
 
+// Text of every "deepest substantial" block on a page (one with 120+ chars where no child holds
+// 90%+ of its text). Swift picks the block that contains a review preview → the full review.
+function aotyBlockText(el) {
+  var c = el.cloneNode(true);
+  c.querySelectorAll("script,style").forEach(function (x) { x.remove(); });
+  c.querySelectorAll("br").forEach(function (b) { b.replaceWith("\n"); });
+  c.querySelectorAll("p,div,li").forEach(function (p) { p.append("\n\n"); });
+  return c.textContent.split("\n").map(function (l) { return l.replace(/[ \t\u00a0]+/g, " ").trim(); })
+    .join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+function aotyTextBlocks(doc) {
+  var norm = function (s) { return (s || "").replace(/\s+/g, " ").trim(); };
+  var out = [];
+  var els = doc.body ? doc.body.querySelectorAll("div,p,section,article,td,span,blockquote") : [];
+  for (var i = 0; i < els.length && out.length < 80; i++) {
+    var el = els[i];
+    if (el.closest("script,style,nav,header,footer")) continue;
+    var len = norm(el.textContent).length;
+    if (len < 120) continue;
+    var big = false;
+    for (var k = 0; k < el.children.length; k++) {
+      if (norm(el.children[k].textContent).length >= len * 0.9) { big = true; break; }
+    }
+    if (!big) out.push(aotyBlockText(el));
+  }
+  var preferred = [];
+  var pe = doc.querySelectorAll(".albumReviewText, .userReviewText, [itemprop=reviewBody], [class*='reviewText'], [class*='ReviewText']");
+  for (var j = 0; j < pe.length; j++) { var t = aotyBlockText(pe[j]); if (t.length > 40) preferred.push(t); }
+  return { preferred: preferred, blocks: out };
+}
+
 function aotyExtract(kind, html, pageURL) {
   var doc = new DOMParser().parseFromString(html, "text/html");
   if (kind === "blocks") {
@@ -686,6 +717,7 @@ function aotyExtract(kind, html, pageURL) {
   if (kind === "me") return aotyMe(doc);
   if (kind === "profile") return aotyProfile(doc, html, pageURL);
   if (kind === "follows") return aotyFollows(doc, false);
+  if (kind === "textBlocks") return aotyTextBlocks(doc);
   if (kind === "userReviewList") {
     var rv = aotyProfileReviewRows(doc);
     return { reviews: rv };

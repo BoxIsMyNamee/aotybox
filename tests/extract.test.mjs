@@ -194,5 +194,28 @@ for (const [kind, path] of pages) {
   } else console.log("  no snapshot", r.status);
 }
 
+// Full review text from a review page (synthetic)
+{
+  console.log("\n=== textBlocks (synthetic review page)");
+  const p1 = "i'm a huge sucker for the avalanches. and i'm a huge sucker for tech, especially dated tech. if i could give this a 200 i would.";
+  const p2 = "also my signed vinyl showed up today and the 'reception' interlude hits even harder on wax. absolutely incredible work.";
+  const html = `<html><body><nav>${"menu ".repeat(40)}</nav><div class="wrap"><div class="userReviewHeader">harperseemscool · 100</div>
+    <div class="userReviewText"><p>${p1}</p><p>${p2}</p></div><div class="likes">3 likes</div></div>
+    <div class="sidebar">${"Other reviews and things to read on the side. ".repeat(6)}</div></body></html>`;
+  const out = aotyExtract("textBlocks", html, "https://www.albumoftheyear.org/user/x/album/1-a-b/");
+  const key = s => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const probe = key(p1).slice(0, 80);
+  const hit = (out.preferred || []).filter(b => key(b).includes(probe)).sort((a, b) => b.length - a.length)[0]
+    || out.blocks.filter(b => key(b).startsWith(probe)).sort((a, b) => b.length - a.length)[0] || "";
+  // also check the fallback alone (no AOTY class)
+  const out2 = aotyExtract("textBlocks", html.replace('class="userReviewText"', 'class="x"'), "x");
+  const hit2 = out2.blocks.filter(b => key(b).startsWith(probe)).sort((a, b) => b.length - a.length)[0] || "";
+  check(hit2.includes(p1) && hit2.includes(p2) && !hit2.includes("harperseemscool"), "fallback picks review body");
+  console.log("  blocks:", out.blocks.length, "pick:", JSON.stringify(hit.slice(0, 80)), "…", hit.length, "chars");
+  check(hit.includes(p1) && hit.includes(p2), "full review picked");
+  check(hit.includes("\n\n"), "paragraph break kept");
+  check(!hit.includes("menu menu"), "nav excluded");
+}
+
 console.log(`\n${failures} failure(s)`);
 process.exit(failures ? 1 : 0);

@@ -48,7 +48,7 @@ struct ChartsView: View {
                 if !items.isEmpty && page >= totalPages { AttributionFooter() }
             }
             .listStyle(.plain)
-            .navigationTitle(period == "all" ? "All Time" : "Best of \(period)")
+            .tabTitle(period == "all" ? "All Time" : "Best of \(period)")
             .toolbar {
                 Menu {
                     Picker("Year", selection: $period) {

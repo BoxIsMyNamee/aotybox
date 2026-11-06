@@ -117,14 +117,6 @@ struct AlbumDetailView: View {
                 } label: {
                     Label("Rate or review on AOTY", systemImage: "star.bubble")
                 }
-                Button {
-                    Task { await MusicAppLink.open(artist: a.artist, album: a.title, song: nil, appleMusicURL: appleMusicLink(a)) }
-                } label: {
-                    Label("Open in \(MusicAppLink.name)", systemImage: "play.circle")
-                }
-                Button { showChat = true } label: {
-                    Label("Ask AI about this \(isSingle(a) ? "single" : "album")", systemImage: "sparkles")
-                }
             }
 
             // Listen

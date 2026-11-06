@@ -32,7 +32,7 @@ struct ReleasesView: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
             }
-            .navigationTitle(singles ? "Singles" : "Releases")
+            .tabTitle(singles ? "Singles" : "Releases")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     KindToggle(singles: $singles)

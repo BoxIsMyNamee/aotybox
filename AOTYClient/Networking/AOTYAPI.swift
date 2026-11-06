@@ -114,6 +114,24 @@ actor AOTYAPI {
         return try await device(path, .userReviewList, ProfileReviewList.self).reviews
     }
 
+    /// The full text of a review whose preview AOTY cut short.
+    func fullReview(url: String, preview: String) async throws -> String? {
+        guard let u = URL(string: url, relativeTo: URL(string: "https://www.albumoftheyear.org")) else { return nil }
+        let path = u.path + (u.query.map { "?" + $0 } ?? "")
+        struct Blocks: Decodable { let preferred: [String]?; let blocks: [String] }
+        let page = try await device(path, .textBlocks, Blocks.self)
+        func key(_ s: String) -> String { s.lowercased().filter { $0.isLetter || $0.isNumber } }
+        let cleaned = preview.replacingOccurrences(of: #"\s*(\.\.\.|…)?\s*read more\s*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: #"(\.\.\.|…)\s*$"#, with: "", options: .regularExpression)
+        let probe = String(key(cleaned).prefix(80))
+        guard probe.count >= 20 else { return nil }
+        // AOTY's review-text element if present; otherwise the longest block that starts with the preview.
+        let pick = (page.preferred ?? []).filter { key($0).contains(probe) }.max { $0.count < $1.count }
+            ?? page.blocks.filter { key($0).hasPrefix(probe) }.max { $0.count < $1.count }
+        guard let pick, pick.count >= cleaned.count - 5 else { return nil }
+        return pick.replacingOccurrences(of: #"\s*read more\s*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+    }
+
     /// Ratings from a path AOTY gave us (e.g. the profile's "View All" link), with paging.
     func ratings(path: String, page: Int) async throws -> [AlbumBlock] {
         var base = path.hasSuffix("/") ? path : path + "/"

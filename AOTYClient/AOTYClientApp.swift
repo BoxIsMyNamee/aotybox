@@ -5,15 +5,16 @@ struct AOTYClientApp: App {
     @StateObject private var scraper = AOTYScraper.shared
     @AppStorage(Theme.key) private var accentHex = Theme.defaultHex
     @State private var musicLinkFailed = false
+    @State private var tab = UserDefaults.standard.integer(forKey: "initialTab")
 
     var body: some Scene {
         WindowGroup {
-            TabView {
-                ReleasesView().tabItem { Label("Releases", systemImage: "square.stack") }
-                ChartsView().tabItem { Label("Charts", systemImage: "chart.bar") }
-                SearchView().tabItem { Label("Search", systemImage: "magnifyingglass") }
-                ProfileView().tabItem { Label("Profile", systemImage: "person.crop.circle") }
-                ProofView().tabItem { Label("Proof", systemImage: "text.badge.checkmark") }
+            TabView(selection: $tab) {
+                ReleasesView().tabItem { Label("Releases", systemImage: "square.stack") }.tag(0)
+                ChartsView().tabItem { Label("Charts", systemImage: "chart.bar") }.tag(1)
+                SearchView().tabItem { Label("Search", systemImage: "magnifyingglass") }.tag(2)
+                ProfileView().tabItem { Label("Profile", systemImage: "person.crop.circle") }.tag(3)
+                ProofView().tabItem { Label("Proof", systemImage: "text.badge.checkmark") }.tag(4)
             }
             .tint(Color(hex: accentHex))
             .background(HiddenScraperHost().frame(width: 2, height: 2).allowsHitTesting(false))

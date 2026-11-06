@@ -135,6 +135,8 @@ struct UserProfileView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .listSectionSpacing(.compact)
+        .contentMargins(.top, 4, for: .scrollContent)
         .refreshable { await load(force: true) }
         .toolbar {
             if isMe {
@@ -156,14 +158,21 @@ struct UserProfileView: View {
 
     @ViewBuilder private var header: some View {
         Section {
-            HStack(spacing: 16) {
-                Avatar(url: (profile?.avatar ?? fallbackAvatar).flatMap(URL.init(string:)), name: username, size: 76)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(profile?.displayName ?? username).font(.title3.bold()).lineLimit(2)
-                    Text("@\(username)").font(.subheadline).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 16) {
+                    Avatar(url: (profile?.avatar ?? fallbackAvatar).flatMap(URL.init(string:)), name: username, size: 80)
+                    Text(profile?.displayName ?? username).font(.title3.bold()).lineLimit(3)
+                }
+                if let about = profile?.about, !about.isEmpty {
+                    Text(about)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 8, trailing: 4))
 
             if let stats = profile?.stats, !stats.isEmpty {
                 HStack {
@@ -176,7 +185,6 @@ struct UserProfileView: View {
                     }
                 }
             }
-            if let about = profile?.about { Text(about).font(.callout).foregroundStyle(.secondary) }
         }
     }
 
@@ -218,7 +226,7 @@ struct RatingRow: View {
             HStack {
                 AlbumRow(artist: album.artist, title: album.title, cover: album.coverURL,
                          subtitle: [album.releaseDate, album.ratedDate].compactMap { $0 }.joined(separator: " · "),
-                         coverSize: 56)
+                         coverSize: 76)
                 if let r = album.rating ?? album.userScore { MiniScore(label: isMe ? "You" : "", score: r) }
             }
         }
@@ -275,16 +283,33 @@ struct ProfileReviewRow: View {
     let review: ProfileReview
     @State private var expanded = false
     @State private var showFull = false
+    @State private var fullText: String?
+    @State private var loadingFull = false
     @Environment(\.push) private var push
+
+    private var needsFetch: Bool { review.isTruncated == true && review.url != nil && fullText == nil }
+    private var bodyText: String {
+        (fullText ?? review.text).replacingOccurrences(of: #"\s*(\.\.\.|…)?\s*read more\s*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+    }
+
+    private func toggle() async {
+        if expanded { withAnimation(.easeInOut) { expanded = false }; return }
+        if needsFetch, let url = review.url {
+            loadingFull = true; defer { loadingFull = false }
+            if let t = try? await AOTYAPI.shared.fullReview(url: url, preview: review.text) { fullText = t }
+            else { showFull = true; return }            // couldn't read it: open the review page
+        }
+        withAnimation(.easeInOut) { expanded = true }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                Cover(url: review.coverURL, size: 48)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(review.artist).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    Text(review.album).font(.subheadline.weight(.semibold)).lineLimit(1)
-                    if let d = review.date { Text(d).font(.caption2).foregroundStyle(.tertiary) }
+                Cover(url: review.coverURL, size: 76)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(review.artist).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                    Text(review.album).font(.headline).lineLimit(2)
+                    if let d = review.date { Text(d).font(.caption).foregroundStyle(.tertiary) }
                 }
                 Spacer()
                 if let r = review.rating { MiniScore(label: "", score: r) }
@@ -293,17 +318,20 @@ struct ProfileReviewRow: View {
                         hold: { Task { await MusicAppLink.open(artist: review.artist, album: review.album, song: nil, appleMusicURL: nil) } })
 
             if !review.text.isEmpty {
-                Text(review.text)
+                Text(bodyText)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .lineLimit(expanded ? nil : 6)
                     .textSelection(.enabled)
                 HStack(spacing: 16) {
                     if review.text.count > 280 || review.isTruncated == true {
-                        Button(expanded ? "Show Less" : "Show More") { withAnimation(.easeInOut) { expanded.toggle() } }
-                    }
-                    if expanded, review.isTruncated == true, review.url != nil {
-                        Button("Read full review") { showFull = true }
+                        Button { Task { await toggle() } } label: {
+                            HStack(spacing: 6) {
+                                Text(expanded ? "Show Less" : "Show More")
+                                if loadingFull { ProgressView().controlSize(.mini) }
+                            }
+                        }
+                        .disabled(loadingFull)
                     }
                     Spacer()
                     if let l = review.likes, l > 0 { Label("\(l)", systemImage: "heart").font(.caption).foregroundStyle(.tertiary) }
