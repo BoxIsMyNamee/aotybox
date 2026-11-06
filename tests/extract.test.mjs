@@ -17,6 +17,8 @@ const pages = [
   ["album", "/album/1998-kanye-west-my-beautiful-dark-twisted-fantasy.php"],
   ["userReviews", "/album/2915-outkast-aquemini/user-reviews/"],
   ["userReviews", "/album/1998-kanye-west-my-beautiful-dark-twisted-fantasy/user-reviews/"],
+  ["artist", "/artist/183-kanye-west/"],
+  ["artist", "/artist/2049-outkast/"],
 ];
 
 let failures = 0;
@@ -61,6 +63,13 @@ for (const [kind, path] of pages) {
     check(i.rank === 1, "rank 1 first");
     check(i.artist && i.album, "artist + album split");
     check(typeof i.score === "number", "numeric score");
+  } else if (kind === "artist") {
+    const types = {};
+    out.albums.forEach(a => { types[a.mediaType || "?"] = (types[a.mediaType || "?"] || 0) + 1; });
+    console.log(`  name ${JSON.stringify(out.name)}, image ${out.image ? "yes" : "no"}, ${out.albums.length} albums, types ${JSON.stringify(types)}`);
+    console.log("  first:", JSON.stringify(out.albums[0]));
+    check(out.name && out.name.length < 60, "artist name");
+    check(out.albums.length >= 5, "artist discography");
   } else if (kind === "userReviews") {
     console.log(`  ${out.reviews.length} reviews, total ${out.total}, pages ${out.totalPages}, dist ${out.distribution.length}`);
     console.log("  first:", JSON.stringify(out.reviews[0])?.slice(0, 400));

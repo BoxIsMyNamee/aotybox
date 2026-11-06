@@ -82,7 +82,7 @@ private struct ChartList: View {
         error = nil; loading = true; defer { loading = false }
         do {
             let res = try await AOTYAPI.shared.chart(source: source.rawValue, period: period, page: 1)
-            await ImageCache.shared.warm(res.items.prefix(10).map(\.coverURL))
+            await ImageCache.shared.warm(res.items.prefix(6).map(\.coverURL), timeout: 0.6)
             items = res.items; page = 1; totalPages = res.totalPages ?? 1
             Task { await ImageCache.shared.warm(res.items.map(\.coverURL), timeout: 30) }
         } catch is CancellationError {
@@ -93,7 +93,7 @@ private struct ChartList: View {
         guard !loading, page < totalPages else { return }
         loading = true; defer { loading = false }
         if let res = try? await AOTYAPI.shared.chart(source: source.rawValue, period: period, page: page + 1) {
-            await ImageCache.shared.warm(res.items.prefix(6).map(\.coverURL), timeout: 1.5)
+            await ImageCache.shared.warm(res.items.prefix(6).map(\.coverURL), timeout: 0.4)
             items += res.items.filter { n in !items.contains { $0.id == n.id } }
             page += 1
             Task { await ImageCache.shared.warm(res.items.map(\.coverURL), timeout: 30) }

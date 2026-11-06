@@ -48,7 +48,7 @@ final class ImageCache: @unchecked Sendable {
 
     /// Download images before a screen shows them, so nothing pops in. Waits at most `timeout`;
     /// anything still loading keeps going in the background.
-    func warm(_ urls: [URL?], timeout: Double = 2.0) async {
+    func warm(_ urls: [URL?], timeout: Double = 0.6) async {
         let list = Array(Set(urls.compactMap { $0 })).filter { cached($0) == nil }
         guard !list.isEmpty else { return }
         await withTaskGroup(of: Void.self) { group in
@@ -125,7 +125,7 @@ struct Avatar: View {
 
     var body: some View {
         CachedImage(url: url) {
-            Circle().fill(.clear)
+            Circle().fill(.quaternary.opacity(0.5))
         }
         .frame(width: size, height: size)
         .clipShape(Circle())

@@ -23,7 +23,9 @@ private struct SearchContent: View {
     var body: some View {
         Group {
             if let url = searchURL {
-                AOTYWebView(url: url, isLoading: $loading, onAlbumTap: { push(AlbumRoute(slug: $0, title: "Album")) })
+                AOTYWebView(url: url, isLoading: $loading,
+                            onAlbumTap: { push(AlbumRoute(slug: $0, title: "Album")) },
+                            onArtistTap: { push(ArtistRoute(path: $0, name: "Artist")) })
                     .overlay(alignment: .top) { if loading { ProgressView().padding(8) } }
                     .ignoresSafeArea(edges: .bottom)
             } else {

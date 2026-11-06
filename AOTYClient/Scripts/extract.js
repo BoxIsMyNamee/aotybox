@@ -705,6 +705,33 @@ function aotyTextBlocks(doc) {
   return { preferred: preferred, blocks: out };
 }
 
+// Artist page: name, photo, and the discography as album blocks (grouped by type in Swift).
+function aotyArtist(doc, pageURL) {
+  var h1 = doc.querySelector(".artistHeadline h1, h1.artistHeadline, .artistHeadline, h1");
+  var name = aotyTxt(h1).replace(/\s+Albums.*$/i, "").trim();
+  var img = doc.querySelector(".artistImage img, .artistTopBox img");
+  var og = doc.querySelector("meta[property='og:image']");
+  var image = img ? aotyCleanImg(aotyImgSrc(img)) : (og ? og.getAttribute("content") : null);
+  var albums = aotyAlbumBlocks(doc);
+  if (!albums.length) albums = aotyGenericBlocks(doc);
+  // Section headings ("LP", "EP", "Singles", …) give the type when blocks don't carry data-type.
+  var blocks = doc.querySelectorAll(".albumBlock");
+  for (var i = 0; i < blocks.length && i < albums.length; i++) {
+    if (albums[i].mediaType) continue;
+    var el = blocks[i], heading = null;
+    for (var up = el; up && !heading; up = up.parentElement) {
+      for (var sib = up.previousElementSibling; sib && !heading; sib = sib.previousElementSibling) {
+        if (/sectionHeading|facetTitle|discographyHeading/.test(sib.className || "") || /^H[23]$/.test(sib.tagName)) heading = aotyTxt(sib);
+      }
+    }
+    if (heading) albums[i].mediaType = heading;
+  }
+  for (var j = 0; j < albums.length; j++) if (!albums[j].artist) albums[j].artist = name;
+  var score = null, sc = doc.querySelector(".artistCriticScore, .artistUserScore");
+  if (sc) score = aotyNum(aotyTxt(sc));
+  return { name: name, image: image, score: score, albums: albums };
+}
+
 function aotyExtract(kind, html, pageURL) {
   var doc = new DOMParser().parseFromString(html, "text/html");
   if (kind === "blocks") {
@@ -719,6 +746,7 @@ function aotyExtract(kind, html, pageURL) {
   if (kind === "profile") return aotyProfile(doc, html, pageURL);
   if (kind === "follows") return aotyFollows(doc, false);
   if (kind === "textBlocks") return aotyTextBlocks(doc);
+  if (kind === "artist") return aotyArtist(doc, pageURL);
   if (kind === "userReviewList") {
     var rv = aotyProfileReviewRows(doc);
     return { reviews: rv };

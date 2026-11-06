@@ -114,6 +114,13 @@ actor AOTYAPI {
         return try await device(path, .userReviewList, ProfileReviewList.self).reviews
     }
 
+    struct Artist: Decodable { let name: String; let image: String?; let score: Double?; let albums: [AlbumBlock] }
+
+    /// An artist page: "/artist/183-kanye-west/".
+    func artist(path: String) async throws -> Artist {
+        try await device(path.hasSuffix("/") ? path : path + "/", .artist, Artist.self)
+    }
+
     /// The full text of a review whose preview AOTY cut short.
     func fullReview(url: String, preview: String) async throws -> String? {
         guard let u = URL(string: url, relativeTo: URL(string: "https://www.albumoftheyear.org")) else { return nil }

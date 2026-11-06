@@ -27,7 +27,7 @@ struct Cover: View {
 
     var body: some View {
         CachedImage(url: url) {
-            Rectangle().fill(.clear)
+            Rectangle().fill(.quaternary.opacity(0.5))
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: size > 100 ? 10 : 4))

@@ -78,7 +78,7 @@ struct UserReviewsView: View {
         error = nil; loading = true; defer { loading = false }
         do {
             let p = try await AOTYAPI.shared.userReviews(slug: slug, sort: sortParam, page: 1)
-            await ImageCache.shared.warm(p.reviews.prefix(10).map(\.avatarURL))
+            await ImageCache.shared.warm(p.reviews.prefix(6).map(\.avatarURL), timeout: 0.6)
             reviews = p.reviews.filter(inRange); page = 1; totalPages = p.totalPages ?? 1; total = p.total
             if let d = p.distribution, !d.isEmpty { distribution = d }
             if range != nil { await scan(target: 10) }

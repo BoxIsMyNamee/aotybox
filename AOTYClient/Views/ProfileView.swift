@@ -30,7 +30,7 @@ struct ProfileView: View {
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button { showSettings = true } label: { Image(systemName: "gearshape") }
                         .accessibilityLabel("Settings")
                 }
@@ -141,12 +141,12 @@ struct UserProfileView: View {
         .refreshable { await load(force: true) }
         .toolbar {
             if isMe {
-                Menu {
+                ToolbarItem(placement: .topBarLeading) { Menu {
                     Button { showFullProfile = true } label: { Label("Open full profile", systemImage: "safari") }
                     Button { Task { await load(force: true) } } label: { Label("Refresh", systemImage: "arrow.clockwise") }
                     if let onChangeUser { Button(action: onChangeUser) { Label("Not you? Set username", systemImage: "person.crop.circle.badge.questionmark") } }
                     if let onAutoDetect { Button(action: onAutoDetect) { Label("Detect automatically", systemImage: "wand.and.stars") } }
-                } label: { Image(systemName: "ellipsis.circle") }
+                } label: { Image(systemName: "ellipsis") } }
             }
         }
         .sheet(isPresented: $showFullProfile) {
@@ -272,7 +272,7 @@ struct ProfileRatingsView: View {
         loading = true; error = nil; defer { loading = false }
         do {
             let r = try await AOTYAPI.shared.ratings(path: listPath, page: 1)
-            await ImageCache.shared.warm(r.prefix(10).map(\.coverURL))
+            await ImageCache.shared.warm(r.prefix(6).map(\.coverURL), timeout: 0.6)
             ratings = r; page = 1; more = !ratings.isEmpty
         }
         catch { self.error = error.localizedDescription }
@@ -392,7 +392,7 @@ struct ProfileReviewsView: View {
         loading = true; error = nil; defer { loading = false }
         do {
             let r = try await AOTYAPI.shared.profileReviews(username: username)
-            await ImageCache.shared.warm(r.prefix(6).map(\.coverURL))
+            await ImageCache.shared.warm(r.prefix(6).map(\.coverURL), timeout: 0.6)
             reviews = r; page = 1; more = !reviews.isEmpty
         }
         catch { self.error = error.localizedDescription }

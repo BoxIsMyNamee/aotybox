@@ -49,7 +49,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         webView.navigationDelegate = self
     }
 
-    enum Kind: String { case blocks, chart, album, userReviews, me, profile, follows, userReviewList, textBlocks }
+    enum Kind: String { case blocks, chart, album, userReviews, me, profile, follows, userReviewList, textBlocks, artist }
 
     enum ScrapeError: LocalizedError {
         case blocked

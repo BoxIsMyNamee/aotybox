@@ -106,9 +106,9 @@ private struct FeedList: View {
         do {
             var seen = Set<String>()
             let list = try await fetch(1).filter { seen.insert($0.id).inserted }
-            await ImageCache.shared.warm(list.prefix(10).map(\.coverURL))
+            await ImageCache.shared.warm(list.prefix(6).map(\.coverURL), timeout: 0.6)
             albums = list
-            Task { await ImageCache.shared.warm(list.dropFirst(10).map(\.coverURL), timeout: 20) }
+            Task { await ImageCache.shared.warm(list.dropFirst(6).map(\.coverURL), timeout: 20) }
         } catch is CancellationError {
         } catch {
             let msg = error.localizedDescription
@@ -138,9 +138,9 @@ struct KindToggle: View {
         if iconOnly {
             Button(action: toggle) {
                 Image(systemName: icon)
-                    .font(.title3)
+                    .font(.body.weight(.medium))
                     .contentTransition(.symbolEffect(.replace))
-                    .frame(width: 36, height: 36)
+                    .frame(width: 26, height: 26)
             }
             .buttonStyle(.glass)
             .buttonBorderShape(.circle)
