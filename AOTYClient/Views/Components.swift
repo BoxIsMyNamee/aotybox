@@ -139,13 +139,17 @@ struct UserReviewRow: View {
                         .background(scoreColor(r).opacity(0.25), in: RoundedRectangle(cornerRadius: 6))
                 }
             }
-            if !review.text.isEmpty {
+            let hasMore = review.isTruncated == true || (lineLimit != nil && review.text.count > 280)
+            HStack(alignment: .lastTextBaseline, spacing: 8) {
                 Text(review.text).font(.callout).foregroundStyle(.secondary).lineLimit(lineLimit)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if !hasMore { HeartButton(reviewID: review.reviewId, liked: review.liked ?? false, likes: review.likes ?? 0) }
             }
-            HStack(spacing: 14) {
-                HeartButton(reviewID: review.reviewId, liked: review.liked ?? false, likes: review.likes ?? 0)
-                if review.isTruncated == true || (lineLimit != nil && review.text.count > 280) {
+            if hasMore {
+                HStack {
                     Text("Read full review").font(.caption.weight(.semibold)).foregroundStyle(.tint)
+                    Spacer()
+                    HeartButton(reviewID: review.reviewId, liked: review.liked ?? false, likes: review.likes ?? 0)
                 }
             }
         }

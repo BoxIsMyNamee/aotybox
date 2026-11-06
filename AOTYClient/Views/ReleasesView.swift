@@ -93,7 +93,7 @@ private struct FeedList: View {
             if loading { ProgressView().frame(maxWidth: .infinity) }
         }
         .listStyle(.plain)
-        .refreshable { await reload() }
+        .refreshable { await refresh() }
         .task { if !loaded { await reload() } }
     }
 
@@ -102,6 +102,19 @@ private struct FeedList: View {
         case .thisWeek: return try await AOTYAPI.shared.thisWeek(page: page, singles: singles)
         case .new: return try await AOTYAPI.shared.releases(page: page, singles: singles)
         case .upcoming: return try await AOTYAPI.shared.upcoming(page: page, singles: singles)
+        }
+    }
+
+    private func refresh() async {
+        await AOTYScraper.shared.clearCache()
+        let started = Date()
+        var seen = Set<String>()
+        if let list = try? await fetch(1).filter({ seen.insert($0.id).inserted }), !list.isEmpty {
+            await ImageCache.shared.warm(list.prefix(6).map(\.coverURL), timeout: 0.6)
+            let wait = 0.5 - Date().timeIntervalSince(started)
+            if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) { albums = list; page = 1; canLoadMore = true; error = nil }
         }
     }
 
@@ -142,14 +155,9 @@ struct KindToggle: View {
     var body: some View {
         if iconOnly {
             Button(action: toggle) {
-                Image(systemName: icon)
-                    .font(.title3)
-                    .contentTransition(.symbolEffect(.replace))
-                    .frame(width: 36, height: 36)
+                FloatingIcon(symbol: icon)
             }
-            .buttonStyle(.glass)
-            .buttonBorderShape(.circle)
-            .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
+            .floatingGlass()
             .accessibilityLabel(singles ? "Showing singles" : "Showing albums")
         } else {
             Button(action: toggle) {
@@ -163,6 +171,25 @@ struct KindToggle: View {
     private func toggle() {
         UISelectionFeedbackGenerator().selectionChanged()
         withAnimation { singles.toggle() }
+    }
+}
+
+/// Icon inside a floating round glass button (Releases' Albums/Singles, Artist filter).
+struct FloatingIcon: View {
+    let symbol: String
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.title2.weight(.medium))
+            .contentTransition(.symbolEffect(.replace))
+            .frame(width: 46, height: 46)
+    }
+}
+
+extension View {
+    func floatingGlass() -> some View {
+        self.buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
     }
 }
 

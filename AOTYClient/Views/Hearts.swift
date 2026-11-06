@@ -26,9 +26,11 @@ struct HeartButton: View {
     let reviewID: Int?
     let liked: Bool
     let likes: Int
+    var canLike = true
     @ObservedObject private var store = LikeStore.shared
     @State private var busy = false
     @State private var limited = false
+    @State private var failure: String?
 
     var body: some View {
         let isLiked = store.liked(reviewID, default: liked)
@@ -39,6 +41,7 @@ struct HeartButton: View {
                 busy = true
                 let r = await store.toggle(id: reviewID, liked: isLiked, count: count)
                 limited = (r == .limited)
+                if case let .failed(msg) = r { failure = msg }
                 busy = false
             }
         } label: {
@@ -53,7 +56,11 @@ struct HeartButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(reviewID == nil)
+        .disabled(reviewID == nil || !canLike)
+        .opacity(canLike ? 1 : 0.6)
+        .alert("Couldn't like this review", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(failure ?? "") }
         .accessibilityLabel(isLiked ? "Unlike review" : "Like review")
         .help(limited ? "AOTY's hourly like limit reached" : "")
     }

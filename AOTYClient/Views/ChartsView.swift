@@ -74,8 +74,20 @@ private struct ChartList: View {
             if loading { ProgressView().frame(maxWidth: .infinity).listRowSeparator(.hidden) }
         }
         .listStyle(.plain)
-        .refreshable { await reload() }
+        .refreshable { await refresh() }
         .task { if items.isEmpty { await reload() } }
+    }
+
+    private func refresh() async {
+        await AOTYScraper.shared.clearCache()
+        let started = Date()
+        if let res = try? await AOTYAPI.shared.chart(source: source.rawValue, period: period, page: 1), !res.items.isEmpty {
+            await ImageCache.shared.warm(res.items.prefix(6).map(\.coverURL), timeout: 0.6)
+            let wait = 0.5 - Date().timeIntervalSince(started)
+            if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) { items = res.items; page = 1; totalPages = res.totalPages ?? 1; error = nil }
+        }
     }
 
     private func reload() async {

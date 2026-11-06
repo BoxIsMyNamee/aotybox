@@ -105,7 +105,7 @@ struct UserProfileView: View {
 
             if let reviews = profile?.reviews, !reviews.isEmpty {
                 Section("Reviews") {
-                    ForEach(reviews.prefix(5)) { r in ProfileReviewRow(review: r) }
+                    ForEach(reviews.prefix(5)) { r in ProfileReviewRow(review: r, own: isMe) }
                     Button { push(ProfileReviewsRoute(username: username)) } label: {
                         Label("View All Reviews", systemImage: "text.bubble").foregroundStyle(.tint)
                     }
@@ -297,6 +297,11 @@ struct ProfileReviewRow: View {
     @State private var loadingFull = false
     @Environment(\.push) private var push
 
+    var own = false
+    private var heart: some View {
+        HeartButton(reviewID: review.reviewId ?? Int(review.id), liked: review.liked ?? false, likes: review.likes ?? 0, canLike: !own)
+    }
+
     private var needsFetch: Bool { review.isTruncated == true && review.url != nil && fullText == nil }
     private var bodyText: String {
         (fullText ?? review.text).replacingOccurrences(of: #"\s*(\.\.\.|…)?\s*read more\s*$"#, with: "", options: [.regularExpression, .caseInsensitive])
@@ -328,13 +333,18 @@ struct ProfileReviewRow: View {
             .onTapGesture { if let s = review.slug { push(AlbumRoute(slug: s, title: review.album)) } }
 
             if !review.text.isEmpty {
-                Text(bodyText)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(expanded ? nil : 6)
-                    .textSelection(.enabled)
-                HStack(spacing: 16) {
-                    if review.text.count > 280 || review.isTruncated == true {
+                let hasMore = review.text.count > 280 || review.isTruncated == true
+                HStack(alignment: .lastTextBaseline, spacing: 8) {
+                    Text(bodyText)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(expanded ? nil : 6)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if !hasMore { heart.font(.caption.weight(.semibold)) }
+                }
+                if hasMore { HStack(spacing: 16) {
+                    if hasMore {
                         Button { Task { await toggle() } } label: {
                             HStack(spacing: 6) {
                                 Text(expanded ? "Show Less" : "Show More")
@@ -344,10 +354,10 @@ struct ProfileReviewRow: View {
                         .disabled(loadingFull)
                     }
                     Spacer()
-                    HeartButton(reviewID: review.reviewId ?? Int(review.id), liked: review.liked ?? false, likes: review.likes ?? 0)
+                    heart
                 }
                 .font(.caption.weight(.semibold))
-                .buttonStyle(.borderless)
+                .buttonStyle(.borderless) }
             }
         }
         .padding(.vertical, 4)
@@ -364,6 +374,7 @@ struct ProfileReviewRow: View {
 
 struct ProfileReviewsView: View {
     let username: String
+    @AppStorage("profileUsername") private var myUsername = ""
     @State private var reviews: [ProfileReview] = []
     @State private var page = 1
     @State private var more = true
@@ -375,7 +386,7 @@ struct ProfileReviewsView: View {
             if let error, reviews.isEmpty { ErrorView(message: error) { await reload() } }
             else if reviews.isEmpty && !loading { ContentUnavailableView("No reviews yet", systemImage: "text.bubble") }
             ForEach(reviews) { r in
-                ProfileReviewRow(review: r)
+                ProfileReviewRow(review: r, own: username.lowercased() == myUsername.lowercased())
                     .onAppear { if r == reviews.last { Task { await loadMore() } } }
             }
             if loading { ProgressView().frame(maxWidth: .infinity) }

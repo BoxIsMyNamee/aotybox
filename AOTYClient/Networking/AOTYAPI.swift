@@ -116,7 +116,7 @@ actor AOTYAPI {
 
     struct Artist: Decodable { let name: String; let image: String?; let score: Double?; let albums: [AlbumBlock] }
 
-    enum LikeResult { case ok, limited, failed }
+    enum LikeResult: Equatable { case ok, limited, failed(String) }
 
     /// Heart / un-heart a user review (same requests AOTY's own button sends, using your session).
     func setReviewLike(_ reviewID: Int, liked: Bool) async -> LikeResult {
@@ -127,9 +127,17 @@ actor AOTYAPI {
         return r.status + "|" + (await r.text()).slice(0, 200);
         """
         let endpoint = liked ? "/scripts/insertReviewLike.php" : "/scripts/deleteReviewLike.php"
-        guard let out = try? await AOTYScraper.shared.runJS(js, args: ["endpoint": endpoint, "id": String(reviewID)]) else { return .failed }
-        if out.contains("Limited") { return .limited }
-        return out.hasPrefix("200") ? .ok : .failed
+        do {
+            let out = try await AOTYScraper.shared.runJS(js, args: ["endpoint": endpoint, "id": String(reviewID)])
+            if out.contains("Limited") { return .limited }
+            let parts = out.split(separator: "|", maxSplits: 1).map(String.init)
+            let body = parts.count > 1 ? parts[1].trimmingCharacters(in: .whitespacesAndNewlines) : ""
+            // AOTY answers 200 with an empty body (or a short "ok") when it worked.
+            if parts.first == "200" && (body.isEmpty || body.count < 40 && !body.lowercased().contains("error") && !body.lowercased().contains("login")) { return .ok }
+            return .failed("AOTY said: \(parts.first ?? "?") \(body.prefix(120))")
+        } catch {
+            return .failed(error.localizedDescription)
+        }
     }
 
     /// Best guess at an artist's AOTY page from their name.
@@ -141,7 +149,8 @@ actor AOTYAPI {
 
     /// An artist page: "/artist/183-kanye-west/".
     func artist(path: String) async throws -> Artist {
-        try await device(path.hasSuffix("/") ? path : path + "/", .artist, Artist.self)
+        let p = (path.contains("?") || path.hasSuffix("/")) ? path : path + "/"
+        return try await device(p, .artist, Artist.self)
     }
 
     /// The full text of a review whose preview AOTY cut short.
