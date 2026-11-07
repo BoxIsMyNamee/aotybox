@@ -7,7 +7,7 @@ import UIKit
 
 struct AlbumRoute: Hashable { let slug: String?; let title: String }
 struct SongRoute: Hashable { let artist: String; let title: String; let album: String?; let cover: URL?; var artistPath: String? = nil }
-struct UserReviewsRoute: Hashable { let slug: String; let title: String; var range: String? = nil }
+struct UserReviewsRoute: Hashable { let slug: String; let title: String; var range: String? = nil; var artist: String? = nil; var cover: URL? = nil }
 struct ArtistRoute: Hashable { let path: String; let name: String }
 struct LearnAlbumRoute: Hashable { let artist: String; let album: String; let cover: URL? }
 struct UserRoute: Hashable { let username: String; let name: String; let avatar: String?; var nameColor: String? = nil }
@@ -37,7 +37,7 @@ extension View {
             .navigationDestination(for: ChartItem.self) { AlbumDetailView(slug: $0.slug, fallbackTitle: $0.album) }
             .navigationDestination(for: AlbumRoute.self) { AlbumDetailView(slug: $0.slug, fallbackTitle: $0.title) }
             .navigationDestination(for: SongRoute.self) { SongView(artist: $0.artist, title: $0.title, album: $0.album, albumCover: $0.cover, artistPath: $0.artistPath) }
-            .navigationDestination(for: UserReviewsRoute.self) { UserReviewsView(slug: $0.slug, title: $0.title, rangeLabel: $0.range) }
+            .navigationDestination(for: UserReviewsRoute.self) { UserReviewsView(slug: $0.slug, title: $0.title, rangeLabel: $0.range, artist: $0.artist, cover: $0.cover) }
             .navigationDestination(for: ArtistRoute.self) { ArtistView(path: $0.path.isEmpty ? nil : $0.path, fallbackName: $0.name) }
             .navigationDestination(for: LearnAlbumRoute.self) { LearnAlbumView(artist: $0.artist, album: $0.album, cover: $0.cover) }
             .navigationDestination(for: UserRoute.self) { u in

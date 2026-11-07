@@ -173,7 +173,7 @@ struct AlbumDetailView: View {
                                     }
                                 }
                                 Spacer()
-                                if let r = t.rating { Text(String(Int(r.rounded()))).font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
+                                if let r = t.rating { Text(String(Int(r.rounded()))).font(.caption.weight(.semibold).monospacedDigit()).foregroundStyle(scoreColor(r)) }
                                 if let l = t.length { Text(l).font(.caption.monospacedDigit()).foregroundStyle(.tertiary) }
                             }
                         }
@@ -191,9 +191,11 @@ struct AlbumDetailView: View {
             // User reviews
             if let reviews = a.popularUserReviews, !reviews.isEmpty {
                 Section("Popular User Reviews") {
-                    ForEach(reviews.prefix(3)) { r in UserReviewRow(review: r) }
+                    ForEach(reviews.prefix(3)) { r in
+                        UserReviewRow(review: r, learn: { push(Learn.route(artist: a.artist, album: a.title, song: nil, isSingle: isSingle(a), cover: a.coverURL)) })
+                    }
                     if let slug {
-                        Button { push(UserReviewsRoute(slug: slug, title: a.title)) } label: {
+                        Button { push(UserReviewsRoute(slug: slug, title: a.title, artist: a.artist, cover: a.coverURL)) } label: {
                             Label("See all user reviews", systemImage: "text.bubble")
                                 .foregroundStyle(.tint)
                         }
@@ -201,7 +203,7 @@ struct AlbumDetailView: View {
                 }
             } else if let slug {
                 Section {
-                    Button { push(UserReviewsRoute(slug: slug, title: a.title)) } label: {
+                    Button { push(UserReviewsRoute(slug: slug, title: a.title, artist: a.artist, cover: a.coverURL)) } label: {
                         Label("User reviews", systemImage: "text.bubble").foregroundStyle(.tint)
                     }
                 }

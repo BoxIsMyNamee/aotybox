@@ -295,6 +295,7 @@ struct SongChatView: View {
     var subject: String = "song"
     @State private var input = ""
     @State private var thinking = false
+    @State private var thinkingSince: Date?
     @State private var error: String?
     @FocusState private var focused: Bool
     @State private var showAISettings = false
@@ -323,9 +324,7 @@ struct SongChatView: View {
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 ForEach(messages) { m in bubble(m) }
-                if thinking {
-                    HStack(spacing: 8) { ProgressView(); Text(AISettings.provider.searchesWeb ? "Thinking and searching…" : "Thinking…").foregroundStyle(.secondary) }
-                }
+                if thinking, let started = thinkingSince { ThinkingBubble(since: started) }
                 if let error { Text(error).font(.footnote).foregroundStyle(.red) }
                 if messages.isEmpty {
                     ChipLayout(spacing: 8) {
@@ -374,7 +373,8 @@ struct SongChatView: View {
         guard !q.isEmpty, !thinking else { return }
         input = ""; error = nil
         messages.append(ChatMessage(role: .user, text: q))
-        thinking = true; defer { thinking = false }
+        thinking = true; thinkingSince = Date()
+        defer { thinking = false; thinkingSince = nil }
         let system = """
         You are a music expert inside an Album of the Year app. Answer questions about one \(subject): its meaning, \
         lyrics, references, production, samples, reception, and online discussion. Be concise and specific; \
@@ -446,5 +446,46 @@ struct GeniusRichText: View {
             }
         }
         .fullScreenCover(item: $viewing) { CoverViewer(url: $0.id, title: "").accentTint() }
+    }
+}
+
+
+/// "The AI is working" bubble: animated dots, what it's doing, and how long it's been.
+struct ThinkingBubble: View {
+    let since: Date
+    var body: some View {
+        TimelineView(.periodic(from: since, by: 0.35)) { ctx in
+            let t = ctx.date.timeIntervalSince(since)
+            let phase = Int(t / 0.35) % 3
+            HStack(spacing: 10) {
+                HStack(spacing: 4) {
+                    ForEach(0..<3) { i in
+                        Circle().frame(width: 7, height: 7)
+                            .opacity(i == phase ? 1 : 0.3)
+                            .scaleEffect(i == phase ? 1.15 : 0.9)
+                    }
+                }
+                .foregroundStyle(.tint)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(status(t)).font(.callout.weight(.medium))
+                    Text("\(Int(t))s").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+            .animation(.easeInOut(duration: 0.25), value: phase)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityLabel("Thinking")
+    }
+
+    private func status(_ t: TimeInterval) -> String {
+        let web = AISettings.provider.searchesWeb
+        switch t {
+        case ..<2: return "Thinking…"
+        case ..<8: return web ? "Searching the web…" : "Thinking…"
+        case ..<20: return "Writing an answer…"
+        default: return "Still working — long answers take a bit…"
+        }
     }
 }

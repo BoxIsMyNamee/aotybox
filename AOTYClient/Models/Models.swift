@@ -103,8 +103,10 @@ enum RatedDate {
 }
 
 struct Me: Decodable {
+    struct Notifications: Decodable { let href: String?; let count: Int? }
     let username: String?
     let avatar: String?
+    var notifications: Notifications? = nil
 }
 
 struct ProfileStat: Decodable, Hashable {

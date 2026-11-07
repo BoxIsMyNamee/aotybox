@@ -21,12 +21,19 @@ targets:
         buildPhase: resources
       - path: AOTYClient/Art/aoty-logo@3x.png
         buildPhase: resources
+    info:
+      path: Support/Info.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleURLName: com.harper.aotyclient
+            CFBundleURLSchemes: [aotybox]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.harper.aotyclient
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_CFBundleDisplayName: AOTY
+        INFOPLIST_KEY_NSAppleMusicUsageDescription: "Shows the song playing in Apple Music or Marvis so you can open it in Learn."
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic

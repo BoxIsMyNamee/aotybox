@@ -6,6 +6,8 @@ struct UserReviewsView: View {
     let title: String
     /// A rating bucket from the distribution chart ("100", "90 - 99"): shows only those reviews.
     var rangeLabel: String? = nil
+    var artist: String? = nil
+    var cover: URL? = nil
     @Environment(\.push) private var push
 
     private var range: ClosedRange<Double>? {
@@ -46,7 +48,7 @@ struct UserReviewsView: View {
                 if !distribution.isEmpty {
                     Section {
                         DistributionChart(rows: distribution) { label in
-                            push(UserReviewsRoute(slug: slug, title: title, range: label))
+                            push(UserReviewsRoute(slug: slug, title: title, range: label, artist: artist, cover: cover))
                         }
                     } header: { Text("Rating Distribution") } footer: { Text("Tap a row to see those reviews.") }
                 }
@@ -58,7 +60,9 @@ struct UserReviewsView: View {
 
             Section(range != nil ? "Rated \(rangeLabel ?? "")" : (total.map { "\($0.formatted()) user reviews" } ?? "")) {
                 ForEach(reviews) { r in
-                    UserReviewRow(review: r, lineLimit: 10)
+                    UserReviewRow(review: r, lineLimit: 10, learn: artist.map { art in
+                        { push(Learn.route(artist: art, album: title, song: nil, isSingle: false, cover: cover)) }
+                    })
                         .onAppear { if r == reviews.last { Task { await loadMore() } } }
                 }
                 if loading { ProgressView().frame(maxWidth: .infinity) }

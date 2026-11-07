@@ -66,33 +66,37 @@ struct HeartButton: View {
     }
 }
 
-/// Reviews: swipe left to heart (or un-heart), swipe right to open the review's page to comment.
+/// Reviews: swipe left to heart (or un-heart), swipe right to Learn about the album.
+/// On reviews you can't like (your own), the left swipe still moves and ticks; it just doesn't send.
 struct HeartSwipe: ViewModifier {
     let reviewID: Int?
     let liked: Bool
     let likes: Int
     var enabled = true
-    var comment: (() -> Void)? = nil
+    var learn: (() -> Void)? = nil
     @ObservedObject private var store = LikeStore.shared
 
     func body(content: Content) -> some View {
         let isLiked = store.liked(reviewID, default: liked)
         let count = store.count(reviewID, default: likes)
         content.swipeRow(
-            leading: comment.map { c in SwipeAction(icon: "bubble.left.fill", title: "Comment", color: .blue, perform: c) },
-            trailing: (enabled && reviewID != nil) ? SwipeAction(
+            leading: learn.map { l in SwipeAction(icon: "magnifyingglass", title: "Learn", color: .green, perform: l) },
+            trailing: SwipeAction(
                 icon: isLiked ? "heart.slash.fill" : "heart.fill",
                 title: isLiked ? "Unlike" : "Like",
                 color: .pink,
-                perform: { if let id = reviewID { Task { _ = await store.toggle(id: id, liked: isLiked, count: count) } } }
-            ) : nil
+                perform: {
+                    guard enabled, let id = reviewID else { return }
+                    Task { _ = await store.toggle(id: id, liked: isLiked, count: count) }
+                }
+            )
         )
     }
 }
 
 extension View {
-    func heartSwipe(reviewID: Int?, liked: Bool, likes: Int, enabled: Bool = true, comment: (() -> Void)? = nil) -> some View {
-        modifier(HeartSwipe(reviewID: reviewID, liked: liked, likes: likes, enabled: enabled, comment: comment))
+    func heartSwipe(reviewID: Int?, liked: Bool, likes: Int, enabled: Bool = true, learn: (() -> Void)? = nil) -> some View {
+        modifier(HeartSwipe(reviewID: reviewID, liked: liked, likes: likes, enabled: enabled, learn: learn))
     }
 }
 

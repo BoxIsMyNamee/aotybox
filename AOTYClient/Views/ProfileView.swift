@@ -101,6 +101,7 @@ struct UserProfileView: View {
     @State private var loading = false
     @State private var error: String?
     @State private var showFullProfile = false
+    @State private var showAvatar = false
 
     var body: some View {
         List {
@@ -160,12 +161,22 @@ struct UserProfileView: View {
                 } label: { Image(systemName: "ellipsis") } }
             }
         }
+        .fullScreenCover(isPresented: $showAvatar) {
+            if let s = profile?.avatar ?? fallbackAvatar, let u = URL(string: Self.largeAvatar(s)) {
+                CoverViewer(url: u, title: profile?.displayName ?? username, fallback: URL(string: s)).accentTint()
+            }
+        }
         .sheet(isPresented: $showFullProfile) {
             if let url = URL(string: "https://www.albumoftheyear.org/user/\(username)/") {
                 AOTYWebSheet(url: url, title: username).accentTint()
             }
         }
         .task { if profile == nil && ratings.isEmpty { await load(force: false) } }
+    }
+
+    /// AOTY serves small "thumbs"; ask for the full-size picture for the viewer.
+    static func largeAvatar(_ s: String) -> String {
+        s.replacingOccurrences(of: "/user/thumbs/", with: "/user/")
     }
 
     /// "harbor 🎧 (HarperSeemsCool)" → name "harbor 🎧", handle "(HarperSeemsCool)".
@@ -182,6 +193,8 @@ struct UserProfileView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 16) {
                     Avatar(url: (profile?.avatar ?? fallbackAvatar).flatMap(URL.init(string:)), name: username, size: 80)
+                        .onTapGesture { if (profile?.avatar ?? fallbackAvatar) != nil { showAvatar = true } }
+                        .accessibilityAddTraits(.isButton)
                     let full = profile?.displayName ?? fallbackName ?? username
                     let parts = Self.splitName(full)
                     VStack(alignment: .leading, spacing: 2) {
@@ -191,6 +204,12 @@ struct UserProfileView: View {
                             .foregroundStyle((profile?.nameColor ?? fallbackColor).map { Color(hex: $0) } ?? .primary)
                         if let handle = parts.handle {
                             Text(handle).font(.subheadline.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        if let stats = profile?.stats, !stats.isEmpty {
+                            // "100 followers · 520 ratings" — small, under the name (no separate card).
+                            Text(stats.map { "\($0.value) \($0.label.lowercased())" }.joined(separator: " · "))
+                                .font(.caption.weight(.medium)).foregroundStyle(.tertiary).lineLimit(2)
+                                .padding(.top, 2)
                         }
                     }
                 }
@@ -205,17 +224,6 @@ struct UserProfileView: View {
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 8, trailing: 4))
 
-            if let stats = profile?.stats, !stats.isEmpty {
-                HStack {
-                    ForEach(stats, id: \.label) { s in
-                        VStack(spacing: 2) {
-                            Text(s.value).font(.headline.monospacedDigit())
-                            Text(s.label).font(.caption2).foregroundStyle(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                }
-            }
         }
     }
 
@@ -357,15 +365,16 @@ struct ProfileReviewRow: View {
             HStack(spacing: 12) {
                 Cover(url: review.coverURL, size: 76)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(review.artist).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                    Button { push(ArtistRoute(path: "", name: review.artist)) } label: {
+                        Text(review.artist).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
                     Text(review.album).font(.headline).lineLimit(2)
                     if let d = review.date { Text(d).font(.caption).foregroundStyle(.tertiary) }
                 }
                 Spacer()
                 if let r = review.rating { MiniScore(label: "", score: r) }
             }
-            .contentShape(Rectangle())
-            .onTapGesture { if let s = review.slug { push(AlbumRoute(slug: s, title: review.album)) } }
 
             if !review.text.isEmpty {
                 let hasMore = review.text.count > 280 || review.isTruncated == true
@@ -374,7 +383,6 @@ struct ProfileReviewRow: View {
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .lineLimit(expanded ? nil : 6)
-                        .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if !hasMore { heart.font(.caption.weight(.semibold)) }
                 }
@@ -396,8 +404,11 @@ struct ProfileReviewRow: View {
             }
         }
         .padding(.vertical, 4)
+        // The whole review (art, title, text) opens the album; buttons inside keep their own taps.
+        .contentShape(Rectangle())
+        .onTapGesture { if let s = review.slug { push(AlbumRoute(slug: s, title: review.album)) } }
         .heartSwipe(reviewID: review.reviewId ?? Int(review.id), liked: review.liked ?? false, likes: review.likes ?? 0, enabled: !own,
-                    comment: review.url == nil ? nil : { showFull = true })
+                    learn: { push(Learn.route(artist: review.artist, album: review.album, song: nil, isSingle: false, cover: review.coverURL)) })
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .sheet(isPresented: $showFull) {
             if let s = review.url, let u = URL(string: s) { AOTYWebSheet(url: u, title: review.album).accentTint() }

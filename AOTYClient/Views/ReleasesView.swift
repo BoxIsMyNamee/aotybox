@@ -19,6 +19,7 @@ struct ReleasesView: View {
                 HStack(alignment: .center) {
                     AOTYLogo().frame(height: 30)
                     Spacer()
+                    NotificationBell()
                 }
                 .padding(.horizontal)
                 .padding(.top, 4)
@@ -76,11 +77,11 @@ private struct FeedList: View {
                     let date = album.releaseDate ?? genreStore.date(for: album.slug)
                     if feed == .upcoming {
                         AlbumRow(artist: album.artist, title: album.title, cover: album.coverURL, subtitle: date,
-                                 coverSize: 84, genres: genreStore.label(for: album.slug))
+                                 coverSize: 84, genres: genreStore.label(for: album.slug), reserveLines: true)
                     } else {
                         AlbumRow(artist: album.artist, title: album.title, cover: album.coverURL, subtitle: date,
                                  critic: album.criticScore, user: album.userScore, mustHear: album.mustHear ?? false,
-                                 coverSize: 84, genres: genreStore.label(for: album.slug))
+                                 coverSize: 84, genres: genreStore.label(for: album.slug), reserveLines: true)
                     }
                 }
                     .onAppear {
@@ -90,7 +91,7 @@ private struct FeedList: View {
                     .onDisappear { genreStore.disappeared(album.slug) }
             }
 
-            if loading { ProgressView().frame(maxWidth: .infinity) }
+            if loading { ProgressView().frame(maxWidth: .infinity).listRowSeparator(.hidden).listRowBackground(Color.clear) }
         }
         .listStyle(.plain)
         .refreshable { await refresh() }
@@ -120,7 +121,11 @@ private struct FeedList: View {
 
     private func reload() async {
         page = 1; canLoadMore = true; error = nil
-        loading = true; defer { loading = false; loaded = true }
+        loading = true
+        defer {
+            loading = false; loaded = true
+            NotificationCenter.default.post(name: .releasesReady, object: nil)   // lifts the launch screen
+        }
         do {
             var seen = Set<String>()
             let list = try await fetch(1).filter { seen.insert($0.id).inserted }
@@ -206,5 +211,52 @@ struct AOTYLogo: View {
         .foregroundStyle(.primary)
         .accessibilityLabel("Album of the Year")
         .accessibilityAddTraits(.isHeader)
+    }
+}
+
+
+/// AOTY notifications: a bell with a red badge for unread ones; tap opens them on AOTY.
+struct NotificationBell: View {
+    @State private var count = 0
+    @State private var href = "/notifications/"
+    @State private var showing = false
+
+    var body: some View {
+        Button { showing = true } label: {
+            Image(systemName: count > 0 ? "bell.badge" : "bell")
+                .font(.title3.weight(.medium))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(count > 0 ? Color.red : Color.primary, Color.primary)
+                .frame(width: 40, height: 40)
+                .overlay(alignment: .topTrailing) {
+                    if count > 0 {
+                        Text(count > 99 ? "99+" : "\(count)")
+                            .font(.caption2.weight(.bold)).foregroundStyle(.white)
+                            .padding(.horizontal, 5).frame(minWidth: 18, minHeight: 18)
+                            .background(.red, in: Capsule())
+                            .offset(x: 4, y: -2)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(count > 0 ? "\(count) notifications" : "Notifications")
+        .sheet(isPresented: $showing, onDismiss: { Task { await check(fresh: true) } }) {
+            if let u = URL(string: href, relativeTo: URL(string: "https://www.albumoftheyear.org")) {
+                AOTYWebSheet(url: u.absoluteURL, title: "Notifications").accentTint()
+            }
+        }
+        .task {
+            try? await Task.sleep(for: .seconds(2))      // let the first page load first
+            while !Task.isCancelled {
+                await check(fresh: true)
+                try? await Task.sleep(for: .seconds(180))
+            }
+        }
+    }
+
+    private func check(fresh: Bool) async {
+        guard let me = try? await AOTYAPI.shared.me(refresh: fresh), let n = me.notifications else { return }
+        count = n.count ?? 0
+        if let h = n.href, !h.isEmpty { href = h }
     }
 }

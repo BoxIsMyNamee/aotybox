@@ -233,6 +233,15 @@ for (const [kind, path] of pages) {
   check(!hit.includes("menu menu"), "nav excluded");
 }
 
+// Header bell (synthetic)
+{
+  const html = `<html><body><header><a href="/notifications/"><i class="fas fa-bell"></i><span class="notifCount">3</span></a>
+    <a href="/user/harbor/"><img src="https://cdn.albumoftheyear.org/user/thumbs/harbor_1.jpg"></a></header></body></html>`;
+  const me = aotyExtract("me", html, "x");
+  console.log("\n=== bell (synthetic)", JSON.stringify(me.notifications));
+  check(me.notifications && me.notifications.count === 3 && me.notifications.href === "/notifications/", "bell count + link");
+}
+
 // Signed-in review markup (from the user's capture): liked state and review id
 {
   console.log("\n=== review like markup (synthetic)");

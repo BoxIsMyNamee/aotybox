@@ -471,6 +471,20 @@ function aotySlugFromAvatar(src) {
   return m ? m[1].toLowerCase() : null;
 }
 
+// The header bell: where it links and the unread count on its badge (if any).
+function aotyNotifications(doc) {
+  var a = doc.querySelector("a[href*='notification'], a[href*='Notification'], a[title*='otification']");
+  if (!a) {
+    var bell = doc.querySelector(".fa-bell, [class*='bell'], [class*='Bell']");
+    a = bell ? bell.closest("a") : null;
+  }
+  if (!a) return null;
+  var badge = a.querySelector("[class*='count'], [class*='Count'], [class*='badge'], [class*='Badge'], [class*='unread'], span");
+  var txt = aotyTxt(badge || a);
+  var m = txt.match(/\d+/);
+  return { href: a.getAttribute("href") || "/notifications/", count: m ? parseInt(m[0], 10) : 0 };
+}
+
 function aotyMe(doc) {
   function inContent(el) { return !!(el.closest && el.closest(AOTY_CONTENT)); }
   function userFromLink(a) {
@@ -796,7 +810,7 @@ function aotyExtract(kind, html, pageURL) {
   if (kind === "chart") return aotyChart(doc);
   if (kind === "album") return aotyAlbum(doc, html, pageURL);
   if (kind === "userReviews") return aotyUserReviewsPage(doc, html);
-  if (kind === "me") return aotyMe(doc);
+  if (kind === "me") { var me = aotyMe(doc) || {}; me.notifications = aotyNotifications(doc); return me; }
   if (kind === "profile") return aotyProfile(doc, html, pageURL);
   if (kind === "follows") return aotyFollows(doc, false);
   if (kind === "textBlocks") return aotyTextBlocks(doc);

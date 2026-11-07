@@ -59,11 +59,13 @@ private struct ChartList: View {
             ForEach(items) { item in
                 NavRow(value: item, artist: item.artist, album: item.album, cover: item.coverURL) {
                     AlbumRow(artist: item.artist, title: item.album, cover: item.coverURL,
-                             subtitle: [item.date, item.genres?.first].compactMap { $0 }.joined(separator: " · "),
+                             subtitle: item.date,
                              rank: item.rank,
                              critic: source == .critics ? item.score : nil,
                              user: source == .users ? item.score : nil,
-                             mustHear: item.mustHear ?? false)
+                             mustHear: item.mustHear ?? false,
+                             genres: item.genres.map { $0.prefix(2).joined(separator: ", ") },
+                             reserveLines: true)
                 }
                 .onAppear { if item == items.last { Task { await loadMore() } } }
             }

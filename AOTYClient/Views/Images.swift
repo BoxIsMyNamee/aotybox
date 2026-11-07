@@ -137,6 +137,8 @@ struct Avatar: View {
 struct CoverViewer: View {
     let url: URL
     let title: String
+    /// Tried if `url` can't be loaded (e.g. no full-size version).
+    var fallback: URL? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var image: UIImage?
     @State private var dragOffset: CGFloat = 0
@@ -183,7 +185,10 @@ struct CoverViewer: View {
             .opacity(abs(dragOffset) > 10 ? 0 : 1)
         }
         .statusBarHidden()
-        .task { image = await ImageCache.shared.image(for: url) }
+        .task {
+            image = await ImageCache.shared.image(for: url)
+            if image == nil, let fallback { image = await ImageCache.shared.image(for: fallback) }
+        }
     }
 }
 

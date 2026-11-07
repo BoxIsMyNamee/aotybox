@@ -45,9 +45,11 @@ struct AlbumRow: View {
     var mustHear: Bool = false
     var coverSize: CGFloat = 56
     var genres: String? = nil
+    /// Keep the date and genre lines' space even before they arrive, so rows never shift.
+    var reserveLines: Bool = false
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             if let rank {
                 Text("\(rank)").font(.subheadline.monospacedDigit()).foregroundStyle(.secondary).frame(width: 28)
             }
@@ -58,19 +60,19 @@ struct AlbumRow: View {
                     Text(title).font(.body.weight(.semibold)).lineLimit(2)
                     if mustHear { Image(systemName: "star.fill").font(.caption2).foregroundStyle(.tint) }
                 }
-                if let genres { Text(genres).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
-                if let subtitle, !subtitle.isEmpty { Text(subtitle).font(.caption).foregroundStyle(.tertiary) }
+                // Date first, genres under it — same order everywhere.
+                if let subtitle, !subtitle.isEmpty { Text(subtitle).font(.caption).foregroundStyle(.tertiary).lineLimit(1) }
+                else if reserveLines { Text(" ").font(.caption) }
+                if let genres, !genres.isEmpty { Text(genres).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                else if reserveLines { Text(" ").font(.caption) }
             }
             Spacer(minLength: 4)
-            if critic != nil && user != nil && coverSize > 60 {
-                // Two scores next to big art: stack them so the art keeps its room.
-                VStack(alignment: .trailing, spacing: 6) {
-                    MiniScore(label: "Critic", score: critic)
-                    MiniScore(label: "User", score: user)
+            if critic != nil || user != nil {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let critic { SiteScore(score: critic, label: "critic") }
+                    if let user { SiteScore(score: user, label: "user") }
                 }
-            } else {
-                if critic != nil { ScoreBadge(label: "Critic", score: critic) }
-                if user != nil { ScoreBadge(label: "User", score: user) }
+                .frame(width: 72, alignment: .leading)
             }
         }
         .padding(.vertical, 2)
@@ -81,6 +83,28 @@ extension AlbumRow {
     init(_ a: AlbumBlock, coverSize: CGFloat = 56, genres: String? = nil) {
         self.init(artist: a.artist, title: a.title, cover: a.coverURL, subtitle: a.releaseDate,
                   critic: a.criticScore, user: a.userScore, mustHear: a.mustHear ?? false, coverSize: coverSize, genres: genres)
+    }
+}
+
+/// AOTY-style score: the number with a thin colored bar under it and a small label.
+struct SiteScore: View {
+    let score: Double
+    let label: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text(String(Int(score.rounded())))
+                    .font(.system(.title3, design: .rounded).weight(.semibold).monospacedDigit())
+                Text(label).font(.caption2).foregroundStyle(.secondary)
+            }
+            ZStack(alignment: .leading) {
+                Capsule().fill(.quaternary)
+                Capsule().fill(scoreColor(score)).frame(width: 38 * min(max(score, 0), 100) / 100)
+            }
+            .frame(width: 38, height: 3)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label) score \(Int(score.rounded()))")
     }
 }
 
@@ -111,6 +135,8 @@ func scoreColor(_ s: Double?) -> Color {
 struct UserReviewRow: View {
     let review: UserReview
     var lineLimit: Int? = 6
+    /// Swipe right: Learn about the album this review is for.
+    var learn: (() -> Void)? = nil
     @State private var showFull = false
     @Environment(\.push) private var push
 
@@ -164,8 +190,7 @@ struct UserReviewRow: View {
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture { if review.url != nil { showFull = true } }
-        .heartSwipe(reviewID: review.reviewId, liked: review.liked ?? false, likes: review.likes ?? 0,
-                    comment: review.url == nil ? nil : { showFull = true })
+        .heartSwipe(reviewID: review.reviewId, liked: review.liked ?? false, likes: review.likes ?? 0, learn: learn)
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .sheet(isPresented: $showFull) {
             if let s = review.url, let u = URL(string: s) { AOTYWebSheet(url: u, title: review.username).accentTint() }

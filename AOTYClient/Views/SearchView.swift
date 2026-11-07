@@ -45,6 +45,10 @@ private struct SearchContent: View {
             }
         }
         .onSubmit(of: .search) { run(query) }
+        .onReceive(NotificationCenter.default.publisher(for: .openLearn)) { n in
+            guard let r = n.object as? SongRoute else { return }
+            push(r)
+        }
         .onChange(of: query) { if query.isEmpty { submitted = "" } }
         .task { if thisWeek.isEmpty { thisWeek = Array(((try? await AOTYAPI.shared.thisWeek()) ?? []).prefix(18)) } }
     }
@@ -54,6 +58,7 @@ private struct SearchContent: View {
     private var idle: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                NowPlayingCard()
                 if !recents.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {

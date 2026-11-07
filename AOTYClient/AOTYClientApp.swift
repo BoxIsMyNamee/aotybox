@@ -8,8 +8,11 @@ struct AOTYClientApp: App {
     @State private var musicLinkFailed = false
     @State private var tab = UserDefaults.standard.integer(forKey: "initialTab")
 
+    @State private var showSplash = true
+
     var body: some Scene {
         WindowGroup {
+            ZStack {
             TabView(selection: Binding(get: { tab }, set: { new in
                 if new == tab && new == 2 { NotificationCenter.default.post(name: .resetSearch, object: nil) }
                 tab = new
@@ -20,6 +23,11 @@ struct AOTYClientApp: App {
                 ProfileView().tabItem { Label("Profile", systemImage: "person.crop.circle") }.tag(3)
                 ProofView().tabItem { Label("Notes", systemImage: "text.badge.checkmark") }.tag(4)
             }
+            if showSplash {
+                LaunchSplash { showSplash = false }
+                    .zIndex(1)
+            }
+            }
             .tint(Color(hex: accentHex))
             .preferredColorScheme(Appearance(rawValue: appearance)?.scheme)
             .onAppear { Appearance.apply(appearance) }
@@ -27,6 +35,18 @@ struct AOTYClientApp: App {
             .background(HiddenScraperHost().frame(width: 2, height: 2).allowsHitTesting(false))
             .sheet(item: $scraper.challenge) { ChallengeSheet(url: $0.url).accentTint() }
             .onReceive(NotificationCenter.default.publisher(for: .musicAppOpenFailed)) { _ in musicLinkFailed = true }
+            .onOpenURL { url in
+                // aotybox://learn?artist=…&title=…[&album=…]  → the song's Learn page on Search
+                guard url.scheme == "aotybox", url.host == "learn",
+                      let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
+                      let title = items.first(where: { $0.name == "title" })?.value, !title.isEmpty else { return }
+                let artist = items.first(where: { $0.name == "artist" })?.value ?? ""
+                let album = items.first(where: { $0.name == "album" })?.value
+                tab = 2
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    NotificationCenter.default.post(name: .openLearn, object: SongRoute(artist: artist, title: title, album: album, cover: nil))
+                }
+            }
             .alert("Couldn't open \(MusicAppLink.name)", isPresented: $musicLinkFailed) {
                 Button("OK", role: .cancel) {}
             } message: {
@@ -174,6 +194,48 @@ enum Appearance: String, CaseIterable, Identifiable {
 }
 
 extension Notification.Name {
+    /// The first Releases list finished loading (lifts the launch screen).
+    static let releasesReady = Notification.Name("releasesReady")
+    /// Open a song's Learn page (from an aotybox:// link).
+    static let openLearn = Notification.Name("openLearn")
     /// Tapping the Search tab while on it: back to a fresh search.
     static let resetSearch = Notification.Name("resetSearch")
+}
+
+
+/// Launch screen: the AOTY wordmark on a plain background while the first page loads, then it
+/// grows and fades away to reveal the app (Bluesky-style). Never stays longer than ~4 seconds.
+struct LaunchSplash: View {
+    let done: () -> Void
+    @State private var scale: CGFloat = 1
+    @State private var opacity: Double = 1
+    @State private var pulse = false
+    @State private var leaving = false
+    private let shownAt = Date()
+
+    var body: some View {
+        ZStack {
+            Color(.systemBackground).ignoresSafeArea()
+            AOTYLogo()
+                .frame(height: 64)
+                .scaleEffect(scale * (pulse ? 1.04 : 1))
+                .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulse)
+        }
+        .opacity(opacity)
+        .allowsHitTesting(!leaving)
+        .onAppear { pulse = true }
+        .onReceive(NotificationCenter.default.publisher(for: .releasesReady)) { _ in leave() }
+        .task { try? await Task.sleep(for: .seconds(4)); leave() }
+    }
+
+    private func leave() {
+        guard !leaving else { return }
+        leaving = true
+        let wait = max(0, 0.6 - Date().timeIntervalSince(shownAt))   // don't flash
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
+            pulse = false
+            withAnimation(.easeIn(duration: 0.45)) { scale = 9; opacity = 0 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done() }
+        }
+    }
 }
