@@ -368,7 +368,10 @@ struct SongChatView: View {
         .frame(maxWidth: .infinity, alignment: m.role == .user ? .trailing : .leading)
     }
 
-    private var meaningQuestion: String { "What's the meaning of this \(subject)?" }
+    /// The original first suggestion; tapping it gets the structured answer.
+    private var meaningQuestion: String {
+        subject == "song" ? "What is this song about?" : "What's the story behind this \(subject)?"
+    }
 
     /// The structured answer for the "meaning" question.
     private var meaningFormat: String {
