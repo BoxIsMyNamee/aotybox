@@ -203,45 +203,110 @@ extension Notification.Name {
 }
 
 
-/// Launch screen: the AOTY wordmark on a plain background while the first page loads, then it
-/// grows and fades away to reveal the app (Bluesky-style). Never stays longer than ~4 seconds.
+/// Launch screen: a little stack of album covers flies in (like the stacked-albums icon), a record
+/// slides out of the stack and spins while the first page loads, the AOTY wordmark pops in under it,
+/// then it all drops away to reveal the app. Never stays longer than ~4 seconds.
 struct LaunchSplash: View {
     let done: () -> Void
-    @State private var scale: CGFloat = 0.35
-    @State private var logoOpacity: Double = 0
-    @State private var opacity: Double = 1
-    @State private var blur: CGFloat = 0
+    @State private var dealt = 0            // how many cards have landed
+    @State private var recordOut = false
+    @State private var spin = false
+    @State private var logoIn = false
     @State private var leaving = false
+    @State private var fade = 1.0
     private let shownAt = Date()
+    private let covers: [UIImage?] = {
+        let urls = (UserDefaults.standard.stringArray(forKey: "splashCovers") ?? []).compactMap(URL.init(string:))
+        return (0..<3).map { i in i < urls.count ? ImageCache.shared.cachedOrDisk(urls[i]) : nil }
+    }()
+    @AppStorage(Theme.key) private var accentHex = Theme.defaultHex
 
     var body: some View {
         ZStack {
             Color(.systemBackground).ignoresSafeArea()
-            AOTYLogo()
-                .frame(height: 64)
-                .scaleEffect(scale)
-                .opacity(logoOpacity)
-                .blur(radius: blur)
+            VStack(spacing: 34) {
+                ZStack {
+                    record
+                        .offset(x: recordOut ? 58 : 0)
+                        .rotationEffect(.degrees(spin ? 360 : 0))
+                        .animation(spin ? .linear(duration: 1.6).repeatForever(autoreverses: false) : .default, value: spin)
+                    ForEach((0..<3).reversed(), id: \.self) { i in card(i) }
+                }
+                .frame(width: 240, height: 170)
+                .offset(x: recordOut ? -26 : 0)
+                AOTYLogo()
+                    .frame(height: 40)
+                    .scaleEffect(logoIn ? 1 : 0.4)
+                    .opacity(logoIn ? 1 : 0)
+            }
+            .scaleEffect(leaving ? 0.35 : 1)
+            .opacity(leaving ? 0 : 1)
+            .blur(radius: leaving ? 6 : 0)
         }
-        .opacity(opacity)
+        .opacity(fade)
         .allowsHitTesting(!leaving)
-        .onAppear {
-            // Pop in, like an SF Symbol "replace": small → overshoot → settle.
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.55)) { scale = 1; logoOpacity = 1 }
-        }
+        .task { await intro() }
         .onReceive(NotificationCenter.default.publisher(for: .releasesReady)) { _ in leave() }
         .task { try? await Task.sleep(for: .seconds(4)); leave() }
     }
 
+    /// Back cards fan out a little; the front card sits straight.
+    private func card(_ i: Int) -> some View {
+        let landed = dealt > (2 - i)
+        let tilt: [Double] = [0, -7, 7]
+        let shift: [CGFloat] = [0, -16, 16]
+        return Group {
+            if let img = covers[i] {
+                Image(uiImage: img).resizable().scaledToFill()
+            } else {
+                LinearGradient(colors: [Color(hex: accentHex).opacity(0.9 - Double(i) * 0.25), Color(hex: accentHex).opacity(0.35)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+            }
+        }
+        .frame(width: 130, height: 130)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(.white.opacity(0.12), lineWidth: 1))
+        .shadow(color: .black.opacity(0.35), radius: 10, y: 6)
+        .scaleEffect(1 - CGFloat(i) * 0.06)
+        .rotationEffect(.degrees(landed ? tilt[i] : 0))
+        .offset(x: landed ? shift[i] : 0, y: landed ? -CGFloat(i) * 8 : 520)
+        .opacity(landed ? 1 : 0)
+    }
+
+    private var record: some View {
+        ZStack {
+            Circle().fill(Color(white: 0.07))
+            ForEach(0..<5) { g in
+                Circle().stroke(Color.white.opacity(0.06), lineWidth: 1).padding(CGFloat(10 + g * 9))
+            }
+            Circle().fill(Color(hex: accentHex)).frame(width: 42, height: 42)
+            Circle().fill(Color(white: 0.07)).frame(width: 6, height: 6)
+            // a highlight so the spin is visible
+            Capsule().fill(.white.opacity(0.08)).frame(width: 4, height: 50).offset(y: -38)
+        }
+        .frame(width: 124, height: 124)
+        .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
+    }
+
+    private func intro() async {
+        for n in 1...3 {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.72)) { dealt = n }
+            try? await Task.sleep(for: .milliseconds(110))
+        }
+        try? await Task.sleep(for: .milliseconds(220))
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) { recordOut = true }
+        spin = true
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.55).delay(0.1)) { logoIn = true }
+    }
+
     private func leave() {
         guard !leaving else { return }
-        leaving = true
-        let wait = max(0, 0.6 - Date().timeIntervalSince(shownAt))   // don't flash
+        let wait = max(0, 1.1 - Date().timeIntervalSince(shownAt))   // let the intro play
         DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
-            // Shrink away (the "down" half of the replace), then the screen fades to reveal the app.
-            withAnimation(.easeIn(duration: 0.22)) { scale = 0.3; logoOpacity = 0; blur = 4 }
-            withAnimation(.easeOut(duration: 0.3).delay(0.16)) { opacity = 0 }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done() }
+            guard !leaving else { return }
+            withAnimation(.easeIn(duration: 0.25)) { leaving = true }
+            withAnimation(.easeOut(duration: 0.3).delay(0.18)) { fade = 0 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.52) { done() }
         }
     }
 }

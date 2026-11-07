@@ -163,6 +163,24 @@ actor AOTYAPI {
             kind: .blocks, as: R.self).albums
     }
 
+    /// Find a release on AOTY by artist + title (AOTY's album search). Returns its slug.
+    func findAlbumSlug(artist: String, title: String) async -> String? {
+        func norm(_ s: String) -> String {
+            s.lowercased().folding(options: .diacriticInsensitive, locale: nil)
+                .replacingOccurrences(of: #"\s*[\(\[].*?[\)\]]"#, with: "", options: .regularExpression)
+                .replacingOccurrences(of: #"\s+-\s+(single|ep)$"#, with: "", options: .regularExpression)
+                .filter { $0.isLetter || $0.isNumber }
+        }
+        let q = "\(artist) \(title)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        struct R: Decodable { let albums: [AlbumBlock] }
+        guard let list = try? await device("/search/albums/?q=\(q)", .blocks, R.self).albums, !list.isEmpty else { return nil }
+        let t = norm(title), a = norm(artist)
+        let pick = list.first { norm($0.title) == t && norm($0.artist).contains(a.prefix(6)) }
+            ?? list.first { norm($0.title).hasPrefix(t.prefix(8)) && norm($0.artist).contains(a.prefix(4)) }
+            ?? list.first { norm($0.artist).contains(a.prefix(6)) }
+        return pick?.slug
+    }
+
     /// Best guess at an artist's AOTY page from their name.
     func findArtistPath(name: String) async -> String? {
         let q = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name

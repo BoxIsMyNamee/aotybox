@@ -8,6 +8,7 @@ final class NowPlaying: ObservableObject {
     struct Song: Equatable { let title: String; let artist: String; let album: String?; let art: UIImage? }
 
     @Published private(set) var song: Song?
+    @Published private(set) var isPlaying = false
     @Published private(set) var status = MPMediaLibrary.authorizationStatus()
     var authorized: Bool { status == .authorized }
     private var started = false
@@ -55,6 +56,7 @@ final class NowPlaying: ObservableObject {
     func refresh() {
         status = MPMediaLibrary.authorizationStatus()
         let player = MPMusicPlayerController.systemMusicPlayer
+        isPlaying = player.playbackState == .playing
         guard let item = player.nowPlayingItem, let title = item.title, !title.isEmpty else { song = nil; return }
         song = Song(title: title, artist: item.artist ?? item.albumArtist ?? "", album: item.albumTitle,
                     art: item.artwork?.image(at: CGSize(width: 120, height: 120)))
@@ -65,13 +67,25 @@ final class NowPlaying: ObservableObject {
 struct NowPlayingCard: View {
     @ObservedObject private var np = NowPlaying.shared
     @Environment(\.push) private var push
+    @State private var finding = false
+    @State private var notFound: String?
+
+    /// Find the playing song's album (or single) on AOTY and open its page.
+    private func openRelease(_ s: NowPlaying.Song) async {
+        finding = true; notFound = nil
+        defer { finding = false }
+        let title = (s.album ?? s.title).replacingOccurrences(of: #"\s+-\s+(Single|EP)$"#, with: "", options: .regularExpression)
+        if let slug = await AOTYAPI.shared.findAlbumSlug(artist: s.artist, title: title) {
+            push(AlbumRoute(slug: slug, title: title))
+        } else {
+            notFound = "Couldn't find “\(title)” on AOTY."
+        }
+    }
 
     var body: some View {
         Group {
             if let s = np.song {
-                Button {
-                    push(SongRoute(artist: s.artist, title: s.title, album: s.album, cover: nil))
-                } label: {
+                VStack(spacing: 0) {
                     HStack(spacing: 12) {
                         Group {
                             if let art = s.art { Image(uiImage: art).resizable().scaledToFill() }
@@ -80,21 +94,42 @@ struct NowPlayingCard: View {
                         .frame(width: 52, height: 52)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                         VStack(alignment: .leading, spacing: 2) {
-                            Label("Now Playing", systemImage: "waveform").font(.caption.weight(.semibold)).foregroundStyle(.tint)
+                            HStack(spacing: 5) {
+                                Image(systemName: "waveform")
+                                    .symbolEffect(.variableColor.iterative.dimInactiveLayers.nonReversing, options: .repeating, isActive: np.isPlaying)
+                                Text("Now Playing")
+                            }
+                            .font(.caption.weight(.semibold)).foregroundStyle(.tint)
                             Text(s.title).font(.headline).lineLimit(1)
                             Text(s.artist).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
                         }
-                        Spacer()
-                        Label("Learn", systemImage: "magnifyingglass")
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 12).padding(.vertical, 8)
-                            .background(.green.opacity(0.2), in: Capsule())
-                            .foregroundStyle(.green)
+                        Spacer(minLength: 0)
                     }
-                    .padding(12)
-                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 14))
+                    HStack(spacing: 10) {
+                        Button { Task { await openRelease(s) } } label: {
+                            HStack(spacing: 6) {
+                                if finding { ProgressView().controlSize(.mini) } else { Image(systemName: "square.stack") }
+                                Text(s.album.map { _ in "Album" } ?? "Release")
+                            }
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity).padding(.vertical, 9)
+                            .background(.quaternary.opacity(0.6), in: Capsule())
+                        }
+                        .disabled(finding)
+                        Button { push(SongRoute(artist: s.artist, title: s.title, album: s.album, cover: nil)) } label: {
+                            Label("Learn", systemImage: "magnifyingglass")
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity).padding(.vertical, 9)
+                                .background(.green.opacity(0.2), in: Capsule())
+                                .foregroundStyle(.green)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 10)
+                    if let notFound { Text(notFound).font(.caption).foregroundStyle(.secondary).padding(.top, 6) }
                 }
-                .buttonStyle(.plain)
+                .padding(12)
+                .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 14))
             } else if np.status == .denied || np.status == .restricted {
                 // Most likely running inside LiveContainer: iOS checks the host app for Apple Music access.
                 HStack(alignment: .top, spacing: 10) {

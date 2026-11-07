@@ -131,6 +131,9 @@ private struct FeedList: View {
             let list = try await fetch(1).filter { seen.insert($0.id).inserted }
             await ImageCache.shared.warm(list.prefix(6).map(\.coverURL), timeout: 0.6)
             albums = list
+            if feed == .thisWeek, !singles {      // covers for the next launch screen
+                UserDefaults.standard.set(list.prefix(3).map(\.cover), forKey: "splashCovers")
+            }
             Task { await ImageCache.shared.warm(list.dropFirst(6).map(\.coverURL), timeout: 20) }
         } catch is CancellationError {
         } catch {
