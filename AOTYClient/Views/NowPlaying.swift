@@ -24,6 +24,22 @@ final class NowPlaying: ObservableObject {
         }
     }
 
+    /// Ask again; if iOS doesn't answer in a few seconds (LiveContainer), say so instead of waiting forever.
+    func requestAgain() {
+        status = MPMediaLibrary.authorizationStatus()
+        if status == .denied || status == .restricted {
+            if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
+            return
+        }
+        MPMediaLibrary.requestAuthorization { st in
+            Task { @MainActor in self.status = st; if st == .authorized { self.observe() } }
+        }
+        Task {
+            try? await Task.sleep(for: .seconds(4))
+            if self.status == .notDetermined { self.status = .restricted }   // no answer: treat as unavailable
+        }
+    }
+
     private func observe() {
         let player = MPMusicPlayerController.systemMusicPlayer
         player.beginGeneratingPlaybackNotifications()
@@ -97,10 +113,27 @@ struct NowPlayingCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 14))
             } else if np.authorized {
-                Label("Play something in Apple Music or Marvis and it'll show here for Learn.", systemImage: "waveform")
-                    .font(.caption).foregroundStyle(.secondary)
+                note("Nothing playing", "Play something in Apple Music or Marvis and it'll show here with a Learn button.", button: nil)
+            } else {
+                // Not asked yet, or iOS never answered (happens inside LiveContainer).
+                note("Now Playing", "Let the app see what's playing in Apple Music or Marvis to open it in Learn.",
+                     button: ("Allow access", { np.requestAgain() }))
             }
         }
         .onAppear { np.start() }
+    }
+
+    private func note(_ title: String, _ text: String, button: (String, () -> Void)?) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "waveform").foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(text).font(.caption).foregroundStyle(.secondary)
+                if let button { Button(button.0, action: button.1).font(.caption.weight(.semibold)) }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 14))
     }
 }
