@@ -217,7 +217,7 @@ struct LaunchSplash: View {
     private let shownAt = Date()
     private let covers: [UIImage?] = {
         let urls = (UserDefaults.standard.stringArray(forKey: "splashCovers") ?? []).compactMap(URL.init(string:))
-        return (0..<3).map { i in i < urls.count ? ImageCache.shared.cachedOrDisk(urls[i]) : nil }
+        return (0..<3).map { i in i < urls.count ? ImageCache.shared.cachedIncludingDisk(urls[i]) : nil }
     }()
     @AppStorage(Theme.key) private var accentHex = Theme.defaultHex
 
