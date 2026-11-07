@@ -207,9 +207,10 @@ extension Notification.Name {
 /// grows and fades away to reveal the app (Bluesky-style). Never stays longer than ~4 seconds.
 struct LaunchSplash: View {
     let done: () -> Void
-    @State private var scale: CGFloat = 1
+    @State private var scale: CGFloat = 0.35
+    @State private var logoOpacity: Double = 0
     @State private var opacity: Double = 1
-    @State private var pulse = false
+    @State private var blur: CGFloat = 0
     @State private var leaving = false
     private let shownAt = Date()
 
@@ -218,12 +219,16 @@ struct LaunchSplash: View {
             Color(.systemBackground).ignoresSafeArea()
             AOTYLogo()
                 .frame(height: 64)
-                .scaleEffect(scale * (pulse ? 1.04 : 1))
-                .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulse)
+                .scaleEffect(scale)
+                .opacity(logoOpacity)
+                .blur(radius: blur)
         }
         .opacity(opacity)
         .allowsHitTesting(!leaving)
-        .onAppear { pulse = true }
+        .onAppear {
+            // Pop in, like an SF Symbol "replace": small → overshoot → settle.
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.55)) { scale = 1; logoOpacity = 1 }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .releasesReady)) { _ in leave() }
         .task { try? await Task.sleep(for: .seconds(4)); leave() }
     }
@@ -233,8 +238,9 @@ struct LaunchSplash: View {
         leaving = true
         let wait = max(0, 0.6 - Date().timeIntervalSince(shownAt))   // don't flash
         DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
-            pulse = false
-            withAnimation(.easeIn(duration: 0.45)) { scale = 9; opacity = 0 }
+            // Shrink away (the "down" half of the replace), then the screen fades to reveal the app.
+            withAnimation(.easeIn(duration: 0.22)) { scale = 0.3; logoOpacity = 0; blur = 4 }
+            withAnimation(.easeOut(duration: 0.3).delay(0.16)) { opacity = 0 }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { done() }
         }
     }

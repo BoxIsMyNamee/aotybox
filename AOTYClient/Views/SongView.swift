@@ -302,8 +302,8 @@ struct SongChatView: View {
 
     private var suggestions: [String] {
         subject == "song"
-            ? ["What is this song about?", "Explain the hardest lines", "How was it received?", "Any samples or interpolations?"]
-            : ["What's the story behind this \(subject)?", "How was it received?", "Standout tracks?", "Themes and influences", "Who produced it?"]
+            ? [meaningQuestion, "Explain the hardest lines", "How was it received?", "Any samples or interpolations?"]
+            : [meaningQuestion, "How was it received?", "Standout tracks?", "Themes and influences", "Who produced it?"]
     }
 
     var body: some View {
@@ -368,8 +368,35 @@ struct SongChatView: View {
         .frame(maxWidth: .infinity, alignment: m.role == .user ? .trailing : .leading)
     }
 
+    private var meaningQuestion: String { "What's the meaning of this \(subject)?" }
+
+    /// The structured answer for the "meaning" question.
+    private var meaningFormat: String {
+        let lyricsScope = subject == "song" ? "this song" : "across this \(subject)"
+        return """
+
+        For this answer use EXACTLY this structure. Put each label in bold on its own line, then its content:
+        **TL;DR:** 1–2 sentences on the core meaning or story.
+        **The Meaning**
+        1–3 short paragraphs: context, backstory and analysis grounded in the lyrics, the artist's own interviews \
+        and statements, and reputable coverage. Make clear what the artist has said versus what is interpretation.
+        **Production & Sound**
+        A few brief notes: genre, notable samples or interpolations, production techniques.
+        **Noteworthy Lyrics**
+        1–4 short lines from \(lyricsScope), each on its own line in quotes. Don't explain them unless a line is obscure.
+        **Key Contributors**
+        • Writer(s): names
+        • Producer(s): names
+        • Noteworthy: famous or unexpected contributors (leave this line out if there are none)
+
+        Rules: quote no more than 4 lyric lines in total, and only in Noteworthy Lyrics. If a credit can't be \
+        verified, write "Unconfirmed" instead of guessing. No other sections and no closing summary.
+        """
+    }
+
     private func send() async {
         let q = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        let structured = (q == meaningQuestion)
         guard !q.isEmpty, !thinking else { return }
         input = ""; error = nil
         messages.append(ChatMessage(role: .user, text: q))
@@ -380,6 +407,7 @@ struct SongChatView: View {
         lyrics, references, production, samples, reception, and online discussion. Be concise and specific; \
         quote at most a line or two of lyrics. If you search the web, prefer reputable music sources. \
         If you're unsure, say so.
+        \(structured ? meaningFormat : "")
 
         \(context)
         """

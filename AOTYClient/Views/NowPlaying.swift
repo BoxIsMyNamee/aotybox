@@ -8,7 +8,8 @@ final class NowPlaying: ObservableObject {
     struct Song: Equatable { let title: String; let artist: String; let album: String?; let art: UIImage? }
 
     @Published private(set) var song: Song?
-    @Published private(set) var authorized = MPMediaLibrary.authorizationStatus() == .authorized
+    @Published private(set) var status = MPMediaLibrary.authorizationStatus()
+    var authorized: Bool { status == .authorized }
     private var started = false
 
     func start() {
@@ -16,7 +17,7 @@ final class NowPlaying: ObservableObject {
         started = true
         if MPMediaLibrary.authorizationStatus() == .notDetermined {
             MPMediaLibrary.requestAuthorization { status in
-                Task { @MainActor in self.authorized = status == .authorized; self.observe() }
+                Task { @MainActor in self.status = status; self.observe() }
             }
         } else {
             observe()
@@ -36,6 +37,7 @@ final class NowPlaying: ObservableObject {
     }
 
     func refresh() {
+        status = MPMediaLibrary.authorizationStatus()
         let player = MPMusicPlayerController.systemMusicPlayer
         guard let item = player.nowPlayingItem, let title = item.title, !title.isEmpty else { song = nil; return }
         song = Song(title: title, artist: item.artist ?? item.albumArtist ?? "", album: item.albumTitle,
@@ -77,6 +79,26 @@ struct NowPlayingCard: View {
                     .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 14))
                 }
                 .buttonStyle(.plain)
+            } else if np.status == .denied || np.status == .restricted {
+                // Most likely running inside LiveContainer: iOS checks the host app for Apple Music access.
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "waveform.slash").foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Now Playing is off").font(.subheadline.weight(.semibold))
+                        Text("The app isn't allowed to see what's playing. Inside LiveContainer this can't be turned on; with a normal install (SideStore or TestFlight), allow Apple Music access in Settings.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Button("Open Settings") {
+                            if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
+                        }
+                        .font(.caption.weight(.semibold))
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 14))
+            } else if np.authorized {
+                Label("Play something in Apple Music or Marvis and it'll show here for Learn.", systemImage: "waveform")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .onAppear { np.start() }
