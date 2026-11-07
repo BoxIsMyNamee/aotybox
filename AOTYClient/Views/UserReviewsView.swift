@@ -37,14 +37,6 @@ struct UserReviewsView: View {
     var body: some View {
         List {
             if range == nil {
-                Section {
-                    Picker("Sort", selection: $sort) {
-                        ForEach(Sort.allCases) { Text($0.rawValue).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .listRowBackground(Color.clear)
-                }
-
                 if !distribution.isEmpty {
                     Section {
                         DistributionChart(rows: distribution) { label in
@@ -72,6 +64,14 @@ struct UserReviewsView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .safeAreaInset(edge: .bottom) {
+            // Sort switcher floating at the bottom, like Releases and Charts.
+            if range == nil {
+                GlassSegmented(selection: $sort, items: Sort.allCases.map { ($0, $0.rawValue) })
+                    .frame(maxWidth: 320)
+                    .padding(.bottom, 8)
+            }
+        }
         .environment(\.swipeRowBackground, Color(.secondarySystemGroupedBackground))
         .navigationTitle(rangeLabel.map { "Rated \($0)" } ?? "User Reviews")
         .navigationBarTitleDisplayMode(.inline)

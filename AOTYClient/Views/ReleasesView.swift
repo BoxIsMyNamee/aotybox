@@ -11,7 +11,7 @@ struct ReleasesView: View {
     private var feeds: [Feed] { singles ? [.thisWeek, .new] : [.thisWeek, .upcoming, .new] }
 
     @State private var feed: Feed = .thisWeek
-    @AppStorage("releasesSingles") private var singles = false
+    @State private var singles = false     // always opens on Albums
 
     var body: some View {
         AppStack {
