@@ -252,6 +252,7 @@ function aotyUserReview(el) {
     url: revLink ? aotyAbs(revLink) : null,
     likes: aotyCount(aotyTxt(el.querySelector(".review_likes"))),
     liked: !!el.querySelector(".review_like.liked, .heartLiked"),
+    commentCount: aotyCount(aotyTxt(el.querySelector(".comment_count"))),
     date: aotyTxt(el.querySelector(".review_date")).replace(/\*$/, "").trim() || null
   };
 }
@@ -620,6 +621,7 @@ function aotyProfileReviewRows(doc) {
       url: reviewLink ? aotyAbs(reviewLink) : null,
       likes: aotyCount(aotyTxt(el.querySelector(".review_likes"))),
       liked: !!el.querySelector(".review_like.liked, .heartLiked"),
+      commentCount: aotyCount(aotyTxt(el.querySelector(".comment_count"))),
       reviewId: (function () { var b = el.querySelector("[data-review-id]"); return b ? parseInt(b.getAttribute("data-review-id"), 10) : (idm ? parseInt(idm[1], 10) : null); })(),
       date: aotyReviewDate(el)
     };
@@ -633,13 +635,13 @@ function aotyProfileReviewRows(doc) {
 // avatar and any sidebars are ignored. `loose` (for small preview boxes) accepts any avatar link.
 function aotyFollows(doc, loose) {
   var out = [], seen = {};
-  function add(href, name, img) {
+  function add(href, name, img, el) {
     var m = (href || "").replace(/^https?:\/\/[^/]+/, "").match(/^\/user\/([^\/?#]+)\/?$/);
     if (!m) return;
     var u = decodeURIComponent(m[1]);
     if (seen[u.toLowerCase()]) return;
     seen[u.toLowerCase()] = 1;
-    out.push({ username: u, name: (name || u).trim(), avatar: img || null });
+    out.push({ username: u, name: (name || u).trim(), avatar: img || null, nameColor: el ? aotyNameColor(el) : null });
   }
   function distinctUsers(box) {
     var set = {}, n = 0, links = box.querySelectorAll("a[href*='/user/']");
@@ -672,7 +674,7 @@ function aotyFollows(doc, loose) {
     var img = row.querySelector("img");
     var nameEl = row.querySelector(".userName") || a;
     var nm = aotyTxt(nameEl).replace(/follows you/i, "").trim();
-    add(a && a.getAttribute("href"), nm, img ? aotyImgSrc(img) : null);
+    add(a && a.getAttribute("href"), nm, img ? aotyImgSrc(img) : null, a);
   }
   // 2. AOTY-api's known row class.
   if (!out.length) {
@@ -680,7 +682,7 @@ function aotyFollows(doc, loose) {
     for (var r = 0; r < rows.length; r++) {
       var ra = rows[r].querySelector("a[href*='/user/']");
       var ri = rows[r].querySelector(".profilePic img, img");
-      add(ra && ra.getAttribute("href"), aotyTxt(rows[r].querySelector(".userName")) || aotyTxt(ra), ri ? aotyImgSrc(ri) : null);
+      add(ra && ra.getAttribute("href"), aotyTxt(rows[r].querySelector(".userName")) || aotyTxt(ra), ri ? aotyImgSrc(ri) : null, rows[r].querySelector(".userName") || ra);
     }
   }
   // 3. Loose: any user link wrapping an avatar (preview boxes only).

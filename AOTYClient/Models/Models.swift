@@ -56,6 +56,7 @@ struct FollowUser: Decodable, Identifiable, Hashable {
     let username: String
     let name: String
     let avatar: String?
+    var nameColor: String? = nil
     var id: String { username.lowercased() }
 }
 
@@ -138,6 +139,7 @@ struct ProfileReview: Decodable, Identifiable, Hashable {
     let url: String?
     let likes: Int?
     var liked: Bool? = nil
+    var commentCount: Int? = nil
     var reviewId: Int? = nil
     let date: String?
     var slug: String? { albumUrl.flatMap(AlbumSlug.from) }
@@ -195,6 +197,7 @@ struct UserReview: Decodable, Identifiable, Hashable {
     let isTruncated: Bool?
     let url: String?
     let likes: Int?
+    var commentCount: Int? = nil
     var liked: Bool? = nil
     let date: String?
     var avatarURL: URL? { avatar.flatMap(URL.init(string:)) }

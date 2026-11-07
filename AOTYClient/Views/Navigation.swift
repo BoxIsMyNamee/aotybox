@@ -10,7 +10,7 @@ struct SongRoute: Hashable { let artist: String; let title: String; let album: S
 struct UserReviewsRoute: Hashable { let slug: String; let title: String; var range: String? = nil }
 struct ArtistRoute: Hashable { let path: String; let name: String }
 struct LearnAlbumRoute: Hashable { let artist: String; let album: String; let cover: URL? }
-struct UserRoute: Hashable { let username: String; let name: String; let avatar: String? }
+struct UserRoute: Hashable { let username: String; let name: String; let avatar: String?; var nameColor: String? = nil }
 struct ProfileReviewsRoute: Hashable { let username: String }
 struct ProfileRatingsRoute: Hashable { let username: String; let path: String?; let isMe: Bool }
 
@@ -41,13 +41,13 @@ extension View {
             .navigationDestination(for: ArtistRoute.self) { ArtistView(path: $0.path.isEmpty ? nil : $0.path, fallbackName: $0.name) }
             .navigationDestination(for: LearnAlbumRoute.self) { LearnAlbumView(artist: $0.artist, album: $0.album, cover: $0.cover) }
             .navigationDestination(for: UserRoute.self) { u in
-                UserProfileView(username: u.username, fallbackAvatar: u.avatar, fallbackName: u.name, isMe: false)
+                UserProfileView(username: u.username, fallbackAvatar: u.avatar, fallbackName: u.name, fallbackColor: u.nameColor, isMe: false)
                     .navigationTitle(u.name).navigationBarTitleDisplayMode(.inline)
             }
             .navigationDestination(for: ProfileReviewsRoute.self) { ProfileReviewsView(username: $0.username) }
             .navigationDestination(for: ProfileRatingsRoute.self) { ProfileRatingsView(username: $0.username, path: $0.path, isMe: $0.isMe) }
             .navigationDestination(for: FollowUser.self) { u in
-                UserProfileView(username: u.username, fallbackAvatar: u.avatar, fallbackName: u.name, isMe: false)
+                UserProfileView(username: u.username, fallbackAvatar: u.avatar, fallbackName: u.name, fallbackColor: u.nameColor, isMe: false)
                     .navigationTitle(u.name).navigationBarTitleDisplayMode(.inline)
             }
     }

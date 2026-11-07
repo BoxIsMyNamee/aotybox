@@ -66,19 +66,20 @@ struct HeartButton: View {
     }
 }
 
-/// Reviews: swipe left to heart (or un-heart). Swiping right does nothing.
+/// Reviews: swipe left to heart (or un-heart), swipe right to open the review's page to comment.
 struct HeartSwipe: ViewModifier {
     let reviewID: Int?
     let liked: Bool
     let likes: Int
     var enabled = true
+    var comment: (() -> Void)? = nil
     @ObservedObject private var store = LikeStore.shared
 
     func body(content: Content) -> some View {
         let isLiked = store.liked(reviewID, default: liked)
         let count = store.count(reviewID, default: likes)
         content.swipeRow(
-            leading: nil,
+            leading: comment.map { c in SwipeAction(icon: "bubble.left.fill", title: "Comment", color: .blue, perform: c) },
             trailing: (enabled && reviewID != nil) ? SwipeAction(
                 icon: isLiked ? "heart.slash.fill" : "heart.fill",
                 title: isLiked ? "Unlike" : "Like",
@@ -90,8 +91,8 @@ struct HeartSwipe: ViewModifier {
 }
 
 extension View {
-    func heartSwipe(reviewID: Int?, liked: Bool, likes: Int, enabled: Bool = true) -> some View {
-        modifier(HeartSwipe(reviewID: reviewID, liked: liked, likes: likes, enabled: enabled))
+    func heartSwipe(reviewID: Int?, liked: Bool, likes: Int, enabled: Bool = true, comment: (() -> Void)? = nil) -> some View {
+        modifier(HeartSwipe(reviewID: reviewID, liked: liked, likes: likes, enabled: enabled, comment: comment))
     }
 }
 
@@ -105,4 +106,24 @@ func linkified(_ s: String) -> AttributedString {
         a[ar].underlineStyle = .single
     }
     return a
+}
+
+
+/// Speech-bubble button next to the heart: opens the review on AOTY (to read comments or add one).
+struct CommentButton: View {
+    let count: Int?
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: "bubble.left").foregroundStyle(.secondary)
+                if let count, count > 0 { Text("\(count)").monospacedDigit().foregroundStyle(.secondary) }
+            }
+            .font(.caption)
+            .padding(.vertical, 4).padding(.leading, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(count.map { "\($0) comments" } ?? "Comments")
+    }
 }

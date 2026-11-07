@@ -88,6 +88,7 @@ struct UserProfileView: View {
     var fallbackAvatar: String? = nil
     /// The name as shown where you tapped (keeps its real capitals while the profile loads).
     var fallbackName: String? = nil
+    var fallbackColor: String? = nil
     var isMe: Bool = false
     var onChangeUser: (() -> Void)? = nil
     var onAutoDetect: (() -> Void)? = nil
@@ -187,7 +188,7 @@ struct UserProfileView: View {
                         Text(parts.name)
                             .font(.system(.title, design: .default).weight(.bold))
                             .lineLimit(2).minimumScaleFactor(0.7)
-                            .foregroundStyle(profile?.nameColor.map { Color(hex: $0) } ?? .primary)
+                            .foregroundStyle((profile?.nameColor ?? fallbackColor).map { Color(hex: $0) } ?? .primary)
                         if let handle = parts.handle {
                             Text(handle).font(.subheadline.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
                         }
@@ -330,7 +331,10 @@ struct ProfileReviewRow: View {
 
     var own = false
     private var heart: some View {
-        HeartButton(reviewID: review.reviewId ?? Int(review.id), liked: review.liked ?? false, likes: review.likes ?? 0, canLike: !own)
+        HStack(spacing: 2) {
+            if review.url != nil { CommentButton(count: review.commentCount) { showFull = true } }
+            HeartButton(reviewID: review.reviewId ?? Int(review.id), liked: review.liked ?? false, likes: review.likes ?? 0, canLike: !own)
+        }
     }
 
     private var needsFetch: Bool { review.isTruncated == true && review.url != nil && fullText == nil }
@@ -392,7 +396,8 @@ struct ProfileReviewRow: View {
             }
         }
         .padding(.vertical, 4)
-        .heartSwipe(reviewID: review.reviewId ?? Int(review.id), liked: review.liked ?? false, likes: review.likes ?? 0, enabled: !own)
+        .heartSwipe(reviewID: review.reviewId ?? Int(review.id), liked: review.liked ?? false, likes: review.likes ?? 0, enabled: !own,
+                    comment: review.url == nil ? nil : { showFull = true })
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .sheet(isPresented: $showFull) {
             if let s = review.url, let u = URL(string: s) { AOTYWebSheet(url: u, title: review.album).accentTint() }
@@ -460,6 +465,7 @@ struct FriendsRow: View {
                     VStack(spacing: 6) {
                         Avatar(url: f.avatar.flatMap(URL.init(string:)), name: f.name, size: 64)
                         Text(f.name).font(.caption).lineLimit(1).frame(width: 72)
+                            .foregroundStyle(f.nameColor.map { Color(hex: $0) } ?? .primary)
                     }
                     .tapAndHold(tap: { push(f) }, hold: {})
                 }

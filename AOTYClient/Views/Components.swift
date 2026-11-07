@@ -114,11 +114,18 @@ struct UserReviewRow: View {
     @State private var showFull = false
     @Environment(\.push) private var push
 
+    private var actions: some View {
+        HStack(spacing: 2) {
+            if review.url != nil { CommentButton(count: review.commentCount) { showFull = true } }
+            HeartButton(reviewID: review.reviewId, liked: review.liked ?? false, likes: review.likes ?? 0)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Button {
-                    if let slug = review.userSlug { push(UserRoute(username: slug, name: review.username, avatar: review.avatar)) }
+                    if let slug = review.userSlug { push(UserRoute(username: slug, name: review.username, avatar: review.avatar, nameColor: review.nameColor)) }
                 } label: {
                     HStack(spacing: 10) {
                         Avatar(url: review.avatarURL, name: review.username)
@@ -144,20 +151,21 @@ struct UserReviewRow: View {
             HStack(alignment: .lastTextBaseline, spacing: 8) {
                 Text(linkified(review.text)).font(.callout).foregroundStyle(.secondary).lineLimit(lineLimit)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if !hasMore { HeartButton(reviewID: review.reviewId, liked: review.liked ?? false, likes: review.likes ?? 0) }
+                if !hasMore { actions }
             }
             if hasMore {
                 HStack {
                     Text("Read full review").font(.caption.weight(.semibold)).foregroundStyle(.tint)
                     Spacer()
-                    HeartButton(reviewID: review.reviewId, liked: review.liked ?? false, likes: review.likes ?? 0)
+                    actions
                 }
             }
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture { if review.url != nil { showFull = true } }
-        .heartSwipe(reviewID: review.reviewId, liked: review.liked ?? false, likes: review.likes ?? 0)
+        .heartSwipe(reviewID: review.reviewId, liked: review.liked ?? false, likes: review.likes ?? 0,
+                    comment: review.url == nil ? nil : { showFull = true })
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .sheet(isPresented: $showFull) {
             if let s = review.url, let u = URL(string: s) { AOTYWebSheet(url: u, title: review.username).accentTint() }
