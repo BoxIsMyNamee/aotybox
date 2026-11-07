@@ -61,6 +61,19 @@ struct DiagnosticsView: View {
         const page = await (await fetch("/album/2915-outkast-aquemini/user-reviews/", { credentials: "include" })).text();
         const doc = new DOMParser().parseFromString(page, "text/html");
         out.push("SIGNED IN: " + !!doc.querySelector("a[href*='logout'], a[href*='signout'], a[href*='/settings/']"));
+        // Notifications bell in the signed-in header
+        const home = await (await fetch("/", { credentials: "include" })).text();
+        const hdoc = new DOMParser().parseFromString(home, "text/html");
+        const bells = [...hdoc.querySelectorAll("a[href*='otif'], [class*='otif'], [id*='otif'], .fa-bell, [class*='bell'], [class*='Bell']")];
+        out.push("BELL COUNT: " + bells.length);
+        bells.slice(0, 4).forEach((b, i) => {
+          const box = b.closest("a") || b.parentElement || b;
+          out.push("BELL " + i + ": " + (box.parentElement || box).outerHTML.slice(0, 900));
+        });
+        if (!bells.length) {
+          const i = home.search(/notif|bell/i);
+          out.push("BELL TEXT: " + (i < 0 ? "none" : home.slice(Math.max(0, i - 400), i + 600)));
+        }
         const links = doc.querySelectorAll(".albumReviewLinks");
         for (let i = 0; i < Math.min(2, links.length); i++) out.push("LINKS: " + links[i].outerHTML.slice(0, 1500));
         doc.querySelectorAll("script:not([src])").forEach(s => {
@@ -75,7 +88,7 @@ struct DiagnosticsView: View {
         out.push("SCRIPTS: " + srcs.join(" "));
         for (const src of srcs) {
           const js = await (await fetch(src, { credentials: "include" })).text();
-          const re = /artistCreditList|insertReviewLike/gi; let m, n = 0;
+          const re = /otification|artistCreditList/gi; let m, n = 0;
           while ((m = re.exec(js)) && n < 6) { out.push("JS " + src + ": " + js.slice(Math.max(0, m.index - 300), m.index + 700)); re.lastIndex = m.index + 700; n++; }
         }
         return out.join("\n\n").slice(0, 30000);
