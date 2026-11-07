@@ -203,22 +203,15 @@ extension Notification.Name {
 }
 
 
-/// Launch screen: a little stack of album covers flies in (like the stacked-albums icon), a record
-/// slides out of the stack and spins while the first page loads, the AOTY wordmark pops in under it,
-/// then it all drops away to reveal the app. Never stays longer than ~4 seconds.
+/// Launch screen: a little stack of cards in your accent color flies in (like the stacked-albums icon),
+/// the AOTY wordmark pops in under it, then it all drops away to reveal the app. Never stays longer than ~4 seconds.
 struct LaunchSplash: View {
     let done: () -> Void
     @State private var dealt = 0            // how many cards have landed
-    @State private var recordOut = false
-    @State private var spin = false
     @State private var logoIn = false
     @State private var leaving = false
     @State private var fade = 1.0
     private let shownAt = Date()
-    private let covers: [UIImage?] = {
-        let urls = (UserDefaults.standard.stringArray(forKey: "splashCovers") ?? []).compactMap(URL.init(string:))
-        return (0..<3).map { i in i < urls.count ? ImageCache.shared.cachedIncludingDisk(urls[i]) : nil }
-    }()
     @AppStorage(Theme.key) private var accentHex = Theme.defaultHex
 
     var body: some View {
@@ -226,14 +219,9 @@ struct LaunchSplash: View {
             Color(.systemBackground).ignoresSafeArea()
             VStack(spacing: 34) {
                 ZStack {
-                    record
-                        .offset(x: recordOut ? 58 : 0)
-                        .rotationEffect(.degrees(spin ? 360 : 0))
-                        .animation(spin ? .linear(duration: 1.6).repeatForever(autoreverses: false) : .default, value: spin)
                     ForEach((0..<3).reversed(), id: \.self) { i in card(i) }
                 }
                 .frame(width: 240, height: 170)
-                .offset(x: recordOut ? -26 : 0)
                 AOTYLogo()
                     .frame(height: 40)
                     .scaleEffect(logoIn ? 1 : 0.4)
@@ -255,13 +243,11 @@ struct LaunchSplash: View {
         let landed = dealt > (2 - i)
         let tilt: [Double] = [0, -7, 7]
         let shift: [CGFloat] = [0, -16, 16]
-        return Group {
-            if let img = covers[i] {
-                Image(uiImage: img).resizable().scaledToFill()
-            } else {
-                LinearGradient(colors: [Color(hex: accentHex).opacity(0.9 - Double(i) * 0.25), Color(hex: accentHex).opacity(0.35)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
-            }
+        // Your accent color (Settings → Accent Color), a shade darker for each card further back.
+        let accent = Color(hex: accentHex)
+        return ZStack {
+            LinearGradient(colors: [accent, accent.opacity(0.55)], startPoint: .topLeading, endPoint: .bottomTrailing)
+            Color.black.opacity(Double(i) * 0.22)
         }
         .frame(width: 130, height: 130)
         .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -273,29 +259,12 @@ struct LaunchSplash: View {
         .opacity(landed ? 1 : 0)
     }
 
-    private var record: some View {
-        ZStack {
-            Circle().fill(Color(white: 0.07))
-            ForEach(0..<5) { g in
-                Circle().stroke(Color.white.opacity(0.06), lineWidth: 1).padding(CGFloat(10 + g * 9))
-            }
-            Circle().fill(Color(hex: accentHex)).frame(width: 42, height: 42)
-            Circle().fill(Color(white: 0.07)).frame(width: 6, height: 6)
-            // a highlight so the spin is visible
-            Capsule().fill(.white.opacity(0.08)).frame(width: 4, height: 50).offset(y: -38)
-        }
-        .frame(width: 124, height: 124)
-        .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
-    }
-
     private func intro() async {
         for n in 1...3 {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.72)) { dealt = n }
             try? await Task.sleep(for: .milliseconds(110))
         }
-        try? await Task.sleep(for: .milliseconds(220))
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) { recordOut = true }
-        spin = true
+        try? await Task.sleep(for: .milliseconds(120))
         withAnimation(.spring(response: 0.42, dampingFraction: 0.55).delay(0.1)) { logoIn = true }
     }
 
