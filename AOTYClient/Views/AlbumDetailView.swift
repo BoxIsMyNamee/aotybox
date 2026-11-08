@@ -140,13 +140,6 @@ struct AlbumDetailView: View {
                 }
             }
 
-            // Edit or delete on AOTY itself (uses your signed-in web session)
-            Section {
-                Button { showRateSheet = true } label: {
-                    Label("Rate or review on AOTY", systemImage: "star.bubble")
-                }
-            }
-
             // Listen
             if true {
                 Section("Listen") {

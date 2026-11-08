@@ -20,11 +20,11 @@ struct MyAlbumCard: View {
     private var id: String { box.albumID.map(String.init) ?? "" }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 12) {
-                Avatar(url: box.avatar.flatMap(URL.init(string:)), name: box.name ?? myUsername, size: 46)
+                Avatar(url: box.avatar.flatMap(URL.init(string:)), name: box.name ?? myUsername, size: 40)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(box.name ?? myUsername).font(.headline).lineLimit(1)
+                    Text(box.name ?? myUsername).font(.subheadline.weight(.semibold)).lineLimit(1)
                         .foregroundStyle(box.nameColor.map { Color(hex: $0) } ?? .primary)
                     scoreArea
                 }
@@ -32,27 +32,29 @@ struct MyAlbumCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 0) {
-                actionButton("Listen", on: "Listened", icon: "headphones", flag: box.listened ?? false,
-                             add: "insertListened.php", remove: "deleteListened.php") { box.listened = $0 }
-                actionButton("Like", on: "Liked", icon: "heart", flag: box.liked ?? false,
-                             add: "insertAlbumLike.php", remove: "deleteAlbumLike.php") { box.liked = $0 }
-                actionButton("Save", on: "Saved", icon: "plus", flag: box.saved ?? false,
-                             add: "addSpinList.php", remove: "removeSpinList.php") { box.saved = $0 }
-            }
-            .padding(.vertical, 8)
-            .background(Color(.tertiarySystemFill).opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
-
             if let review = box.review, !review.isEmpty, !editing {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(linkified(review)).font(.callout).foregroundStyle(.secondary)
-                        .lineLimit(expanded ? nil : 6)
-                    HStack {
-                        if review.count > 280 {
-                            Button(expanded ? "Show Less" : "Show More") { expanded.toggle() }
-                                .font(.caption.weight(.semibold)).buttonStyle(.borderless)
-                        }
-                        Spacer(minLength: 0)
+                Text(linkified(review)).font(.body).foregroundStyle(.primary)
+                    .lineLimit(expanded ? nil : 14)
+                    .fixedSize(horizontal: false, vertical: true)
+                if review.count > 700 {
+                    Button(expanded ? "Show Less" : "Show More") { withAnimation(.snappy) { expanded.toggle() } }
+                        .font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
+                }
+            } else if editing || (box.canReview ?? true) {
+                reviewComposer
+            }
+
+            // Quiet footer: Listen / Like / Save, and Edit when there's a review.
+            if !editing {
+                HStack(spacing: 18) {
+                    actionButton("Listen", on: "Listened", icon: "headphones", flag: box.listened ?? false,
+                                 add: "insertListened.php", remove: "deleteListened.php") { box.listened = $0 }
+                    actionButton("Like", on: "Liked", icon: "heart", flag: box.liked ?? false,
+                                 add: "insertAlbumLike.php", remove: "deleteAlbumLike.php") { box.liked = $0 }
+                    actionButton("Save", on: "Saved", icon: "plus", flag: box.saved ?? false,
+                                 add: "addSpinList.php", remove: "removeSpinList.php") { box.saved = $0 }
+                    Spacer(minLength: 0)
+                    if let review = box.review, !review.isEmpty {
                         Button {
                             reviewText = review
                             scoreText = box.rating.map { String(Int($0.rounded())) } ?? ""
@@ -60,14 +62,14 @@ struct MyAlbumCard: View {
                             withAnimation(.snappy) { editing = true }
                             focus = .review
                         } label: {
-                            Text("Edit").bold().frame(width: 76, height: 34)
-                                .background(Color(.tertiarySystemFill), in: Capsule())
+                            Label("Edit", systemImage: "pencil").font(.subheadline.weight(.medium))
+                                .foregroundStyle(.secondary)
+                                .padding(.vertical, 6).contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
                 }
-            } else if editing || (box.canReview ?? true) {
-                reviewComposer
+                .padding(.top, 2)
             }
 
             if let error { Text(error).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
@@ -130,7 +132,7 @@ struct MyAlbumCard: View {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { box.rating = Double(v) }
             forgetPage()
         } else {
-            error = "AOTY didn't accept the rating. Try again, or use Rate or review on AOTY."
+            error = "AOTY didn't accept the rating. Try again."
         }
     }
 
@@ -141,11 +143,11 @@ struct MyAlbumCard: View {
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $reviewText)
                     .focused($focus, equals: .review)
-                    .font(.callout)
+                    .font(.body)
                     .scrollContentBackground(.hidden)
                     .padding(6)
                 if reviewText.isEmpty {
-                    Text("Add a review").font(.callout).foregroundStyle(.tertiary)
+                    Text("Add a review").font(.body).foregroundStyle(.tertiary)
                         .padding(.horizontal, 11).padding(.vertical, 14)
                         .allowsHitTesting(false)
                 }
@@ -208,7 +210,7 @@ struct MyAlbumCard: View {
         }
         if text != box.review {
             guard await AOTYAPI.shared.updateReview(albumID: id, text: text) else {
-                error = "AOTY didn't accept the edit. Your text is still here — try again, or use Rate or review on AOTY."; return
+                error = "AOTY didn't accept the edit. Your text is still here — try again."; return
             }
         }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -231,17 +233,16 @@ struct MyAlbumCard: View {
                 } else { forgetPage() }
             }
         } label: {
-            VStack(spacing: 4) {
+            HStack(spacing: 5) {
                 Image(systemName: flag ? (icon == "plus" ? "checkmark" : icon == "heart" ? "heart.fill" : icon) : icon)
-                    .font(.title3)
+                    .font(.subheadline.weight(.medium))
                     .foregroundStyle(flag ? Color.accentColor : Color.secondary)
                     .contentTransition(.symbolEffect(.replace))
-                    .frame(height: 24)
-                Text((flag ? on : title).uppercased())
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                Text(flag ? on : title)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(flag ? Color.accentColor : Color.secondary)
             }
-            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
