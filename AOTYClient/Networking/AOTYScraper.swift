@@ -138,9 +138,9 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
 
     /// Run a JS snippet in the hidden web view (used to parse non-AOTY HTML such as Genius pages).
     /// `body` must `return` a string.
-    func runJS(_ body: String, args: [String: Any]) async throws -> String {
+    func runJS(_ body: String, args: [String: Any], timeout: Double = 20) async throws -> String {
         try await serialized {
-            try await self.withTimeout(20) {
+            try await self.withTimeout(timeout) {
                 if self.webView.url == nil { try await self.ensureOrigin() }
                 let r = try await self.webView.runAsyncJS(body, args: args)
                 guard let s = r as? String else { throw ScrapeError.script("no result") }

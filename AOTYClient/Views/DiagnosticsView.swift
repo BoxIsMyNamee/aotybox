@@ -16,6 +16,7 @@ struct DiagnosticsView: View {
     @State private var results: [String: String] = [:]
     @State private var running = false
     @State private var heartInfo: String?
+    @AppStorage("profileUsername") private var myUsername = ""
     @State private var capturing = false
 
     var body: some View {
@@ -61,6 +62,30 @@ struct DiagnosticsView: View {
         const page = await (await fetch("/album/2915-outkast-aquemini/user-reviews/", { credentials: "include" })).text();
         const doc = new DOMParser().parseFromString(page, "text/html");
         out.push("SIGNED IN: " + !!doc.querySelector("a[href*='logout'], a[href*='signout'], a[href*='/settings/']"));
+        // Your rating/review box on album pages: one you've reviewed (newest on your profile) and one you probably haven't.
+        const me = (__ME__ || "").trim();
+        let reviewed = null;
+        if (me) {
+          const rp = await (await fetch("/user/" + me + "/reviews/", { credentials: "include" })).text();
+          const rd = new DOMParser().parseFromString(rp, "text/html");
+          const link = [...rd.querySelectorAll("a[href*='/album/']")].map(a => a.getAttribute("href")).find(h => /\/album\/\d+-[^/]+\.php/.test(h));
+          reviewed = link || null;
+        }
+        for (const [label, path] of [["REVIEWED ALBUM", reviewed], ["OTHER ALBUM", "/album/5361-the-beatles-the-white-album.php"]]) {
+          if (!path) { out.push(label + ": none found"); continue; }
+          const ap = await (await fetch(path, { credentials: "include" })).text();
+          const ad = new DOMParser().parseFromString(ap, "text/html");
+          out.push(label + " PATH: " + path);
+          const sel = "#ratingBlock, #currentRatingBlock, #reviewBlock, #currentReviewBlock, #ratingContainer, .addListened, .removeListened, .addAlbumLike, .removeAlbumLike, [class*='Listen'], [class*='library'], [class*='Library'], textarea, #postReviewButton, .insertReview, .albumActionBox, [class*='userRating']";
+          const seen = new Set();
+          [...ad.querySelectorAll(sel)].forEach(el => {
+            let box = el.closest("[id]") || el.parentElement || el;
+            for (let k = 0; k < 2 && box.parentElement && box.outerHTML.length < 300; k++) box = box.parentElement;
+            if (seen.has(box)) return; seen.add(box);
+            if (seen.size <= 8) out.push(label + " BOX: " + box.outerHTML.replace(/\s+/g, " ").slice(0, 1400));
+          });
+        }
+
         // Notifications bell in the signed-in header
         const home = await (await fetch("/", { credentials: "include" })).text();
         const hdoc = new DOMParser().parseFromString(home, "text/html");
@@ -88,13 +113,13 @@ struct DiagnosticsView: View {
         out.push("SCRIPTS: " + srcs.join(" "));
         for (const src of srcs) {
           const js = await (await fetch(src, { credentials: "include" })).text();
-          const re = /otification|artistCreditList/gi; let m, n = 0;
-          while ((m = re.exec(js)) && n < 6) { out.push("JS " + src + ": " + js.slice(Math.max(0, m.index - 300), m.index + 700)); re.lastIndex = m.index + 700; n++; }
+          const re = /addListened|removeListened|insertRating|insertReview|AlbumLike|addLibrary|SpinList|removeLibrary/gi; let m, n = 0;
+          while ((m = re.exec(js)) && n < 14) { out.push("JS " + src + ": " + js.slice(Math.max(0, m.index - 300), m.index + 700)); re.lastIndex = m.index + 700; n++; }
         }
         return out.join("\n\n").slice(0, 30000);
         """#
         do {
-            let r = try await AOTYScraper.shared.runJS(js, args: [:])
+            let r = try await AOTYScraper.shared.runJS(js.replacingOccurrences(of: "__ME__", with: "\"\(myUsername)\""), args: [:], timeout: 75)
             heartInfo = r
             UIPasteboard.general.string = r
         } catch {
