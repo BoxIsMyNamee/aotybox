@@ -327,6 +327,44 @@ function aotyTextWithout(el, removeSel) {
   return aotyTxt(c);
 }
 
+// Your own box on an album page (signed in): listened / liked / saved, your score and review.
+function aotyMyAlbumBox(doc) {
+  var actions = doc.querySelector(".albumActions");
+  var rateBtn = doc.querySelector(".insertRating, .insertReview");
+  if (!actions && !rateBtn) return null;                          // signed out
+  var idEl = doc.querySelector(".albumActions [data-album-id], .insertRating, .insertReview");
+  var albumID = idEl ? parseInt(idEl.getAttribute("data-album-id") || idEl.getAttribute("id"), 10) : null;
+  function shown(sel) {
+    var el = doc.querySelector(sel);
+    return !!el && !/display:\s*none/i.test(el.getAttribute("style") || "");
+  }
+  var idS = albumID ? String(albumID) : "";
+  var ratingEl = doc.querySelector("#currentRatingBlock .ratingValue, #currentRatingBlock .rating");
+  var rating = ratingEl ? aotyNum(aotyTxt(ratingEl)) : null;
+  // The box holding your avatar/name (and your review once posted).
+  var box = actions ? (actions.closest(".content") || actions.parentElement) : null;
+  var nameA = box ? box.querySelector(".userReviewName a") : null;
+  var img = box ? box.querySelector(".userReviewImage img") : null;
+  var reviewEl = doc.querySelector("#currentReviewBlock .albumReviewText, #currentReviewBlock .userReviewText, #currentReviewBlock");
+  var review = null;
+  if (reviewEl && !reviewEl.querySelector("textarea")) {
+    var t = aotyBlockText(reviewEl).replace(/\s*(Edit|Delete|Update|Cancel)\s*/g, " ").trim();
+    if (t.length > 2) review = t;
+  }
+  return {
+    albumID: albumID,
+    listened: idS ? shown("#notListenedContainer_" + idS) : false,
+    liked: idS ? shown("#unlikeAlbumContainer_" + idS) : false,
+    saved: shown("#removeSpinList"),
+    rating: rating != null && rating >= 0 && rating <= 100 ? rating : null,
+    review: review,
+    canReview: !!doc.querySelector("#reviewBlock textarea, textarea#text"),
+    name: nameA ? aotyTxt(nameA) : null,
+    nameColor: nameA ? aotyNameColor(nameA) : null,
+    avatar: img ? aotyImgSrc(img) : null
+  };
+}
+
 function aotyAlbum(doc, html, pageURL) {
   var ld = {};
   var scripts = doc.querySelectorAll('script[type="application/ld+json"]');
@@ -434,6 +472,7 @@ function aotyAlbum(doc, html, pageURL) {
   var ogImage = doc.querySelector('meta[property="og:image"]');
 
   return {
+    me: aotyMyAlbumBox(doc),
     url: pageURL,
     title: String(ld.name || titleFallback || ""),
     artist: String((byArtist && byArtist.name) || artistFallback || ""),

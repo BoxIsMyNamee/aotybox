@@ -233,6 +233,21 @@ for (const [kind, path] of pages) {
   check(!hit.includes("menu menu"), "nav excluded");
 }
 
+// Your album box (from the user's signed-in capture)
+{
+  const rated = `<html><body><div class="content"><div class="albumActions"><span id="notListenedContainer_2114076"><span class="action removeListened" data-album-id="2114076"><div class="listenAlbum listened">Listened</div></span></span><span id="listenedContainer_2114076" style="display: none;"></span><span id="likeAlbumContainer_2114076"><span class="action addAlbumLike" data-album-id="2114076"></span></span><span id="unlikeAlbumContainer_2114076" style="display: none;"></span><span id="addSpinList"></span><span id="removeSpinList" style="display:none;"></span></div><div class="userReviewImage"><a href="/user/harperseemscool/"><img src="https://cdn.albumoftheyear.org/user/thumbs/boxismyname_1.jpg"></a></div><div class="userReviewName"><a href="/user/harperseemscool/" style="color: #7CFC00;">HarperSeemsCool</a></div></div>
+    <div id="ratingContainer"><div id="ratingBlock" style="display:none;"><input id="value"><button class="insertRating" id="2114076">Rate</button></div><div id="currentRatingBlock" class="ratingBlock yourOwn"><div class="rating"><div class="ratingValue">55</div></div></div></div></body></html>`;
+  const m = aotyExtract("album", rated, "https://www.albumoftheyear.org/album/2114076-x.php").me;
+  console.log("\n=== my album box (rated)", JSON.stringify(m));
+  check(m && m.albumID === 2114076 && m.listened === true && m.liked === false && m.saved === false && m.rating === 55, "rated box");
+  check(m.name === "HarperSeemsCool" && m.nameColor === "#7CFC00", "my name + color");
+  const other = `<html><body><div class="content"><div class="albumActions"><span id="listenedContainer_5361"></span><span id="notListenedContainer_5361" style="display: none;"></span><span id="likeAlbumContainer_5361"></span><span id="unlikeAlbumContainer_5361" style="display: none;"></span><span id="addSpinList"></span><span id="removeSpinList" style="display:none;"></span></div></div>
+    <div id="ratingContainer"><div id="ratingBlock" style="display:inline-block;"><button class="insertRating" id="5361">Rate</button></div></div><div id="reviewBlock"><textarea id="text"></textarea></div><button class="insertReview" id="5361">Post</button></body></html>`;
+  const o = aotyExtract("album", other, "x").me;
+  console.log("=== my album box (unrated)", JSON.stringify(o));
+  check(o && o.albumID === 5361 && !o.listened && o.rating === null && o.canReview === true, "unrated box");
+}
+
 // Header bell (synthetic)
 {
   const html = `<html><body><header><a href="/notifications/"><i class="fas fa-bell"></i><span class="notifCount">3</span></a>

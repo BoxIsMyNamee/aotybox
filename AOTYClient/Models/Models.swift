@@ -218,7 +218,22 @@ struct RankingInfo: Decodable, Hashable {
 }
 
 /// Full album page (/album?slug=…).
+/// Your own box on an album page (only when signed in).
+struct MyAlbumBox: Decodable, Hashable {
+    let albumID: Int?
+    var listened: Bool?
+    var liked: Bool?
+    var saved: Bool?
+    var rating: Double?
+    var review: String?
+    var canReview: Bool?
+    let name: String?
+    let nameColor: String?
+    let avatar: String?
+}
+
 struct AlbumDetail: Decodable, Hashable {
+    var me: MyAlbumBox? = nil
     let url: String
     let title: String
     let artist: String

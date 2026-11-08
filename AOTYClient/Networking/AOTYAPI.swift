@@ -132,6 +132,20 @@ actor AOTYAPI {
 
     enum LikeResult: Equatable { case ok, limited, failed(String) }
 
+    /// Send one of AOTY's own button actions (form POST with your session). Returns AOTY's reply text, or nil on failure.
+    func albumAction(_ endpoint: String, _ form: [String: String]) async -> String? {
+        let body = form.map { k, v in k + "=" + (v.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? v) }.joined(separator: "&")
+        let js = """
+        const r = await fetch(endpoint, { method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest" },
+          body: form });
+        return r.status + "|" + (await r.text()).slice(0, 2000);
+        """
+        guard let out = try? await AOTYScraper.shared.runJS(js, args: ["endpoint": "/scripts/" + endpoint, "form": body]),
+              out.hasPrefix("200") else { return nil }
+        return String(out.dropFirst(4))
+    }
+
     /// Heart / un-heart a user review (same requests AOTY's own button sends, using your session).
     func setReviewLike(_ reviewID: Int, liked: Bool) async -> LikeResult {
         let js = """

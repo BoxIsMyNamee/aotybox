@@ -124,17 +124,26 @@ struct AlbumDetailView: View {
                 .listRowBackground(Color.clear)
             }
 
-            // Rate / review on AOTY itself (uses your signed-in web session)
             Section {
-                Button {
-                    showRateSheet = true
-                } label: {
-                    Label("Rate or review on AOTY", systemImage: "star.bubble")
-                }
                 Button {
                     push(Learn.route(artist: a.artist, album: a.title, song: nil, isSingle: isSingle(a), cover: a.coverURL))
                 } label: {
                     Label("Learn about this \(isSingle(a) ? "Song" : "Album")", systemImage: "magnifyingglass")
+                }
+            }
+
+            // Your score, review, and Listened / Like / Save (signed in)
+            if let me = a.me, me.albumID != nil {
+                Section {
+                    MyAlbumCard(box: me, slug: slug)
+                        .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
+                }
+            }
+
+            // Edit or delete on AOTY itself (uses your signed-in web session)
+            Section {
+                Button { showRateSheet = true } label: {
+                    Label("Rate or review on AOTY", systemImage: "star.bubble")
                 }
             }
 
