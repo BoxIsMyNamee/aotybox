@@ -89,13 +89,16 @@ struct HeartSwipe: ViewModifier {
     let likes: Int
     var enabled = true
     var learn: (() -> Void)? = nil
+    /// Other people's reviews: swipe right to View the review instead of Learn.
+    var view: (() -> Void)? = nil
     @ObservedObject private var store = LikeStore.shared
 
     func body(content: Content) -> some View {
         let isLiked = store.liked(reviewID, default: liked)
         let count = store.count(reviewID, default: likes)
         content.swipeRow(
-            leading: learn.map { l in SwipeAction(icon: "magnifyingglass", title: "Learn", color: .green, perform: l) },
+            leading: view.map { v in SwipeAction(icon: "magnifyingglass", title: "View", color: .green, perform: v) }
+                ?? learn.map { l in SwipeAction(icon: "magnifyingglass", title: "Learn", color: .green, perform: l) },
             trailing: SwipeAction(
                 icon: isLiked ? "heart.slash.fill" : "heart.fill",
                 title: isLiked ? "Unlike" : "Like",
@@ -110,8 +113,8 @@ struct HeartSwipe: ViewModifier {
 }
 
 extension View {
-    func heartSwipe(reviewID: Int?, liked: Bool, likes: Int, enabled: Bool = true, learn: (() -> Void)? = nil) -> some View {
-        modifier(HeartSwipe(reviewID: reviewID, liked: liked, likes: likes, enabled: enabled, learn: learn))
+    func heartSwipe(reviewID: Int?, liked: Bool, likes: Int, enabled: Bool = true, learn: (() -> Void)? = nil, view: (() -> Void)? = nil) -> some View {
+        modifier(HeartSwipe(reviewID: reviewID, liked: liked, likes: likes, enabled: enabled, learn: learn, view: view))
     }
 }
 

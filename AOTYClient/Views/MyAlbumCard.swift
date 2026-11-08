@@ -14,6 +14,28 @@ struct MyAlbumCard: View {
     @State private var error: String?
     @State private var expanded = false
     @State private var editing = false
+    @State private var loadingFull = false
+
+    /// AOTY's album page cuts long reviews with "… read more".
+    private static let moreRE = #"\s*(\.\.\.|…)?\s*read more\s*$"#
+    private var isCut: Bool { box.review?.range(of: Self.moreRE, options: [.regularExpression, .caseInsensitive]) != nil }
+    private var shownReview: String? {
+        guard let r = box.review else { return nil }
+        return isCut ? r.replacingOccurrences(of: Self.moreRE, with: "…", options: [.regularExpression, .caseInsensitive]) : r
+    }
+
+    /// Fetch the whole review from your review page. Returns false if it couldn't.
+    @discardableResult private func loadFull() async -> Bool {
+        guard isCut, let preview = box.review else { return true }
+        let url = box.reviewURL ?? box.userSlug.flatMap { u in slug.map { "/user/\(u)/album/\($0)/" } }
+        guard let url else { return false }
+        loadingFull = true; defer { loadingFull = false }
+        if let full = try? await AOTYAPI.shared.fullReview(url: url, preview: preview) {
+            withAnimation(.snappy) { box.review = full }
+            return true
+        }
+        return false
+    }
     @FocusState private var focus: Field?
     private enum Field { case score, review }
 
@@ -32,12 +54,20 @@ struct MyAlbumCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            if let review = box.review, !review.isEmpty, !editing {
+            if let review = shownReview, !review.isEmpty, !editing {
                 Text(linkified(review)).font(.body).foregroundStyle(.primary)
                     .lineLimit(expanded ? nil : 14)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 8)   // match the gap below it, above the Listen/Like/Save row
-                if review.count > 700 {
+                if isCut {
+                    Button { Task { if !(await loadFull()) { error = "Couldn't load the rest of your review." } } } label: {
+                        HStack(spacing: 6) {
+                            Text("Read more")
+                            if loadingFull { ProgressView().controlSize(.mini) }
+                        }
+                    }
+                    .font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
+                } else if review.count > 700 {
                     Button(expanded ? "Show Less" : "Show More") { withAnimation(.snappy) { expanded.toggle() } }
                         .font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
                 }
@@ -47,7 +77,7 @@ struct MyAlbumCard: View {
 
             // Quiet footer: Listen / Like / Save, and Edit when there's a review.
             if !editing {
-                HStack(spacing: 18) {
+                HStack(spacing: 14) {
                     actionButton("Listen", on: "Listened", icon: "headphones", flag: box.listened ?? false,
                                  add: "insertListened.php", remove: "deleteListened.php") { box.listened = $0 }
                     actionButton("Like", on: "Liked", icon: "heart", flag: box.liked ?? false,
@@ -57,17 +87,25 @@ struct MyAlbumCard: View {
                     Spacer(minLength: 0)
                     if let review = box.review, !review.isEmpty {
                         Button {
-                            reviewText = review
-                            scoreText = box.rating.map { String(Int($0.rounded())) } ?? ""
-                            error = nil
-                            withAnimation(.snappy) { editing = true }
-                            focus = .review
+                            Task {
+                                // Never edit a cut-off copy: saving it would chop your review.
+                                guard await loadFull(), let whole = box.review else {
+                                    error = "Couldn't load your full review to edit. Try again."; return
+                                }
+                                reviewText = whole
+                                scoreText = box.rating.map { String(Int($0.rounded())) } ?? ""
+                                error = nil
+                                withAnimation(.snappy) { editing = true }
+                                focus = .review
+                            }
                         } label: {
                             Label("Edit", systemImage: "pencil").font(.subheadline.weight(.medium))
+                                .lineLimit(1).fixedSize()
                                 .foregroundStyle(.secondary)
                                 .padding(.vertical, 6).contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .disabled(loadingFull)
                     }
                 }
                 .padding(.top, 2)
@@ -76,6 +114,7 @@ struct MyAlbumCard: View {
             if let error { Text(error).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .task { await loadFull() }      // show your whole review, not AOTY's cut-off copy
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
@@ -241,6 +280,7 @@ struct MyAlbumCard: View {
                     .contentTransition(.symbolEffect(.replace))
                 Text(flag ? on : title)
                     .font(.caption.weight(.medium))
+                    .lineLimit(1).fixedSize()
                     .foregroundStyle(flag ? Color.accentColor : Color.secondary)
             }
             .padding(.vertical, 6)

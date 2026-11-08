@@ -191,7 +191,8 @@ struct UserReviewRow: View {
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture { if review.url != nil { showFull = true } }
-        .heartSwipe(reviewID: review.reviewId, liked: review.liked ?? false, likes: review.likes ?? 0, learn: learn)
+        .heartSwipe(reviewID: review.reviewId, liked: review.liked ?? false, likes: review.likes ?? 0, learn: learn,
+                    view: review.url != nil ? { showFull = true } : nil)
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .sheet(isPresented: $showFull) {
             if let s = review.url, let u = URL(string: s) { AOTYWebSheet(url: u, title: review.username).accentTint() }

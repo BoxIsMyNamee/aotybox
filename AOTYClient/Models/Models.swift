@@ -230,6 +230,8 @@ struct MyAlbumBox: Decodable, Hashable {
     let name: String?
     let nameColor: String?
     let avatar: String?
+    var userSlug: String? = nil
+    var reviewURL: String? = nil
 }
 
 struct AlbumDetail: Decodable, Hashable {

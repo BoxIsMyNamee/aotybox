@@ -1,4 +1,4 @@
-// parser rev 2026-11-06b
+// parser rev 2026-11-08a
 // AOTY page extractors. Run inside the app's hidden WKWebView (same-origin with
 // albumoftheyear.org) and in CI under linkedom for tests.
 // Selectors ported from edideaur/AOTY-api's scrapers.
@@ -351,6 +351,18 @@ function aotyMyAlbumBox(doc) {
     var t = aotyBlockText(reviewEl).replace(/\s*(Edit|Delete|Update|Cancel)\s*/g, " ").trim();
     if (t.length > 2) review = t;
   }
+  // AOTY cuts long reviews with "... read more". Prefer the full text if the page holds it (edit box),
+  // and keep the link to your review page so the app can fetch the rest.
+  var ta = doc.querySelector("#reviewBlock textarea, textarea#text");
+  var full = ta ? String(ta.value || ta.textContent || "").trim() : "";
+  if (review && full.length > 2 && full.length >= review.replace(/\s*(\.\.\.|…)?\s*read more\s*$/i, "").length - 5) review = full;
+  var moreA = null;
+  if (reviewEl) {
+    var as = reviewEl.querySelectorAll('a[href*="/user/"]');
+    for (var k = 0; k < as.length; k++) { if (/album\//.test(as[k].getAttribute("href") || "")) { moreA = as[k]; break; } }
+  }
+  var userHref = nameA ? (nameA.getAttribute("href") || "") : "";
+  var um = userHref.match(/\/user\/([^\/?#]+)/);
   return {
     albumID: albumID,
     listened: idS ? shown("#notListenedContainer_" + idS) : false,
@@ -361,7 +373,9 @@ function aotyMyAlbumBox(doc) {
     canReview: !!doc.querySelector("#reviewBlock textarea, textarea#text"),
     name: nameA ? aotyTxt(nameA) : null,
     nameColor: nameA ? aotyNameColor(nameA) : null,
-    avatar: img ? aotyImgSrc(img) : null
+    avatar: img ? aotyImgSrc(img) : null,
+    userSlug: um ? um[1] : null,
+    reviewURL: moreA ? moreA.getAttribute("href") : null
   };
 }
 

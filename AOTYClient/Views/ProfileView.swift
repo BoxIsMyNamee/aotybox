@@ -410,7 +410,8 @@ struct ProfileReviewRow: View {
         .contentShape(Rectangle())
         .onTapGesture { if let s = review.slug { push(AlbumRoute(slug: s, title: review.album)) } }
         .heartSwipe(reviewID: review.reviewId ?? Int(review.id), liked: review.liked ?? false, likes: review.likes ?? 0, enabled: !own,
-                    learn: { push(Learn.route(artist: review.artist, album: review.album, song: nil, isSingle: false, cover: review.coverURL)) })
+                    learn: { push(Learn.route(artist: review.artist, album: review.album, song: nil, isSingle: false, cover: review.coverURL)) },
+                    view: own || review.url == nil ? nil : { showFull = true })
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
         .sheet(isPresented: $showFull) {
             if let s = review.url, let u = URL(string: s) { AOTYWebSheet(url: u, title: review.album).accentTint() }
