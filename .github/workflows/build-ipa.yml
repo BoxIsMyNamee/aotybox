@@ -120,3 +120,10 @@ jobs:
             | grep '^build-' | sort -t- -k2 -n -r | tail -n +11 \
             | xargs -r -I{} gh release delete {} --repo "${{ github.repository }}" --yes --cleanup-tag
 
+
+      - name: Mirror source.json to the "source" branch (raw.githubusercontent.com is faster and steadier than release downloads)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          mkdir mirror && cp source.json mirror/ && cd mirror && git init -q && git checkout -q -b source && git add . \
+            && git -c user.name=ci -c user.email=ci@local commit -qm "source ${GITHUB_SHA::7}" \
+            && git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" source
