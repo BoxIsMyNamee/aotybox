@@ -31,7 +31,7 @@ struct MyAlbumCard: View {
         guard let url else { return false }
         loadingFull = true; defer { loadingFull = false }
         if let full = try? await AOTYAPI.shared.fullReview(url: url, preview: preview) {
-            withAnimation(.snappy) { box.review = full }
+            instantly { box.review = full }
             return true
         }
         return false
@@ -59,17 +59,29 @@ struct MyAlbumCard: View {
                     .lineLimit(expanded ? nil : 14)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, 8)   // match the gap below it, above the Listen/Like/Save row
+                    .transaction { $0.animation = nil }
                 if isCut {
                     Button { Task { if !(await loadFull()) { error = "Couldn't load the rest of your review." } } } label: {
-                        HStack(spacing: 6) {
-                            Text("Read more")
+                        HStack(spacing: 4) {
+                            Text("Show more")
                             if loadingFull { ProgressView().controlSize(.mini) }
+                            else { Image(systemName: "chevron.down").font(.caption2.weight(.bold)) }
                         }
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
                     }
                     .font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
                 } else if review.count > 700 {
-                    Button(expanded ? "Show Less" : "Show More") { withAnimation(.snappy) { expanded.toggle() } }
-                        .font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
+                    Button { instantly { expanded.toggle() } } label: {
+                        HStack(spacing: 4) {
+                            Text(expanded ? "Show less" : "Show more")
+                            Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption2.weight(.bold))
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
                 }
             } else if editing || (box.canReview ?? true) {
                 reviewComposer
@@ -95,7 +107,7 @@ struct MyAlbumCard: View {
                                 reviewText = whole
                                 scoreText = box.rating.map { String(Int($0.rounded())) } ?? ""
                                 error = nil
-                                withAnimation(.snappy) { editing = true }
+                                instantly { editing = true }
                                 focus = .review
                             }
                         } label: {
@@ -201,7 +213,7 @@ struct MyAlbumCard: View {
                 }
                 Spacer(minLength: 0)
             if editing {
-                Button("Cancel") { focus = nil; error = nil; withAnimation(.snappy) { editing = false } }
+                Button("Cancel") { focus = nil; error = nil; instantly { editing = false } }
                     .buttonStyle(.borderless).foregroundStyle(.secondary).padding(.trailing, 6)
             }
             Button { Task { if editing { await saveEdit() } else { await post() } } } label: {
@@ -227,7 +239,7 @@ struct MyAlbumCard: View {
         let reply = await AOTYAPI.shared.albumAction("insertReview.php", ["albumID": id, "text": text])
         if let reply, !reply.contains("type=\"password\"") {   // a login form back means the session lapsed
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            withAnimation { box.review = text; reviewText = "" }
+            instantly { box.review = text; reviewText = "" }
             forgetPage()
         } else {
             let said = reply.map { $0.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
@@ -254,7 +266,7 @@ struct MyAlbumCard: View {
             }
         }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        withAnimation(.snappy) { box.review = text; reviewText = ""; editing = false }
+        instantly { box.review = text; reviewText = ""; editing = false }
         forgetPage()
     }
 
@@ -288,6 +300,13 @@ struct MyAlbumCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(flag ? on : title)
+    }
+
+    /// Height changes inside a List row look smeary when animated (the old and new text cross-fade
+    /// while the row resizes), so these swaps happen in one clean step.
+    private func instantly(_ change: () -> Void) {
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t, change)
     }
 
     /// So the next visit shows the change instead of a saved copy.
