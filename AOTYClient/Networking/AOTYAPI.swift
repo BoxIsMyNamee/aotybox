@@ -134,7 +134,9 @@ actor AOTYAPI {
 
     /// Send one of AOTY's own button actions (form POST with your session). Returns AOTY's reply text, or nil on failure.
     func albumAction(_ endpoint: String, _ form: [String: String]) async -> String? {
-        let body = form.map { k, v in k + "=" + (v.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? v) }.joined(separator: "&")
+        // Strict ASCII set: accented letters, emoji and punctuation in reviews all get encoded.
+        let safe = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~")
+        let body = form.map { k, v in k + "=" + (v.addingPercentEncoding(withAllowedCharacters: safe) ?? v) }.joined(separator: "&")
         let js = """
         const r = await fetch(endpoint, { method: "POST", credentials: "include",
           headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest" },

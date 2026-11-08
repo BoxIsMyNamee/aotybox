@@ -27,7 +27,11 @@ struct MyAlbumCard: View {
                         .foregroundStyle(box.nameColor.map { Color(hex: $0) } ?? .primary)
                     scoreArea
                 }
-                Spacer(minLength: 6)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 0) {
                 actionButton("Listen", on: "Listened", icon: "headphones", flag: box.listened ?? false,
                              add: "insertListened.php", remove: "deleteListened.php") { box.listened = $0 }
                 actionButton("Like", on: "Liked", icon: "heart", flag: box.liked ?? false,
@@ -35,6 +39,8 @@ struct MyAlbumCard: View {
                 actionButton("Save", on: "Saved", icon: "plus", flag: box.saved ?? false,
                              add: "addSpinList.php", remove: "removeSpinList.php") { box.saved = $0 }
             }
+            .padding(.vertical, 8)
+            .background(Color(.tertiarySystemFill).opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
 
             if let review = box.review, !review.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
@@ -49,7 +55,18 @@ struct MyAlbumCard: View {
                 reviewComposer
             }
 
-            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+            if let error { Text(error).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                if focus == .score {
+                    Button("Rate") { Task { await rate() } }.bold()
+                        .disabled(Int(scoreText).map { !(0...100).contains($0) } ?? true)
+                }
+                Button("Done") { focus = nil }
+            }
         }
     }
 
@@ -118,9 +135,14 @@ struct MyAlbumCard: View {
                         .allowsHitTesting(false)
                 }
             }
-            .frame(minHeight: 90, maxHeight: 180)
+            .frame(maxWidth: .infinity, minHeight: 90, maxHeight: 180)
             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
 
+            HStack {
+                if !reviewText.isEmpty && reviewText.trimmingCharacters(in: .whitespacesAndNewlines).count < 3 {
+                    Text("At least 3 characters").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
             Button { Task { await post() } } label: {
                 Group {
                     if busy == "post" { ProgressView().controlSize(.small).tint(.white) } else { Text("Post").bold() }
@@ -132,6 +154,7 @@ struct MyAlbumCard: View {
             }
             .buttonStyle(.plain)
             .disabled(busy != nil || reviewText.trimmingCharacters(in: .whitespacesAndNewlines).count < 3)
+            }
         }
     }
 
@@ -140,12 +163,15 @@ struct MyAlbumCard: View {
         guard text.count >= 3 else { return }
         focus = nil; error = nil; busy = "post"
         defer { busy = nil }
-        if await AOTYAPI.shared.albumAction("insertReview.php", ["albumID": id, "text": text]) != nil {
+        let reply = await AOTYAPI.shared.albumAction("insertReview.php", ["albumID": id, "text": text])
+        if let reply, !reply.contains("type=\"password\"") {   // a login form back means the session lapsed
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             withAnimation { box.review = text; reviewText = "" }
             forgetPage()
         } else {
-            error = "AOTY didn't accept the review. Your text is still here — try again, or use Rate or review on AOTY."
+            let said = reply.map { $0.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines).prefix(120) } ?? ""
+            error = "AOTY didn't accept the review" + (said.isEmpty ? "." : ": \(said)") + " Your text is still here."
         }
     }
 
@@ -174,7 +200,7 @@ struct MyAlbumCard: View {
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
-            .frame(width: 50)
+            .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
