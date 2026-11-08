@@ -31,6 +31,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.harper.aotyclient
         GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_CFBundleDisplayName: AOTY
         INFOPLIST_KEY_NSAppleMusicUsageDescription: "Shows the song playing in Apple Music or Marvis so you can open it in Learn."
