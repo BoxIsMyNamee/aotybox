@@ -148,6 +148,35 @@ actor AOTYAPI {
         return String(out.dropFirst(4))
     }
 
+    /// Update your existing review the way AOTY's own Update button does. The request is read out of
+    /// AOTY's album script at run time (so it follows the site if it changes), with a sensible fallback.
+    func updateReview(albumID: String, text: String) async -> Bool {
+        let js = """
+        let ep = "/scripts/updateReview.php", pairs = [["albumID", "id"], ["text", "text"]];
+        try {
+          const s = await (await fetch("/scripts/albumScript.js", { credentials: "include" })).text();
+          const i = s.indexOf(".updateReview");
+          if (i >= 0) {
+            const m = s.slice(i, i + 4000).match(/\\$\\.post\\(\\s*['"]([^'"]+)['"]\\s*,\\s*\\{([^}]*)\\}/);
+            if (m) {
+              ep = m[1];
+              const p = m[2].split(",").map(x => x.split(":").map(y => y.trim())).filter(x => x.length == 2 && x[0]);
+              if (p.length) pairs = p;
+            }
+          }
+        } catch (e) {}
+        const val = v => /text|review/i.test(v) ? text : id;
+        const body = pairs.map(([k, v]) => encodeURIComponent(k) + "=" + encodeURIComponent(val(v))).join("&");
+        const r = await fetch(ep, { method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest" },
+          body });
+        const t = await r.text();
+        return r.status + "|" + ep + "|" + t.slice(0, 300);
+        """
+        guard let out = try? await AOTYScraper.shared.runJS(js, args: ["id": albumID, "text": text]) else { return false }
+        return out.hasPrefix("200|") && !out.contains("type=\"password\"")
+    }
+
     /// Heart / un-heart a user review (same requests AOTY's own button sends, using your session).
     func setReviewLike(_ reviewID: Int, liked: Bool) async -> LikeResult {
         let js = """

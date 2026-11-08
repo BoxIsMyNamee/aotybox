@@ -13,6 +13,7 @@ struct MyAlbumCard: View {
     @State private var busy: String?          // which action is running
     @State private var error: String?
     @State private var expanded = false
+    @State private var editing = false
     @FocusState private var focus: Field?
     private enum Field { case score, review }
 
@@ -42,16 +43,30 @@ struct MyAlbumCard: View {
             .padding(.vertical, 8)
             .background(Color(.tertiarySystemFill).opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
 
-            if let review = box.review, !review.isEmpty {
+            if let review = box.review, !review.isEmpty, !editing {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(linkified(review)).font(.callout).foregroundStyle(.secondary)
                         .lineLimit(expanded ? nil : 6)
-                    if review.count > 280 {
-                        Button(expanded ? "Show Less" : "Show More") { expanded.toggle() }
-                            .font(.caption.weight(.semibold)).buttonStyle(.borderless)
+                    HStack {
+                        if review.count > 280 {
+                            Button(expanded ? "Show Less" : "Show More") { expanded.toggle() }
+                                .font(.caption.weight(.semibold)).buttonStyle(.borderless)
+                        }
+                        Spacer(minLength: 0)
+                        Button {
+                            reviewText = review
+                            scoreText = box.rating.map { String(Int($0.rounded())) } ?? ""
+                            error = nil
+                            withAnimation(.snappy) { editing = true }
+                            focus = .review
+                        } label: {
+                            Text("Edit").bold().frame(width: 76, height: 34)
+                                .background(Color(.tertiarySystemFill), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-            } else if box.canReview ?? true {
+            } else if editing || (box.canReview ?? true) {
                 reviewComposer
             }
 
@@ -73,7 +88,7 @@ struct MyAlbumCard: View {
     // MARK: Score
 
     @ViewBuilder private var scoreArea: some View {
-        if let r = box.rating {
+        if let r = box.rating, !editing {
             HStack(spacing: 8) {
                 Text(String(Int(r.rounded())))
                     .font(.system(.title3, design: .rounded).weight(.bold).monospacedDigit())
@@ -143,9 +158,13 @@ struct MyAlbumCard: View {
                     Text("At least 3 characters").font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
-            Button { Task { await post() } } label: {
+            if editing {
+                Button("Cancel") { focus = nil; error = nil; withAnimation(.snappy) { editing = false } }
+                    .buttonStyle(.borderless).foregroundStyle(.secondary).padding(.trailing, 6)
+            }
+            Button { Task { if editing { await saveEdit() } else { await post() } } } label: {
                 Group {
-                    if busy == "post" { ProgressView().controlSize(.small).tint(.white) } else { Text("Post").bold() }
+                    if busy == "post" { ProgressView().controlSize(.small).tint(.white) } else { Text(editing ? "Save" : "Post").bold() }
                 }
                 .frame(width: 76, height: 34)
                 .background(reviewText.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 ? Color.accentColor : Color.gray.opacity(0.4),
@@ -175,6 +194,28 @@ struct MyAlbumCard: View {
         }
     }
 
+    /// Edit mode's Save: re-rate if the score changed, then update the review text.
+    private func saveEdit() async {
+        let text = reviewText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.count >= 3 else { return }
+        focus = nil; error = nil; busy = "post"
+        defer { busy = nil }
+        if let v = Int(scoreText), (0...100).contains(v), Double(v) != box.rating {
+            guard await AOTYAPI.shared.albumAction("insertRatingLarge.php", ["albumID": id, "value": String(v)]) != nil else {
+                error = "AOTY didn't accept the new score. Your text is still here."; return
+            }
+            box.rating = Double(v)
+        }
+        if text != box.review {
+            guard await AOTYAPI.shared.updateReview(albumID: id, text: text) else {
+                error = "AOTY didn't accept the edit. Your text is still here — try again, or use Rate or review on AOTY."; return
+            }
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.snappy) { box.review = text; reviewText = ""; editing = false }
+        forgetPage()
+    }
+
     // MARK: Listen / Like / Save
 
     private func actionButton(_ title: String, on: String, icon: String, flag: Bool,
@@ -191,7 +232,7 @@ struct MyAlbumCard: View {
             }
         } label: {
             VStack(spacing: 4) {
-                Image(systemName: flag ? (icon == "plus" ? "checkmark" : icon + ".fill") : icon)
+                Image(systemName: flag ? (icon == "plus" ? "checkmark" : icon == "heart" ? "heart.fill" : icon) : icon)
                     .font(.title3)
                     .foregroundStyle(flag ? Color.accentColor : Color.secondary)
                     .contentTransition(.symbolEffect(.replace))
