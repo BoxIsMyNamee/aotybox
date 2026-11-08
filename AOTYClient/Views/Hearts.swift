@@ -31,33 +31,48 @@ struct HeartButton: View {
     @State private var busy = false
     @State private var limited = false
     @State private var failure: String?
+    @State private var showLikers = false
 
     var body: some View {
         let isLiked = store.liked(reviewID, default: liked)
         let count = store.count(reviewID, default: likes)
-        Button {
-            guard let reviewID, !busy else { return }
-            Task {
-                busy = true
-                let r = await store.toggle(id: reviewID, liked: isLiked, count: count)
-                limited = (r == .limited)
-                if case let .failed(msg) = r { failure = msg }
-                busy = false
-            }
-        } label: {
-            HStack(spacing: 4) {
+        HStack(spacing: 0) {
+            Button {
+                guard let reviewID else { return }
+                if !canLike { if count > 0 { showLikers = true }; return }   // your own review: see who liked it
+                guard !busy else { return }
+                Task {
+                    busy = true
+                    let r = await store.toggle(id: reviewID, liked: isLiked, count: count)
+                    limited = (r == .limited)
+                    if case let .failed(msg) = r { failure = msg }
+                    busy = false
+                }
+            } label: {
                 Image(systemName: limited ? "exclamationmark.triangle" : (isLiked ? "heart.fill" : "heart"))
                     .foregroundStyle(isLiked ? Color.red : Color.secondary)
                     .contentTransition(.symbolEffect(.replace))
-                if count > 0 { Text("\(count)").monospacedDigit().foregroundStyle(.secondary) }
+                    .padding(.vertical, 4).padding(.leading, 8).padding(.trailing, count > 0 ? 2 : 4)
+                    .contentShape(Rectangle())
             }
-            .font(.caption)
-            .padding(.vertical, 4).padding(.leading, 8)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .disabled(reviewID == nil || (!canLike && count == 0))
+            .opacity(canLike || count > 0 ? 1 : 0.6)
+            // The number: tap to see who liked it.
+            if count > 0 {
+                Button { if reviewID != nil { showLikers = true } } label: {
+                    Text("\(count)").monospacedDigit().foregroundStyle(.secondary)
+                        .padding(.vertical, 4).padding(.trailing, 4)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Liked by \(count). Show who")
+            }
         }
-        .buttonStyle(.plain)
-        .disabled(reviewID == nil || !canLike)
-        .opacity(canLike ? 1 : 0.6)
+        .font(.caption)
+        .sheet(isPresented: $showLikers) {
+            if let reviewID { LikersSheet(reviewID: reviewID, count: count) }
+        }
         .alert("Couldn't like this review", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(failure ?? "") }
@@ -129,5 +144,65 @@ struct CommentButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(count.map { "\($0) comments" } ?? "Comments")
+    }
+}
+
+
+/// "Liked By" for a review: the same list AOTY's popup shows.
+struct LikersSheet: View {
+    let reviewID: Int
+    let count: Int
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.push) private var push
+    @State private var people: [AOTYAPI.Liker]?
+    @State private var failed = false
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if let people, !people.isEmpty {
+                    List(people) { p in
+                        Button {
+                            dismiss()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                                push(UserRoute(username: p.slug, name: p.name, avatar: p.avatar, nameColor: p.nameColor))
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Avatar(url: p.avatar.flatMap(URL.init(string:)), name: p.name, size: 40)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(p.name).font(.body.weight(.semibold))
+                                        .foregroundStyle(p.nameColor.map { Color(hex: $0) } ?? .primary)
+                                    if p.followsYou {
+                                        Text("Follows you").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                                            .padding(.horizontal, 6).padding(.vertical, 2)
+                                            .background(Color(.tertiarySystemFill), in: Capsule())
+                                    }
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .listStyle(.plain)
+                } else if failed || people != nil {
+                    ContentUnavailableView("Couldn't load likes", systemImage: "heart.slash",
+                                           description: Text("Try again in a moment."))
+                } else {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .navigationTitle("Liked By")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+        .presentationDetents(count > 6 ? [.medium, .large] : [.medium])
+        .task {
+            if let list = await AOTYAPI.shared.reviewLikers(reviewID) {
+                withAnimation { people = list }
+            } else { failed = true }
+        }
     }
 }

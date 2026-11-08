@@ -177,6 +177,51 @@ actor AOTYAPI {
         return out.hasPrefix("200|") && !out.contains("type=\"password\"")
     }
 
+    struct Liker: Decodable, Identifiable, Hashable {
+        let slug: String
+        let name: String
+        let avatar: String?
+        let nameColor: String?
+        let followsYou: Bool
+        var id: String { slug }
+    }
+
+    /// Who liked a review: AOTY's own "Liked By" popup (showUserReviewLikes.php), parsed.
+    func reviewLikers(_ reviewID: Int) async -> [Liker]? {
+        let js = """
+        const r = await fetch("/scripts/showUserReviewLikes.php", { method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest" },
+          body: "reviewID=" + encodeURIComponent(id) });
+        if (r.status != 200) return "ERR";
+        const doc = new DOMParser().parseFromString(await r.text(), "text/html");
+        const seen = {}, out = [];
+        for (const a of doc.querySelectorAll('a[href*="/user/"]')) {
+          const m = (a.getAttribute("href") || "").match(/\\/user\\/([^\\/?#]+)/);
+          if (!m || seen[m[1]]) continue;
+          let row = a;
+          for (let i = 0; i < 5 && row.parentElement && row.parentElement.querySelectorAll('a[href*="/user/"]').length <= 2
+               && !(row.parentElement.textContent || "").includes("Liked By"); i++) row = row.parentElement;
+          const name = Array.from(row.querySelectorAll('a[href*="/user/"]')).map(x => x.textContent.trim()).find(t => t) || m[1];
+          const img = row.querySelector("img");
+          let color = null;
+          for (const el of [a, ...row.querySelectorAll("*")]) {
+            const c = el.style && el.style.color; if (c) { color = c; break; }
+          }
+          if (color && color.startsWith("rgb")) {
+            const n = color.match(/\\d+/g).slice(0, 3).map(x => (+x).toString(16).padStart(2, "0"));
+            color = "#" + n.join("");
+          }
+          seen[m[1]] = 1;
+          out.push({ slug: m[1], name, avatar: img && (img.getAttribute("src") || img.getAttribute("data-src")) ? new URL(img.getAttribute("src") || img.getAttribute("data-src"), location.origin).href : null,
+                     nameColor: color, followsYou: /follows you/i.test(row.textContent || "") });
+        }
+        return JSON.stringify(out);
+        """
+        guard let out = try? await AOTYScraper.shared.runJS(js, args: ["id": String(reviewID)]),
+              out != "ERR", let data = out.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode([Liker].self, from: data)
+    }
+
     /// Heart / un-heart a user review (same requests AOTY's own button sends, using your session).
     func setReviewLike(_ reviewID: Int, liked: Bool) async -> LikeResult {
         let js = """
