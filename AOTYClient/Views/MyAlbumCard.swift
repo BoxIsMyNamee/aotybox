@@ -36,6 +36,7 @@ struct MyAlbumCard: View {
                 Text(linkified(review)).font(.body).foregroundStyle(.primary)
                     .lineLimit(expanded ? nil : 14)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 8)   // match the gap below it, above the Listen/Like/Save row
                 if review.count > 700 {
                     Button(expanded ? "Show Less" : "Show More") { withAnimation(.snappy) { expanded.toggle() } }
                         .font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
