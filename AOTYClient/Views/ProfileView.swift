@@ -369,11 +369,13 @@ struct ProfileReviewRow: View {
                         Text(review.artist).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
                     }
                     .buttonStyle(.plain)
-                    Text(review.album).font(.headline).lineLimit(2)
+                    Text(review.album).font(.headline).lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let d = review.date { Text(d).font(.caption).foregroundStyle(.tertiary) }
                 }
-                Spacer()
-                if let r = review.rating { MiniScore(label: "", score: r) }
+                .layoutPriority(1)
+                Spacer(minLength: 8)
+                if let r = review.rating { MiniScore(label: "", score: r, large: true) }
             }
 
             if !review.text.isEmpty {
