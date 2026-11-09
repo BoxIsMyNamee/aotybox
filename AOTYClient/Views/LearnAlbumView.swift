@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// "Learn" for an album or EP: the Genius write-up and tracklist, plus Ask AI.
 struct LearnAlbumView: View {
@@ -15,6 +16,7 @@ struct LearnAlbumView: View {
     @State private var chat: [ChatMessage] = []
     @Environment(\.push) private var push
     @Environment(\.openURL) private var openURL
+    @State private var keyboardUp = false
 
     var body: some View {
         ScrollView {
@@ -27,11 +29,6 @@ struct LearnAlbumView: View {
                         if let d = info?.releaseDate { Text(d).font(.caption).foregroundStyle(.tertiary) }
                     }
                 }
-                Picker("Section", selection: $tab) {
-                    ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-
                 switch tab {
                 case .about:
                     if loading { ProgressView().frame(maxWidth: .infinity) }
@@ -68,6 +65,15 @@ struct LearnAlbumView: View {
             .padding()
         }
         .scrollDismissesKeyboard(.interactively)
+        .safeAreaInset(edge: .bottom) {
+            if !keyboardUp {
+                GlassSegmented(selection: $tab, items: Tab.allCases.map { ($0, $0.rawValue) })
+                    .padding(.horizontal, 40)
+                    .padding(.bottom, 8)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
         .navigationTitle(album)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
