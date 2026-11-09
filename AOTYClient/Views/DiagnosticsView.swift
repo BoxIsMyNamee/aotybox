@@ -32,7 +32,7 @@ struct DiagnosticsView: View {
                 Text("Loads each page the app uses and reports what came back. Takes a few seconds.")
             }
             Section {
-                Button(capturing ? "Capturing…" : "Capture AOTY button info") { Task { await captureHeart() } }
+                Button(capturing ? "Capturing…" : "Capture artist page info") { Task { await captureHeart() } }
                     .disabled(capturing)
                 if let heartInfo {
                     Text(heartInfo.prefix(1500) + (heartInfo.count > 1500 ? "…" : ""))
@@ -59,62 +59,27 @@ struct DiagnosticsView: View {
         capturing = true; defer { capturing = false }
         let js = #"""
         const out = [];
-        const page = await (await fetch("/album/2915-outkast-aquemini/user-reviews/", { credentials: "include" })).text();
-        const doc = new DOMParser().parseFromString(page, "text/html");
-        out.push("SIGNED IN: " + !!doc.querySelector("a[href*='logout'], a[href*='signout'], a[href*='/settings/']"));
-        // Your rating/review box on album pages: one you've reviewed (newest on your profile) and one you probably haven't.
-        const me = (__ME__ || "").trim();
-        let reviewed = null;
-        if (me) {
-          const rp = await (await fetch("/user/" + me + "/reviews/", { credentials: "include" })).text();
-          const rd = new DOMParser().parseFromString(rp, "text/html");
-          const link = [...rd.querySelectorAll("a[href*='/album/']")].map(a => a.getAttribute("href")).find(h => /\/album\/\d+-[^/]+\.php/.test(h));
-          reviewed = link || null;
-        }
-        for (const [label, path] of [["REVIEWED ALBUM", reviewed], ["OTHER ALBUM", "/album/5361-the-beatles-the-white-album.php"]]) {
-          if (!path) { out.push(label + ": none found"); continue; }
-          const ap = await (await fetch(path, { credentials: "include" })).text();
-          const ad = new DOMParser().parseFromString(ap, "text/html");
-          out.push(label + " PATH: " + path);
-          const sel = "#ratingBlock, #currentRatingBlock, #reviewBlock, #currentReviewBlock, #ratingContainer, .addListened, .removeListened, .addAlbumLike, .removeAlbumLike, [class*='Listen'], [class*='library'], [class*='Library'], textarea, #postReviewButton, .insertReview, .albumActionBox, [class*='userRating']";
-          const seen = new Set();
-          [...ad.querySelectorAll(sel)].forEach(el => {
-            let box = el.closest("[id]") || el.parentElement || el;
-            for (let k = 0; k < 2 && box.parentElement && box.outerHTML.length < 300; k++) box = box.parentElement;
-            if (seen.has(box)) return; seen.add(box);
-            if (seen.size <= 8) out.push(label + " BOX: " + box.outerHTML.replace(/\s+/g, " ").slice(0, 1400));
-          });
-        }
-
-        // Notifications bell in the signed-in header
-        const home = await (await fetch("/", { credentials: "include" })).text();
-        const hdoc = new DOMParser().parseFromString(home, "text/html");
-        const bells = [...hdoc.querySelectorAll("a[href*='otif'], [class*='otif'], [id*='otif'], .fa-bell, [class*='bell'], [class*='Bell']")];
-        out.push("BELL COUNT: " + bells.length);
-        bells.slice(0, 4).forEach((b, i) => {
-          const box = b.closest("a") || b.parentElement || b;
-          out.push("BELL " + i + ": " + (box.parentElement || box).outerHTML.slice(0, 900));
-        });
-        if (!bells.length) {
-          const i = home.search(/notif|bell/i);
-          out.push("BELL TEXT: " + (i < 0 ? "none" : home.slice(Math.max(0, i - 400), i + 600)));
-        }
-        const links = doc.querySelectorAll(".albumReviewLinks");
-        for (let i = 0; i < Math.min(2, links.length); i++) out.push("LINKS: " + links[i].outerHTML.slice(0, 1500));
-        doc.querySelectorAll("script:not([src])").forEach(s => {
-          const t = s.textContent; const re = /like/gi; let m, n = 0;
-          while ((m = re.exec(t)) && n < 4) { out.push("INLINE: " + t.slice(Math.max(0, m.index - 300), m.index + 700)); re.lastIndex = m.index + 700; n++; }
-        });
-        const artistPage = await (await fetch("/artist/183-kanye-west/", { credentials: "include" })).text();
-        const adoc = new DOMParser().parseFromString(artistPage, "text/html");
-        const credit = adoc.querySelector(".artistCreditList");
-        out.push("CREDIT BUTTON: " + (credit ? credit.outerHTML : "none"));
-        const srcs = [...new Set([...doc.querySelectorAll("script[src]"), ...adoc.querySelectorAll("script[src]")].map(s => s.getAttribute("src")))].filter(s => s && s.startsWith("/scripts/") && !s.includes("vendor"));
+        // Artist page: album blocks (scores), follow button, and the scripts behind them.
+        const path = "/artist/105779-underscores/";
+        const ap = await (await fetch(path, { credentials: "include" })).text();
+        const ad = new DOMParser().parseFromString(ap, "text/html");
+        out.push("SIGNED IN: " + !!ad.querySelector("a[href*='logout'], a[href*='/settings/']"));
+        const blocks = [...ad.querySelectorAll(".albumBlock")];
+        out.push("BLOCKS: " + blocks.length);
+        blocks.slice(0, 4).forEach((b, i) => out.push("BLOCK " + i + ": " + b.outerHTML.replace(/\s+/g, " ").slice(0, 1800)));
+        const fish = blocks.find(b => /fishmonger/i.test(b.textContent));
+        if (fish) out.push("FISHMONGER: " + fish.outerHTML.replace(/\s+/g, " ").slice(0, 1800));
+        const fc = ad.querySelector(".followCount");
+        let fb = fc; for (let k = 0; k < 3 && fb && fb.parentElement; k++) fb = fb.parentElement;
+        out.push("FOLLOW AREA: " + (fb ? fb.outerHTML.replace(/\s+/g, " ").slice(0, 2500) : "none"));
+        [...ad.querySelectorAll("[class*='ollow'], [id*='ollow']")].slice(0, 8).forEach(el =>
+          out.push("FOLLOW EL: " + el.outerHTML.replace(/\s+/g, " ").slice(0, 600)));
+        const srcs = [...new Set([...ad.querySelectorAll("script[src]")].map(s => s.getAttribute("src")))].filter(s => s && s.startsWith("/scripts/"));
         out.push("SCRIPTS: " + srcs.join(" "));
         for (const src of srcs) {
-          const js = await (await fetch(src, { credentials: "include" })).text();
-          const re = /addListened|removeListened|insertRating|insertReview|AlbumLike|addLibrary|SpinList|removeLibrary/gi; let m, n = 0;
-          while ((m = re.exec(js)) && n < 14) { out.push("JS " + src + ": " + js.slice(Math.max(0, m.index - 300), m.index + 700)); re.lastIndex = m.index + 700; n++; }
+          const t = await (await fetch(src, { credentials: "include" })).text();
+          const re = /ollow/g; let m, n = 0, last = -2000;
+          while ((m = re.exec(t)) && n < 12) { if (m.index - last < 900) continue; last = m.index; out.push("JS " + src + ": " + t.slice(Math.max(0, m.index - 300), m.index + 700)); n++; }
         }
         return out.join("\n\n").slice(0, 30000);
         """#
