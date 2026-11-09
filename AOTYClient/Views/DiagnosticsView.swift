@@ -64,13 +64,16 @@ struct DiagnosticsView: View {
         out.push("BLOCKS: " + blocks.length);
         const pick = [blocks.find(b => /fishmonger/i.test(b.textContent)), blocks.find(b => /wallsocket/i.test(b.textContent)), ...blocks.slice(0, 2)].filter(Boolean);
         [...new Set(pick)].forEach((b, i) => out.push("BLOCK " + i + ": " + b.outerHTML.replace(/\s+/g, " ").slice(0, 2500)));
-        const f = document.querySelector("#followContainer_105779, .followRow");
+        const f = document.querySelector(".followRow");
         out.push("FOLLOW: " + (f ? f.outerHTML.replace(/\s+/g, " ").slice(0, 800) : "none"));
         return out.join("\n\n");
         """#
         do {
             var parts: [String] = []
-            for p in ["/artist/105779-underscores/", "/artist/105779-underscores/?type=lp"] {
+            let base = (await AOTYAPI.shared.findArtistPath(name: "underscores")) ?? "/artist/105779-underscores/"
+            let b = base.hasSuffix("/") ? base : base + "/"
+            parts.append("ARTIST PATH: " + b)
+            for p in [b, b + "?type=lp"] {
                 parts.append((try? await AOTYScraper.shared.runOnRealPage(p, js)) ?? "FAILED " + p)
             }
             let r = parts.joined(separator: "\n\n=========\n\n")
