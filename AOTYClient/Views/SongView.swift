@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Song page: Genius bio, lyrics with tappable annotations, comments, and an AI chat.
 /// Falls back to the chat when Genius has nothing for the song.
@@ -26,6 +27,7 @@ struct SongView: View {
     @State private var selectedRef: GeniusClient.Referent?
     @State private var chat: [ChatMessage] = []
     @Environment(\.openURL) private var openURL
+    @State private var keyboardUp = false
 
     private var nothingOnGenius: Bool { !loading && hit == nil }
 
@@ -33,10 +35,6 @@ struct SongView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
-                Picker("Section", selection: $tab) {
-                    ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
 
                 if loading && tab != .ask {
                     ProgressView("Looking up on Genius…").frame(maxWidth: .infinity).padding(.top, 40)
@@ -52,6 +50,16 @@ struct SongView: View {
             .padding()
         }
         .scrollDismissesKeyboard(.interactively)
+        // Section switcher floats at the bottom like the other pages; it steps aside while typing.
+        .safeAreaInset(edge: .bottom) {
+            if !keyboardUp {
+                GlassSegmented(selection: $tab, items: Tab.allCases.map { ($0, $0.rawValue) })
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
