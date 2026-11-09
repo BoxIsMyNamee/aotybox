@@ -124,6 +124,17 @@ jobs:
       - name: Mirror source.json to the "source" branch (raw.githubusercontent.com is faster and steadier than release downloads)
         if: github.ref == 'refs/heads/main'
         run: |
-          mkdir mirror && cp source.json mirror/ && cd mirror && git init -q && git checkout -q -b source && git add . \
+          # The app download comes from here too: GitHub's release links keep timing out (HTTP 504).
+          mkdir mirror && cp AOTYClient.ipa mirror/
+          python3 - <<'PY'
+          import json
+          s = json.load(open("source.json"))
+          raw = "https://raw.githubusercontent.com/${{ github.repository }}/source/AOTYClient.ipa"
+          for app in s["apps"]:
+              app["downloadURL"] = raw
+              for v in app.get("versions", []): v["downloadURL"] = raw
+          json.dump(s, open("mirror/source.json", "w"), indent=2)
+          PY
+          cd mirror && git init -q && git checkout -q -b source && git add . \
             && git -c user.name=ci -c user.email=ci@local commit -qm "source ${GITHUB_SHA::7}" \
             && git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" source
