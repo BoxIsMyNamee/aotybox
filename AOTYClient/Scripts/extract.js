@@ -1,4 +1,4 @@
-// parser rev 2026-11-08b
+// parser rev 2026-11-08c
 // AOTY page extractors. Run inside the app's hidden WKWebView (same-origin with
 // albumoftheyear.org) and in CI under linkedom for tests.
 // Selectors ported from edideaur/AOTY-api's scrapers.
@@ -73,7 +73,8 @@ function aotyAlbumBlocks(root) {
   var blocks = root.querySelectorAll(".albumBlock");
   for (var i = 0; i < blocks.length; i++) {
     var b = blocks[i];
-    var a = b.querySelector(".image a") || b.querySelector("a[href*='/album/']");
+    // Signed in, the cover box starts with a "…" menu link (href="#"), so look for the album link itself.
+    var a = b.querySelector(".image a[href*='/album/']") || b.querySelector("a[href*='/album/']");
     var img = b.querySelector(".image img");
     var wrap = b.querySelector(".image");
     var critic = null, criticCount = null, user = null, userCount = null, mine = null, ratedDate = null;
