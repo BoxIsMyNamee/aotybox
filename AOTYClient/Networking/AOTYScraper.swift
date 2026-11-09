@@ -149,6 +149,21 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         }
     }
 
+    /// Diagnostics: load a page for real in the hidden view (so the site's own scripts fill it in),
+    /// then run `body` on it. `body` must `return` a string.
+    func runOnRealPage(_ path: String, _ body: String, timeout: Double = 40) async throws -> String {
+        try await serialized {
+            try await self.withTimeout(timeout) {
+                try await self.navigate(to: URL(string: "https://www.albumoftheyear.org" + path)!)
+                self.originReady = true
+                let js = "for (let i = 0; i < 30 && !document.querySelector('.albumBlock .rating, .albumBlock .ratingRow'); i++) await new Promise(r => setTimeout(r, 250));\n" + body
+                let r = try await self.webView.runAsyncJS(js, args: [:])
+                guard let s = r as? String else { throw ScrapeError.script("no result") }
+                return s
+            }
+        }
+    }
+
     func forget(_ path: String) {
         memory[path] = nil
         try? FileManager.default.removeItem(at: key(path))

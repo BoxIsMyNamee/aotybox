@@ -270,6 +270,10 @@ for (const [kind, path] of pages) {
   check(r.reviewId === 997831 && r.liked === true && r.likes === 185 && r.userSlug === "rollo-p", "liked + id + count + slug");
   const s2 = aotyExtract("artistSearch", `<a href="/artist/183-kanye-west/">Kanye West</a><a href="/artist/183-kanye-west/">x</a><a href="/artist/9-other/">y</a>`, "x");
   check(s2.paths[0] === "/artist/183-kanye-west/" && s2.paths.length === 2, "artist search paths");
+  const fa = aotyExtract("artist", `<h1 class="artistHeadline">underscores</h1><div class="followRow"><span id="followContainer_105779"><button class="followArtist" data-artist-id="105779"><div id="followButton_105779" class="follow noFloat">Follow</div></button></span></div>`, "x");
+  check(fa.artistID === 105779 && fa.following === false, "artist follow button");
+  const fb = aotyExtract("artist", `<h1 class="artistHeadline">x</h1><span id="followContainer_9"><button class="unfollowArtist" data-artist-id="9"><div id="unfollowButton_9">Following</div></button></span>`, "x");
+  check(fb.artistID === 9 && fb.following === true, "artist unfollow button");
 }
 
 console.log(`\n${failures} failure(s)`);

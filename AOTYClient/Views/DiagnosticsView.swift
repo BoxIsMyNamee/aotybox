@@ -59,32 +59,21 @@ struct DiagnosticsView: View {
         capturing = true; defer { capturing = false }
         let js = #"""
         const out = [];
-        // Artist page: album blocks (scores), follow button, and the scripts behind them.
-        const path = "/artist/105779-underscores/";
-        const ap = await (await fetch(path, { credentials: "include" })).text();
-        const ad = new DOMParser().parseFromString(ap, "text/html");
-        out.push("SIGNED IN: " + !!ad.querySelector("a[href*='logout'], a[href*='/settings/']"));
-        const blocks = [...ad.querySelectorAll(".albumBlock")];
+        out.push("PAGE: " + location.href + " · " + document.title);
+        const blocks = [...document.querySelectorAll(".albumBlock")];
         out.push("BLOCKS: " + blocks.length);
-        blocks.slice(0, 4).forEach((b, i) => out.push("BLOCK " + i + ": " + b.outerHTML.replace(/\s+/g, " ").slice(0, 1800)));
-        const fish = blocks.find(b => /fishmonger/i.test(b.textContent));
-        if (fish) out.push("FISHMONGER: " + fish.outerHTML.replace(/\s+/g, " ").slice(0, 1800));
-        const fc = ad.querySelector(".followCount");
-        let fb = fc; for (let k = 0; k < 3 && fb && fb.parentElement; k++) fb = fb.parentElement;
-        out.push("FOLLOW AREA: " + (fb ? fb.outerHTML.replace(/\s+/g, " ").slice(0, 2500) : "none"));
-        [...ad.querySelectorAll("[class*='ollow'], [id*='ollow']")].slice(0, 8).forEach(el =>
-          out.push("FOLLOW EL: " + el.outerHTML.replace(/\s+/g, " ").slice(0, 600)));
-        const srcs = [...new Set([...ad.querySelectorAll("script[src]")].map(s => s.getAttribute("src")))].filter(s => s && s.startsWith("/scripts/"));
-        out.push("SCRIPTS: " + srcs.join(" "));
-        for (const src of srcs) {
-          const t = await (await fetch(src, { credentials: "include" })).text();
-          const re = /ollow/g; let m, n = 0, last = -2000;
-          while ((m = re.exec(t)) && n < 12) { if (m.index - last < 900) continue; last = m.index; out.push("JS " + src + ": " + t.slice(Math.max(0, m.index - 300), m.index + 700)); n++; }
-        }
-        return out.join("\n\n").slice(0, 30000);
+        const pick = [blocks.find(b => /fishmonger/i.test(b.textContent)), blocks.find(b => /wallsocket/i.test(b.textContent)), ...blocks.slice(0, 2)].filter(Boolean);
+        [...new Set(pick)].forEach((b, i) => out.push("BLOCK " + i + ": " + b.outerHTML.replace(/\s+/g, " ").slice(0, 2500)));
+        const f = document.querySelector("#followContainer_105779, .followRow");
+        out.push("FOLLOW: " + (f ? f.outerHTML.replace(/\s+/g, " ").slice(0, 800) : "none"));
+        return out.join("\n\n");
         """#
         do {
-            let r = try await AOTYScraper.shared.runJS(js.replacingOccurrences(of: "__ME__", with: "\"\(myUsername)\""), args: [:], timeout: 75)
+            var parts: [String] = []
+            for p in ["/artist/105779-underscores/", "/artist/105779-underscores/?type=lp"] {
+                parts.append((try? await AOTYScraper.shared.runOnRealPage(p, js)) ?? "FAILED " + p)
+            }
+            let r = parts.joined(separator: "\n\n=========\n\n")
             heartInfo = r
             UIPasteboard.general.string = r
         } catch {

@@ -1,4 +1,4 @@
-// parser rev 2026-11-08a
+// parser rev 2026-11-08b
 // AOTY page extractors. Run inside the app's hidden WKWebView (same-origin with
 // albumoftheyear.org) and in CI under linkedom for tests.
 // Selectors ported from edideaur/AOTY-api's scrapers.
@@ -848,9 +848,12 @@ function aotyArtist(doc, pageURL) {
     clone.querySelectorAll("a[href]").forEach(function (a) { links.push({ text: aotyTxt(a), href: a.getAttribute("href") }); });
     if (label && value) details.push({ label: label, value: value, links: links });
   }
+  var fBtn = doc.querySelector(".followArtist[data-artist-id], .unfollowArtist[data-artist-id]");
   return { name: name, image: image, score: c[0],
            criticScore: c[0], criticCount: c[1], userScore: u[0], userCount: u[1],
-           followers: fc || null, details: details, albums: albums };
+           followers: fc || null, details: details, albums: albums,
+           artistID: fBtn ? (parseInt(fBtn.getAttribute("data-artist-id"), 10) || null) : null,
+           following: fBtn ? /unfollowArtist/.test(fBtn.className || "") : null };
 }
 
 function aotyExtract(kind, html, pageURL) {

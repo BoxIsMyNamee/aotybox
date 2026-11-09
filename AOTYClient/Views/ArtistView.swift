@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Native artist page: wide photo, scores + details, then Albums / EPs / Singles (switch at the
 /// bottom). The filter button adds AOTY's other release types (reissues, live, …) into Albums.
@@ -25,6 +26,9 @@ struct ArtistView: View {
     @State private var failedTypes: Set<String> = []
     @State private var error: String?
     @State private var category: Category = .albums
+    @State private var following: Bool?        // nil = what the page said
+    @State private var followBusy = false
+    @State private var followError: String?
     @AppStorage("artistExtras") private var extrasRaw = ""
     @Environment(\.push) private var push
     @Environment(\.openURL) private var openURL
@@ -84,6 +88,46 @@ struct ArtistView: View {
         !loadingTypes.isDisjoint(with: [category.aotyType] + (category == .albums ? Array(extrasOn) : []))
     }
 
+    /// Follower count that moves with your own follow/unfollow.
+    private func followersText(_ a: AOTYAPI.Artist) -> String? {
+        guard let f = a.followers else { return nil }
+        guard let now = following, let was = a.following, now != was else { return f }
+        let digits = f.filter(\.isNumber)
+        guard let n = Int(digits) else { return f }
+        let m = max(0, n + (now ? 1 : -1))
+        return "\(m.formatted()) Followers"
+    }
+
+    private func followButton(_ id: Int, _ a: AOTYAPI.Artist) -> some View {
+        let on = following ?? a.following ?? false
+        return Button {
+            Task {
+                followBusy = true; defer { followBusy = false }
+                let want = !on
+                following = want                                  // optimistic
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                if await AOTYAPI.shared.setArtistFollow(id, follow: want) {
+                    if let base { await AOTYScraper.shared.forget(base) }
+                } else {
+                    following = on
+                    followError = "AOTY didn't accept that. Try again."
+                }
+            }
+        } label: {
+            Text(on ? "Following" : "Follow")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(on ? Color.primary : Color.white)
+                .padding(.horizontal, 16).frame(height: 32)
+                .background(on ? AnyShapeStyle(Color(.tertiarySystemFill)) : AnyShapeStyle(Color.accentColor), in: Capsule())
+                .contentTransition(.interpolate)
+        }
+        .buttonStyle(.plain)
+        .disabled(followBusy)
+        .alert("Couldn't update follow", isPresented: Binding(get: { followError != nil }, set: { if !$0 { followError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(followError ?? "") }
+    }
+
     @ViewBuilder private func content(_ a: AOTYAPI.Artist) -> some View {
         List {
             Section { hero(a) }
@@ -97,7 +141,13 @@ struct ArtistView: View {
                         Divider().frame(height: 44)
                         scoreCell("User", a.userScore, a.userCount.map { "\($0.formatted()) ratings" })
                     }
-                    if let f = a.followers { Label(f, systemImage: "person.2").font(.subheadline).foregroundStyle(.secondary) }
+                    if a.followers != nil || a.artistID != nil {
+                        HStack {
+                            if let f = followersText(a) { Label(f, systemImage: "person.2").font(.subheadline).foregroundStyle(.secondary) }
+                            Spacer(minLength: 8)
+                            if let id = a.artistID { followButton(id, a) }
+                        }
+                    }
                 }
             }
 

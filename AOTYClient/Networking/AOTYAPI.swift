@@ -128,6 +128,13 @@ actor AOTYAPI {
         var followers: String? = nil
         var details: [Detail]? = nil
         let albums: [AlbumBlock]
+        var artistID: Int? = nil
+        var following: Bool? = nil
+    }
+
+    /// Follow / unfollow an artist (AOTY's own followArtist.php / unfollowArtist.php).
+    func setArtistFollow(_ artistID: Int, follow: Bool) async -> Bool {
+        await albumAction(follow ? "followArtist.php" : "unfollowArtist.php", ["artistID": String(artistID)]) != nil
     }
 
     enum LikeResult: Equatable { case ok, limited, failed(String) }
