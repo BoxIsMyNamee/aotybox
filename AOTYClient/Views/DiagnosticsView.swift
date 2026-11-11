@@ -32,7 +32,7 @@ struct DiagnosticsView: View {
                 Text("Loads each page the app uses and reports what came back. Takes a few seconds.")
             }
             Section {
-                Button(capturing ? "Capturing…" : "Capture notification info") { Task { await captureHeart() } }
+                Button(capturing ? "Capturing…" : "Capture search info") { Task { await captureHeart() } }
                     .disabled(capturing)
                 if let heartInfo {
                     Text(heartInfo.prefix(1500) + (heartInfo.count > 1500 ? "…" : ""))
@@ -59,51 +59,27 @@ struct DiagnosticsView: View {
         capturing = true; defer { capturing = false }
         let js = #"""
         const out = [];
-        await new Promise(r => setTimeout(r, 4000));
-        out.push("UA: " + navigator.userAgent);
-        out.push("BODY CLASS: " + document.body.className + " · HTML CLASS: " + document.documentElement.className);
-        // Pseudo-elements and tiny round things anywhere on the page (the dot may be CSS-only).
-        const mp = document.querySelector(".mobileProfile");
-        for (const el of [mp, mp && mp.querySelector("button"), mp && mp.querySelector("img")].filter(Boolean)) {
-          for (const pe of ["::before", "::after"]) {
-            const cs = getComputedStyle(el, pe);
-            if (cs.content && cs.content !== "none" && cs.content !== "normal")
-              out.push("PSEUDO " + el.tagName + pe + ": content=" + cs.content + " bg=" + cs.backgroundColor + " display=" + cs.display + " size=" + cs.width + "x" + cs.height);
-          }
+        const get = async (u, opt) => {
+          const c = new AbortController(); const t = setTimeout(() => c.abort(), 15000);
+          try { const r = await fetch(u, Object.assign({ credentials: "include", signal: c.signal }, opt || {})); return r.status + " " + await r.text(); }
+          catch (e) { return "ERR " + e.message; } finally { clearTimeout(t); }
+        };
+        // 1. Artist search results: every artist link with its surroundings.
+        const sp = await get("/search/artists/?q=mac+miller");
+        const d = new DOMParser().parseFromString(sp.replace(/^\d+ /, ""), "text/html");
+        const links = [...d.querySelectorAll("a[href*='/artist/']")];
+        out.push("ARTIST LINKS: " + links.length);
+        links.slice(0, 12).forEach(a => out.push("LINK " + a.getAttribute("href") + " | " + JSON.stringify(a.textContent.trim().slice(0, 60)) + " | parent " + (a.parentElement ? a.parentElement.outerHTML.replace(/\s+/g, " ").slice(0, 500) : "")));
+        // 2. The search box's suggestion source in AOTY's scripts.
+        for (const src of ["/scripts/loggedInScript.js", "/scripts/main.js"]) {
+          const t = await get(src);
+          let i = t.indexOf("autocomplete"), n = 0;
+          while (i >= 0 && n < 4) { out.push("AC " + src + ": " + t.slice(Math.max(0, i - 1500), i + 1500)); i = t.indexOf("autocomplete", i + 1500); n++; }
         }
-        [...document.querySelectorAll("body *")].forEach(el => {
-          const r = el.getBoundingClientRect(); if (!r.width || r.width > 20 || r.height > 20) return;
-          const cs = getComputedStyle(el);
-          if (parseFloat(cs.borderRadius) >= r.width / 2 - 1 && cs.backgroundColor !== "rgba(0, 0, 0, 0)")
-            out.push("DOT? " + el.outerHTML.slice(0, 300) + " · parent " + (el.parentElement ? el.parentElement.outerHTML.slice(0, 300) : "") + " · bg " + cs.backgroundColor);
-        });
-        // Anything next to the profile button in the header.
-        const hd = document.querySelector("#header");
-        out.push("HEADER HTML: " + (hd ? hd.innerHTML.replace(/\s+/g, " ").replace(/<div id="userLinks"[\s\S]*?<\/div><\/div><\/div>/, "[userLinks]").slice(0, 2500) : "none"));
-        // Stylesheet rules that mention notification/dot classes.
-        for (const ss of document.styleSheets) {
-          let rules; try { rules = ss.cssRules; } catch (e) { continue; }
-          for (const r of rules || []) { const t = r.cssText || ""; if (/otif|unread|Dot\b|\.dot\b|mobileProfile/i.test(t) && t.length < 400) out.push("CSS: " + t); }
-        }
-        // Network: what the page asked AOTY for after loading.
-        performance.getEntriesByType("resource").filter(e => /scripts\/|notif/i.test(e.name) && !/\.js|\.css/.test(e.name)).forEach(e => out.push("REQ: " + e.name));
-        return out.join("\n").slice(0, 30000);
-        """#
-        // The notifications page too, loaded for real.
-        let js2 = #"""
-        await new Promise(r => setTimeout(r, 3000));
-        const out = [];
-        out.push("TEXT: " + document.body.innerText.replace(/\s+/g, " ").slice(0, 1500));
-        const rows = [...document.querySelectorAll("[id^='notification_'], [class*='otification']")].filter(e => !e.closest("#header"));
-        out.push("ROWS: " + rows.length);
-        rows.slice(0, 5).forEach(el => out.push("ROW: " + el.outerHTML.replace(/\s+/g, " ").slice(0, 1200)));
-        performance.getEntriesByType("resource").filter(e => /scripts\//.test(e.name) && !/\.js|\.css/.test(e.name)).forEach(e => out.push("REQ: " + e.name));
-        return out.join("\n\n");
+        return out.join("\n\n").slice(0, 40000);
         """#
         do {
-            var r = try await AOTYScraper.shared.runOnRealPage("/", js, timeout: 60)
-            // Not the notifications page: opening it marks everything read on AOTY.
-            _ = js2
+            let r = try await AOTYScraper.shared.runJS(js, args: [:], timeout: 50)
             heartInfo = r
             UIPasteboard.general.string = r
         } catch {
