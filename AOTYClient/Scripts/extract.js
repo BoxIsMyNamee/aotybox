@@ -1,4 +1,4 @@
-// parser rev 2026-11-11a
+// parser rev 2026-11-11b
 // AOTY page extractors. Run inside the app's hidden WKWebView (same-origin with
 // albumoftheyear.org) and in CI under linkedom for tests.
 // Selectors ported from edideaur/AOTY-api's scrapers.
@@ -854,8 +854,10 @@ function aotyArtist(doc, pageURL) {
   var types = [], seenT = {};
   doc.querySelectorAll("a[href*='?type='], a[href*='&type='], option[value*='type=']").forEach(function (el) {
     var h = el.getAttribute("href") || el.getAttribute("value") || "";
-    var tm = h.match(/[?&]type=([a-z0-9_-]+)/i);
-    if (!tm || seenT[tm[1].toLowerCase()]) return;
+    // Sort links (&s=…), "listened" filters and Clear/Featured aren't release types.
+    if (/[?&](s|filter)=/.test(h)) return;
+    var tm = h.match(/[?&]type=([a-z0-9_+%-]+)/i);   // multi-word types use "+": dj+mix, music+video
+    if (!tm || /^(all|featured)$/i.test(tm[1]) || seenT[tm[1].toLowerCase()]) return;
     var lbl = aotyTxt(el).replace(/\s*\(?\d+\)?\s*$/, "").trim();
     seenT[tm[1].toLowerCase()] = 1;
     types.push({ type: tm[1].toLowerCase(), label: lbl || tm[1] });

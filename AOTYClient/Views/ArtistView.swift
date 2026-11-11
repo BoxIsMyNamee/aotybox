@@ -16,8 +16,9 @@ struct ArtistView: View {
     /// Extra AOTY types that can be folded into Albums.
     static let extras: [(String, String)] = [
         ("reissue", "Reissues & Deluxes"), ("live", "Live"), ("compilation", "Compilations"),
-        ("mixtape", "Mixtapes"), ("remix", "Remixes"), ("soundtrack", "Soundtracks"), ("djmix", "DJ Mixes"),
+        ("mixtape", "Mixtapes"), ("remix", "Remixes"), ("soundtrack", "Soundtracks"), ("dj+mix", "DJ Mixes"),
         ("instrumental", "Instrumentals"), ("demo", "Demos"), ("miscellaneous", "Miscellaneous"),
+        ("music+video", "Music Videos"), ("video", "Videos"), ("unofficial", "Unofficial"),
     ]
 
     /// The release types to offer: AOTY's own list for this artist when the page has one,
