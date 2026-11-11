@@ -59,24 +59,31 @@ struct DiagnosticsView: View {
         capturing = true; defer { capturing = false }
         let js = #"""
         const out = [];
-        out.push("PAGE: " + location.href + " · " + document.title);
-        const blocks = [...document.querySelectorAll(".albumBlock")];
-        out.push("BLOCKS: " + blocks.length);
-        const pick = [blocks.find(b => /fishmonger/i.test(b.textContent)), blocks.find(b => /wallsocket/i.test(b.textContent)), ...blocks.slice(0, 2)].filter(Boolean);
-        [...new Set(pick)].forEach((b, i) => out.push("BLOCK " + i + ": " + b.outerHTML.replace(/\s+/g, " ").slice(0, 2500)));
-        const f = document.querySelector(".followRow");
-        out.push("FOLLOW: " + (f ? f.outerHTML.replace(/\s+/g, " ").slice(0, 800) : "none"));
-        return out.join("\n\n");
+        out.push("PAGE: " + location.href);
+        // Every type link on the artist page, its markup around it, and how many releases each really has.
+        const links = [...document.querySelectorAll("a[href*='type='], option[value*='type=']")];
+        const first = links[0];
+        let box = first; for (let k = 0; k < 3 && box && box.parentElement; k++) box = box.parentElement;
+        out.push("TYPE MENU: " + (box ? box.outerHTML.replace(/\s+/g, " ").slice(0, 3000) : "none"));
+        const seen = new Set();
+        for (const el of links) {
+          const h = el.getAttribute("href") || el.getAttribute("value") || "";
+          if (seen.has(h)) continue; seen.add(h);
+          let n = "?";
+          try {
+            const t = await (await fetch(h, { credentials: "include" })).text();
+            n = new DOMParser().parseFromString(t, "text/html").querySelectorAll(".albumBlock").length;
+          } catch (e) { n = "err"; }
+          out.push("TYPE " + JSON.stringify(el.textContent.trim()) + " -> " + h + " · " + n + " blocks (fetched)");
+        }
+        return out.join("\n");
         """#
         do {
             var parts: [String] = []
-            let base = (await AOTYAPI.shared.findArtistPath(name: "underscores")) ?? "/artist/105779-underscores/"
+            let base = (await AOTYAPI.shared.findArtistPath(name: "kanye west")) ?? "/artist/183-kanye-west/"
             let b = base.hasSuffix("/") ? base : base + "/"
-            parts.append("ARTIST PATH: " + b)
-            for p in [b, b + "?type=lp"] {
-                parts.append((try? await AOTYScraper.shared.runOnRealPage(p, js)) ?? "FAILED " + p)
-            }
-            let r = parts.joined(separator: "\n\n=========\n\n")
+            parts.append((try? await AOTYScraper.shared.runOnRealPage(b, js, timeout: 90)) ?? "FAILED " + b)
+            let r = parts.joined(separator: "\n\n")
             heartInfo = r
             UIPasteboard.general.string = r
         } catch {
