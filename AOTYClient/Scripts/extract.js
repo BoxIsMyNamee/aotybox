@@ -1,4 +1,4 @@
-// parser rev 2026-11-11d
+// parser rev 2026-11-11e
 // AOTY page extractors. Run inside the app's hidden WKWebView (same-origin with
 // albumoftheyear.org) and in CI under linkedom for tests.
 // Selectors ported from edideaur/AOTY-api's scrapers.
@@ -919,13 +919,23 @@ function aotyExtract(kind, html, pageURL) {
     var links = doc.querySelectorAll("a[href^='/artist/'], a[href*='albumoftheyear.org/artist/']");
     var paths = [];
     for (var q = 0; q < links.length; q++) {
-      var m = (links[q].getAttribute("href") || "").match(/\/artist\/\d+[^\/?#]*\/?/);
-      if (m && paths.indexOf(m[0]) < 0) paths.push(m[0]);
+      // One entry per artist ID, always as "/artist/<id>-<slug>/" (links come with and without the slash,
+      // or pointing at sub-pages, which made duplicate, dead entries).
+      var m = (links[q].getAttribute("href") || "").match(/\/artist\/(\d+)(-[^\/?#]*)?/);
+      if (!m) continue;
+      var norm = "/artist/" + m[1] + (m[2] || "") + "/";
+      var dup = false;
+      for (var pq = 0; pq < paths.length; pq++) {
+        var pid = paths[pq].match(/\/artist\/(\d+)/)[1];
+        if (pid === m[1]) { dup = true; if (!/-/.test(paths[pq]) && m[2]) paths[pq] = norm; break; }
+      }
+      if (!dup) paths.push(norm);
     }
     // Names and pictures too, for the in-app search results.
     var artists = [];
     for (var pi = 0; pi < paths.length && artists.length < 20; pi++) {
-      var as = doc.querySelectorAll("a[href*='" + paths[pi] + "']"), nm = "", im = null;
+      var pidOnly = paths[pi].match(/\/artist\/(\d+)/)[1];
+      var as = doc.querySelectorAll("a[href*='/artist/" + pidOnly + "']"), nm = "", im = null;
       for (var ai = 0; ai < as.length; ai++) {
         var t = aotyTxt(as[ai]); if (t && t.length > nm.length && t.length < 80) nm = t;
         var ig = as[ai].querySelector("img"); if (ig && !im) im = aotyImgSrc(ig);
