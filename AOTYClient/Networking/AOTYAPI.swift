@@ -130,6 +130,8 @@ actor AOTYAPI {
         let albums: [AlbumBlock]
         var artistID: Int? = nil
         var following: Bool? = nil
+        struct TypeOption: Decodable, Hashable { let type: String; let label: String }
+        var types: [TypeOption]? = nil
     }
 
     /// Follow / unfollow an artist (AOTY's own followArtist.php / unfollowArtist.php).

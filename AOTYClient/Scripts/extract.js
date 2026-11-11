@@ -1,4 +1,4 @@
-// parser rev 2026-11-08c
+// parser rev 2026-11-11a
 // AOTY page extractors. Run inside the app's hidden WKWebView (same-origin with
 // albumoftheyear.org) and in CI under linkedom for tests.
 // Selectors ported from edideaur/AOTY-api's scrapers.
@@ -850,11 +850,22 @@ function aotyArtist(doc, pageURL) {
     if (label && value) details.push({ label: label, value: value, links: links });
   }
   var fBtn = doc.querySelector(".followArtist[data-artist-id], .unfollowArtist[data-artist-id]");
+  // Release types AOTY offers for this artist (its own type links, e.g. "?type=soundtrack").
+  var types = [], seenT = {};
+  doc.querySelectorAll("a[href*='?type='], a[href*='&type='], option[value*='type=']").forEach(function (el) {
+    var h = el.getAttribute("href") || el.getAttribute("value") || "";
+    var tm = h.match(/[?&]type=([a-z0-9_-]+)/i);
+    if (!tm || seenT[tm[1].toLowerCase()]) return;
+    var lbl = aotyTxt(el).replace(/\s*\(?\d+\)?\s*$/, "").trim();
+    seenT[tm[1].toLowerCase()] = 1;
+    types.push({ type: tm[1].toLowerCase(), label: lbl || tm[1] });
+  });
   return { name: name, image: image, score: c[0],
            criticScore: c[0], criticCount: c[1], userScore: u[0], userCount: u[1],
            followers: fc || null, details: details, albums: albums,
            artistID: fBtn ? (parseInt(fBtn.getAttribute("data-artist-id"), 10) || null) : null,
-           following: fBtn ? /unfollowArtist/.test(fBtn.className || "") : null };
+           following: fBtn ? /unfollowArtist/.test(fBtn.className || "") : null,
+           types: types };
 }
 
 function aotyExtract(kind, html, pageURL) {

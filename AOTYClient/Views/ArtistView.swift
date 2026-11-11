@@ -16,8 +16,20 @@ struct ArtistView: View {
     /// Extra AOTY types that can be folded into Albums.
     static let extras: [(String, String)] = [
         ("reissue", "Reissues & Deluxes"), ("live", "Live"), ("compilation", "Compilations"),
-        ("mixtape", "Mixtapes"), ("remix", "Remixes"), ("demo", "Demos"), ("miscellaneous", "Miscellaneous"),
+        ("mixtape", "Mixtapes"), ("remix", "Remixes"), ("soundtrack", "Soundtracks"), ("djmix", "DJ Mixes"),
+        ("instrumental", "Instrumentals"), ("demo", "Demos"), ("miscellaneous", "Miscellaneous"),
     ]
+
+    /// The release types to offer: AOTY's own list for this artist when the page has one,
+    /// otherwise the usual set. Albums / EPs / Singles have their own tabs.
+    private var extraOptions: [(String, String)] {
+        let own: Set<String> = ["lp", "ep", "single", "appears", "all", ""]
+        let found = (artist?.types ?? []).filter { !own.contains($0.type) }
+        guard !found.isEmpty else { return Self.extras }
+        let known = Dictionary(Self.extras, uniquingKeysWith: { a, _ in a })
+        return found.map { ($0.type, known[$0.type] ?? $0.label) }
+    }
+    @State private var showFilters = false
 
     @State private var base: String?
     @State private var artist: AOTYAPI.Artist?          // featured page: header, info
@@ -51,21 +63,22 @@ struct ArtistView: View {
             if artist != nil {
                 HStack(spacing: 12) {
                     GlassSegmented(selection: $category, items: Category.allCases.map { ($0, $0.short) })
-                    Menu {
-                        Section("Also show in Albums") {
-                            ForEach(Self.extras, id: \.0) { t in
-                                Toggle(t.1, isOn: Binding(get: { extrasOn.contains(t.0) }, set: { setExtra(t.0, $0) }))
-                            }
-                        }
-                    } label: {
+                    Button { showFilters = true } label: {
                         FloatingIcon(symbol: extrasOn.isEmpty ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
                     }
-                    .menuStyle(.button)
+                    .buttonStyle(.plain)
                     .floatingGlass()
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
             }
+        }
+        .sheet(isPresented: $showFilters) {
+            ArtistFilterSheet(options: extraOptions, initial: extrasOn) { picked in
+                extrasRaw = picked.sorted().joined(separator: ",")
+                category = .albums
+            }
+            .accentTint()
         }
         .task { if artist == nil { await load() } }
         .onChange(of: category) { Task { await ensureLoaded() } }
@@ -76,7 +89,7 @@ struct ArtistView: View {
 
     private var shown: [AlbumBlock] {
         var types = [category.aotyType]
-        if category == .albums { types += Self.extras.map(\.0).filter { extrasOn.contains($0) } }
+        if category == .albums { types += extrasOn.sorted() }
         var seen = Set<String>()
         let all = types.flatMap { lists[$0] ?? [] }.filter { seen.insert($0.url).inserted }
         // Newest first (blocks carry "2026 • Label"); Appears On keeps AOTY's order.
@@ -279,4 +292,57 @@ struct ArtistView: View {
         }
     }
     @State private var fullLP = false
+}
+
+
+/// Pick which extra release types show in Albums. Tap rows freely; the reload button applies and closes.
+struct ArtistFilterSheet: View {
+    let options: [(String, String)]
+    let initial: Set<String>
+    let apply: (Set<String>) -> Void
+    @State private var picked: Set<String> = []
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(options, id: \.0) { t in
+                        Button {
+                            if picked.contains(t.0) { picked.remove(t.0) } else { picked.insert(t.0) }
+                            UISelectionFeedbackGenerator().selectionChanged()
+                        } label: {
+                            HStack {
+                                Text(t.1).foregroundStyle(.primary)
+                                Spacer()
+                                Image(systemName: picked.contains(t.0) ? "checkmark.circle.fill" : "circle")
+                                    .font(.title3)
+                                    .foregroundStyle(picked.contains(t.0) ? Color.accentColor : Color.secondary.opacity(0.5))
+                                    .contentTransition(.symbolEffect(.replace))
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } footer: {
+                    Text("Ticked types are added to the Albums tab.")
+                }
+            }
+            .navigationTitle("Also show in Albums")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(picked.count == options.count ? "None" : "All") {
+                        picked = picked.count == options.count ? [] : Set(options.map(\.0))
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { apply(picked); dismiss() } label: { Image(systemName: "arrow.clockwise") }
+                        .accessibilityLabel("Reload with these")
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .onAppear { picked = initial }
+    }
 }
