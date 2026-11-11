@@ -102,7 +102,8 @@ struct DiagnosticsView: View {
         """#
         do {
             var r = try await AOTYScraper.shared.runOnRealPage("/", js, timeout: 60)
-            r += "\n\n========\n\n" + ((try? await AOTYScraper.shared.runOnRealPage("/notifications/", js2, timeout: 40)) ?? "notifications page failed")
+            // Not the notifications page: opening it marks everything read on AOTY.
+            _ = js2
             heartInfo = r
             UIPasteboard.general.string = r
         } catch {
