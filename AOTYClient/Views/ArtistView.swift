@@ -24,7 +24,10 @@ struct ArtistView: View {
     /// otherwise the usual set. Albums / EPs / Singles have their own tabs.
     private var extraOptions: [(String, String)] {
         let own: Set<String> = ["lp", "ep", "single", "appears", "all", ""]
-        let found = (artist?.types ?? []).filter { !own.contains($0.type) }
+        // The page's type links sit next to sort links ("Critic Score" …): keep only release types.
+        let found = (artist?.types ?? []).filter {
+            !own.contains($0.type) && $0.label.range(of: #"score|rating|date|popular|newest|oldest|sort"#, options: [.regularExpression, .caseInsensitive]) == nil
+        }
         guard !found.isEmpty else { return Self.extras }
         let known = Dictionary(Self.extras, uniquingKeysWith: { a, _ in a })
         return found.map { ($0.type, known[$0.type] ?? $0.label) }
@@ -45,9 +48,11 @@ struct ArtistView: View {
     @Environment(\.push) private var push
     @Environment(\.openURL) private var openURL
 
-    private var extrasOn: Set<String> { Set(extrasRaw.split(separator: ",").map(String.init)) }
+    private var extrasSaved: Set<String> { Set(extrasRaw.split(separator: ",").map(String.init)) }
+    /// Ticked types this artist's page actually offers (old ticks for other types don't count).
+    private var extrasOn: Set<String> { extrasSaved.intersection(extraOptions.map(\.0)) }
     private func setExtra(_ t: String, _ on: Bool) {
-        var s = extrasOn; if on { s.insert(t) } else { s.remove(t) }
+        var s = extrasSaved; if on { s.insert(t) } else { s.remove(t) }
         extrasRaw = s.sorted().joined(separator: ",")
     }
 
@@ -64,9 +69,9 @@ struct ArtistView: View {
                 HStack(spacing: 12) {
                     GlassSegmented(selection: $category, items: Category.allCases.map { ($0, $0.short) })
                     Button { showFilters = true } label: {
-                        FloatingIcon(symbol: extrasOn.isEmpty ? "line.3.horizontal.decrease" : "line.3.horizontal.decrease.circle.fill")
+                        FloatingIcon(symbol: "line.3.horizontal.decrease")
+                            .foregroundStyle(extrasOn.isEmpty ? Color.primary : Color.accentColor)
                     }
-                    .buttonStyle(.plain)
                     .floatingGlass()
                 }
                 .padding(.horizontal, 16)
@@ -75,7 +80,9 @@ struct ArtistView: View {
         }
         .sheet(isPresented: $showFilters) {
             ArtistFilterSheet(options: extraOptions, initial: extrasOn) { picked in
-                extrasRaw = picked.sorted().joined(separator: ",")
+                // Keep ticks for types other artists have; replace the ones shown here.
+                let others = extrasSaved.subtracting(extraOptions.map(\.0))
+                extrasRaw = others.union(picked).sorted().joined(separator: ",")
                 category = .albums
             }
             .accentTint()
