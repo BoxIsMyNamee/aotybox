@@ -59,37 +59,45 @@ struct DiagnosticsView: View {
         capturing = true; defer { capturing = false }
         let js = #"""
         const out = [];
-        await new Promise(r => setTimeout(r, 3000));          // let AOTY's own scripts add the dot
+        await new Promise(r => setTimeout(r, 4000));
+        out.push("UA: " + navigator.userAgent);
+        out.push("BODY CLASS: " + document.body.className + " · HTML CLASS: " + document.documentElement.className);
+        // Pseudo-elements and tiny round things anywhere on the page (the dot may be CSS-only).
         const mp = document.querySelector(".mobileProfile");
-        out.push("PROFILE AFTER SCRIPTS: " + (mp ? mp.outerHTML.replace(/\s+/g, " ").slice(0, 1500) : "none"));
-        const hd = document.querySelector("#header");
-        out.push("HEADER AFTER SCRIPTS: " + (hd ? hd.outerHTML.replace(/\s+/g, " ").slice(0, 2500) : "none"));
-        const srcs = [...document.querySelectorAll("script[src]")].map(s => s.getAttribute("src")).filter(s => s && s.startsWith("/scripts/") && !s.includes("vendor"));
-        out.push("SCRIPTS: " + srcs.join(" "));
-        const get = async (u) => {
-          const c = new AbortController(); const t = setTimeout(() => c.abort(), 15000);
-          try { return await (await fetch(u, { credentials: "include", signal: c.signal })).text(); } catch (e) { return ""; } finally { clearTimeout(t); }
-        };
-        for (const src of srcs) {
-          const t = await get(src);
-          const re = /mobileProfile|otifCount|otificationCount|unread|newNotif|notifDot|checkNotif|getNotif|countNotif|notifications\.php|Notification\.php/gi; let m, n = 0, last = -5000;
-          while ((m = re.exec(t)) && n < 10) { if (m.index - last < 800) continue; last = m.index; out.push("JS " + src + ": " + t.slice(Math.max(0, m.index - 400), m.index + 800)); n++; }
+        for (const el of [mp, mp && mp.querySelector("button"), mp && mp.querySelector("img")].filter(Boolean)) {
+          for (const pe of ["::before", "::after"]) {
+            const cs = getComputedStyle(el, pe);
+            if (cs.content && cs.content !== "none" && cs.content !== "normal")
+              out.push("PSEUDO " + el.tagName + pe + ": content=" + cs.content + " bg=" + cs.backgroundColor + " display=" + cs.display + " size=" + cs.width + "x" + cs.height);
+          }
         }
-        document.querySelectorAll("script:not([src])").forEach(sc => {
-          const t = sc.textContent; const i = t.search(/otif|unread/i);
-          if (i >= 0) out.push("INLINE: " + t.slice(Math.max(0, i - 400), i + 900));
+        [...document.querySelectorAll("body *")].forEach(el => {
+          const r = el.getBoundingClientRect(); if (!r.width || r.width > 20 || r.height > 20) return;
+          const cs = getComputedStyle(el);
+          if (parseFloat(cs.borderRadius) >= r.width / 2 - 1 && cs.backgroundColor !== "rgba(0, 0, 0, 0)")
+            out.push("DOT? " + el.outerHTML.slice(0, 300) + " · parent " + (el.parentElement ? el.parentElement.outerHTML.slice(0, 300) : "") + " · bg " + cs.backgroundColor);
         });
-        return out.join("\n\n").slice(0, 30000);
+        // Anything next to the profile button in the header.
+        const hd = document.querySelector("#header");
+        out.push("HEADER HTML: " + (hd ? hd.innerHTML.replace(/\s+/g, " ").replace(/<div id="userLinks"[\s\S]*?<\/div><\/div><\/div>/, "[userLinks]").slice(0, 2500) : "none"));
+        // Stylesheet rules that mention notification/dot classes.
+        for (const ss of document.styleSheets) {
+          let rules; try { rules = ss.cssRules; } catch (e) { continue; }
+          for (const r of rules || []) { const t = r.cssText || ""; if (/otif|unread|Dot\b|\.dot\b|mobileProfile/i.test(t) && t.length < 400) out.push("CSS: " + t); }
+        }
+        // Network: what the page asked AOTY for after loading.
+        performance.getEntriesByType("resource").filter(e => /scripts\/|notif/i.test(e.name) && !/\.js|\.css/.test(e.name)).forEach(e => out.push("REQ: " + e.name));
+        return out.join("\n").slice(0, 30000);
         """#
-        // The notifications page too, loaded for real (its list may be filled in by script).
+        // The notifications page too, loaded for real.
         let js2 = #"""
         await new Promise(r => setTimeout(r, 3000));
         const out = [];
-        const c = document.querySelector("#centerContent, .wideLeft, .content, #content") || document.body;
-        const items = [...document.querySelectorAll("[id^='notification_']")];
-        out.push("NOTIFICATION ROWS: " + items.length);
-        items.slice(0, 4).forEach(el => out.push("ROW: " + el.outerHTML.replace(/\s+/g, " ").slice(0, 1500)));
-        if (!items.length) out.push("PAGE: " + c.outerHTML.replace(/\s+/g, " ").slice(0, 6000));
+        out.push("TEXT: " + document.body.innerText.replace(/\s+/g, " ").slice(0, 1500));
+        const rows = [...document.querySelectorAll("[id^='notification_'], [class*='otification']")].filter(e => !e.closest("#header"));
+        out.push("ROWS: " + rows.length);
+        rows.slice(0, 5).forEach(el => out.push("ROW: " + el.outerHTML.replace(/\s+/g, " ").slice(0, 1200)));
+        performance.getEntriesByType("resource").filter(e => /scripts\//.test(e.name) && !/\.js|\.css/.test(e.name)).forEach(e => out.push("REQ: " + e.name));
         return out.join("\n\n");
         """#
         do {
