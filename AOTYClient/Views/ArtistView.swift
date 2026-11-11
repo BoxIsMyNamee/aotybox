@@ -336,7 +336,7 @@ struct ArtistFilterSheet: View {
                     Text("Ticked types are added to the Albums tab.")
                 }
             }
-            .navigationTitle("Also show in Albums")
+            .navigationTitle("Filters")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -345,8 +345,8 @@ struct ArtistFilterSheet: View {
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button { apply(picked); dismiss() } label: { Image(systemName: "arrow.clockwise") }
-                        .accessibilityLabel("Reload with these")
+                    Button { apply(picked); dismiss() } label: { Image(systemName: "checkmark") }
+                        .accessibilityLabel("Apply filters")
                 }
             }
         }
