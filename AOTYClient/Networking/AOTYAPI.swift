@@ -95,6 +95,81 @@ actor AOTYAPI {
         return try await device("/", .me, Me.self)
     }
 
+    // MARK: Search (in app)
+
+    struct ArtistHit: Decodable, Identifiable, Hashable { let path: String; let name: String; let image: String?; var id: String { path } }
+
+    func searchAlbums(_ q: String) async throws -> [AlbumBlock] {
+        let e = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q
+        return try await device("/search/albums/?q=\(e)", .blocks, AlbumListResponse.self).albums
+    }
+
+    func searchArtists(_ q: String) async throws -> [ArtistHit] {
+        let e = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q
+        struct R: Decodable { let artists: [ArtistHit]? }
+        return try await device("/search/artists/?q=\(e)", .artistSearch, R.self).artists ?? []
+    }
+
+    struct Suggestion: Decodable, Identifiable, Hashable {
+        let label: String
+        let sub: String?
+        let image: String?
+        let url: String?
+        let kind: String?       // "album", "artist", "song", …
+        var id: String { (url ?? "") + label }
+    }
+
+    /// As-you-type suggestions, from the same source AOTY's search box uses (found in its own script).
+    func suggestions(_ q: String) async -> [Suggestion] {
+        let js = #"""
+        if (!window.__aotySug) {
+          let cfg = { ep: null, key: "term", post: false };
+          for (const src of ["/scripts/loggedInScript.js", "/scripts/main.js"]) {
+            try {
+              const s = await (await fetch(src, { credentials: "include" })).text();
+              const i = s.indexOf("autocomplete");
+              if (i < 0) continue;
+              const win = s.slice(Math.max(0, i - 400), i + 4000);
+              const m = win.match(/(?:source|url)\s*:\s*["']([^"']+)["']/);
+              if (!m) continue;
+              cfg.ep = m[1];
+              const k = win.match(/data\s*:\s*\{\s*["']?(\w+)["']?\s*:\s*request\.term/);
+              if (k) cfg.key = k[1];
+              cfg.post = /type\s*:\s*["']post["']|method\s*:\s*["']post["']|\$\.post\(/i.test(win);
+              break;
+            } catch (e) {}
+          }
+          window.__aotySug = cfg;
+        }
+        const cfg = window.__aotySug;
+        if (!cfg.ep) return JSON.stringify({ none: true });
+        const body = encodeURIComponent(cfg.key) + "=" + encodeURIComponent(q);
+        const r = cfg.post
+          ? await fetch(cfg.ep, { method: "POST", credentials: "include", headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest" }, body })
+          : await fetch(cfg.ep + (cfg.ep.includes("?") ? "&" : "?") + body, { credentials: "include", headers: { "X-Requested-With": "XMLHttpRequest" } });
+        const t = await r.text();
+        let list = [];
+        try { list = JSON.parse(t); } catch (e) { return JSON.stringify({ none: true }); }
+        if (!Array.isArray(list)) list = list.results || list.items || [];
+        const abs = u => u ? new URL(u, location.origin).href : null;
+        return JSON.stringify({ items: list.slice(0, 12).map(it => {
+          const label = it.label || it.title || it.name || it.value || "";
+          const url = it.url || it.link || it.href || null;
+          const kind = it.type || it.category || (url && /\/artist\//.test(url) ? "artist" : url && /\/album\//.test(url) ? "album" : null);
+          const sub = [it.artist, it.year].filter(Boolean).join(" · ") || null;
+          return { label: String(label), sub, image: abs(it.image || it.img || it.cover || it.thumb), url: abs(url), kind };
+        }).filter(x => x.label) });
+        """#
+        struct R: Decodable { let items: [Suggestion]?; let none: Bool? }
+        if let out = try? await AOTYScraper.shared.runJS(js, args: ["q": q], timeout: 10),
+           let r = try? JSONDecoder().decode(R.self, from: Data(out.utf8)), let items = r.items {
+            return items
+        }
+        // No autocomplete source found: the first few album matches instead.
+        let albums = (try? await searchAlbums(q)) ?? []
+        return albums.prefix(6).map { Suggestion(label: $0.title, sub: $0.artist, image: $0.cover, url: $0.url, kind: "album") }
+    }
+
     struct NotificationItem: Decodable, Identifiable, Hashable {
         let id: Int
         let user: String?
