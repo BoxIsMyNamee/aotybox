@@ -270,6 +270,7 @@ struct NotificationsSheet: View {
     @State private var items: [AOTYAPI.NotificationItem]?
     @State private var failed = false
     @State private var open: URL?
+    @State private var loading = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.push) private var push
 
@@ -283,7 +284,6 @@ struct NotificationsSheet: View {
                             .listRowBackground((n.unread ?? false) ? Color.accentColor.opacity(0.08) : nil)
                     }
                     .listStyle(.plain)
-                    .refreshable { await load() }
                 } else if items != nil {
                     ContentUnavailableView("No notifications", systemImage: "bell.slash")
                 } else if failed {
@@ -302,10 +302,18 @@ struct NotificationsSheet: View {
                     }
                     .accessibilityLabel("Open on AOTY")
                 }
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button { Task { await load() } } label: {
+                        if loading { ProgressView() } else { Image(systemName: "arrow.clockwise") }
+                    }
+                    .disabled(loading)
+                    .accessibilityLabel("Refresh")
+                }
             }
             .sheet(item: $open) { u in AOTYWebSheet(url: u, title: "AOTY").accentTint() }
         }
+        // Swipe down anywhere to close (no pull-to-refresh competing for the drag).
+        .presentationDragIndicator(.visible)
         .task { await load() }
     }
 
@@ -334,6 +342,7 @@ struct NotificationsSheet: View {
     }
 
     private func load() async {
+        loading = true; defer { loading = false }
         do { let list = try await AOTYAPI.shared.notifications(); withAnimation { items = list }; failed = false }
         catch { failed = true }
     }
