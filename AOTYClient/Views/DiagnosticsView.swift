@@ -59,8 +59,15 @@ struct DiagnosticsView: View {
         capturing = true; defer { capturing = false }
         let js = #"""
         const out = [];
+        // Each page gets 15 s; whatever came back is still reported.
+        const get = async (u) => {
+          const c = new AbortController(); const t = setTimeout(() => c.abort(), 15000);
+          try { return await (await fetch(u, { credentials: "include", signal: c.signal })).text(); }
+          catch (e) { out.push("FETCH " + u + " failed: " + e.message); return ""; }
+          finally { clearTimeout(t); }
+        };
         // The header (avatar + its little notification dot), and the notifications page.
-        const home = await (await fetch("/", { credentials: "include" })).text();
+        const home = await get("/");
         const d = new DOMParser().parseFromString(home, "text/html");
         const av = [...d.querySelectorAll("img")].find(i => /\/user\//.test(i.getAttribute("src") || "") && !i.closest(".albumReviewRow, .content"));
         let box = av; for (let k = 0; k < 4 && box && box.parentElement; k++) box = box.parentElement;
@@ -71,7 +78,7 @@ struct DiagnosticsView: View {
           const t = sc.textContent; const i = t.search(/otif/i);
           if (i >= 0) out.push("INLINE: " + t.slice(Math.max(0, i - 400), i + 800));
         });
-        const np = await (await fetch("/notifications/", { credentials: "include" })).text();
+        const np = await get("/notifications/");
         const nd = new DOMParser().parseFromString(np, "text/html");
         const items = [...nd.querySelectorAll("[id^='notification_'], .notification, [class*='notification']")];
         out.push("NOTIF ITEMS: " + items.length);
@@ -80,7 +87,7 @@ struct DiagnosticsView: View {
         return out.join("\n\n").slice(0, 30000);
         """#
         do {
-            let r = try await AOTYScraper.shared.runJS(js, args: [:], timeout: 60)
+            let r = try await AOTYScraper.shared.runJS(js, args: [:], timeout: 50)
             heartInfo = r
             UIPasteboard.general.string = r
         } catch {
