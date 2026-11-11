@@ -59,35 +59,30 @@ struct DiagnosticsView: View {
         capturing = true; defer { capturing = false }
         let js = #"""
         const out = [];
-        // Each page gets 15 s; whatever came back is still reported.
+        await new Promise(r => setTimeout(r, 3000));          // let AOTY's own scripts add the dot
+        const mp = document.querySelector(".mobileProfile");
+        out.push("PROFILE AFTER SCRIPTS: " + (mp ? mp.outerHTML.replace(/\s+/g, " ").slice(0, 1500) : "none"));
+        const hd = document.querySelector("#header");
+        out.push("HEADER AFTER SCRIPTS: " + (hd ? hd.outerHTML.replace(/\s+/g, " ").slice(0, 2500) : "none"));
+        const srcs = [...document.querySelectorAll("script[src]")].map(s => s.getAttribute("src")).filter(s => s && s.startsWith("/scripts/") && !s.includes("vendor"));
+        out.push("SCRIPTS: " + srcs.join(" "));
         const get = async (u) => {
           const c = new AbortController(); const t = setTimeout(() => c.abort(), 15000);
-          try { return await (await fetch(u, { credentials: "include", signal: c.signal })).text(); }
-          catch (e) { out.push("FETCH " + u + " failed: " + e.message); return ""; }
-          finally { clearTimeout(t); }
+          try { return await (await fetch(u, { credentials: "include", signal: c.signal })).text(); } catch (e) { return ""; } finally { clearTimeout(t); }
         };
-        // The header (avatar + its little notification dot), and the notifications page.
-        const home = await get("/");
-        const d = new DOMParser().parseFromString(home, "text/html");
-        const av = [...d.querySelectorAll("img")].find(i => /\/user\//.test(i.getAttribute("src") || "") && !i.closest(".albumReviewRow, .content"));
-        let box = av; for (let k = 0; k < 4 && box && box.parentElement; k++) box = box.parentElement;
-        out.push("HEADER: " + (box ? box.outerHTML.replace(/\s+/g, " ").slice(0, 4000) : "no avatar found"));
-        [...d.querySelectorAll("[class*='otif'], [id*='otif'], [class*='dot'], [class*='Dot'], [class*='unread'], [class*='badge']")].slice(0, 12)
-          .forEach(el => out.push("CAND: " + el.outerHTML.replace(/\s+/g, " ").slice(0, 500)));
-        d.querySelectorAll("script:not([src])").forEach(sc => {
-          const t = sc.textContent; const i = t.search(/otif/i);
-          if (i >= 0) out.push("INLINE: " + t.slice(Math.max(0, i - 400), i + 800));
+        for (const src of srcs) {
+          const t = await get(src);
+          const re = /mobileProfile|otifCount|otificationCount|unread|newNotif|notifDot|checkNotif|getNotif|countNotif|notifications\.php|Notification\.php/gi; let m, n = 0, last = -5000;
+          while ((m = re.exec(t)) && n < 10) { if (m.index - last < 800) continue; last = m.index; out.push("JS " + src + ": " + t.slice(Math.max(0, m.index - 400), m.index + 800)); n++; }
+        }
+        document.querySelectorAll("script:not([src])").forEach(sc => {
+          const t = sc.textContent; const i = t.search(/otif|unread/i);
+          if (i >= 0) out.push("INLINE: " + t.slice(Math.max(0, i - 400), i + 900));
         });
-        const np = await get("/notifications/");
-        const nd = new DOMParser().parseFromString(np, "text/html");
-        const items = [...nd.querySelectorAll("[id^='notification_'], .notification, [class*='notification']")];
-        out.push("NOTIF ITEMS: " + items.length);
-        items.slice(0, 3).forEach(el => out.push("ITEM: " + el.outerHTML.replace(/\s+/g, " ").slice(0, 1200)));
-        if (!items.length) { const c = nd.querySelector(".content, #content, main"); out.push("NOTIF PAGE: " + (c ? c.outerHTML : np).replace(/\s+/g, " ").slice(0, 3000)); }
         return out.join("\n\n").slice(0, 30000);
         """#
         do {
-            let r = try await AOTYScraper.shared.runJS(js, args: [:], timeout: 50)
+            let r = try await AOTYScraper.shared.runOnRealPage("/", js, timeout: 60)
             heartInfo = r
             UIPasteboard.general.string = r
         } catch {
