@@ -254,7 +254,7 @@ for (const [kind, path] of pages) {
     <a href="/user/harbor/"><img src="https://cdn.albumoftheyear.org/user/thumbs/harbor_1.jpg"></a></header></body></html>`;
   const me = aotyExtract("me", html, "x");
   console.log("\n=== bell (synthetic)", JSON.stringify(me.notifications));
-  check(me.notifications && me.notifications.count === 3 && me.notifications.href === "/notifications/", "bell count + link");
+  check(me.notifications && me.notifications.count === 0 && me.notifications.href === "/notifications/", "no header dot = no unread");
 }
 
 // Signed-in review markup (from the user's capture): liked state and review id
