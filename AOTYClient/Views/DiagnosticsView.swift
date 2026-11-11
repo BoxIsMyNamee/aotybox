@@ -81,8 +81,20 @@ struct DiagnosticsView: View {
         });
         return out.join("\n\n").slice(0, 30000);
         """#
+        // The notifications page too, loaded for real (its list may be filled in by script).
+        let js2 = #"""
+        await new Promise(r => setTimeout(r, 3000));
+        const out = [];
+        const c = document.querySelector("#centerContent, .wideLeft, .content, #content") || document.body;
+        const items = [...document.querySelectorAll("[id^='notification_']")];
+        out.push("NOTIFICATION ROWS: " + items.length);
+        items.slice(0, 4).forEach(el => out.push("ROW: " + el.outerHTML.replace(/\s+/g, " ").slice(0, 1500)));
+        if (!items.length) out.push("PAGE: " + c.outerHTML.replace(/\s+/g, " ").slice(0, 6000));
+        return out.join("\n\n");
+        """#
         do {
-            let r = try await AOTYScraper.shared.runOnRealPage("/", js, timeout: 60)
+            var r = try await AOTYScraper.shared.runOnRealPage("/", js, timeout: 60)
+            r += "\n\n========\n\n" + ((try? await AOTYScraper.shared.runOnRealPage("/notifications/", js2, timeout: 40)) ?? "notifications page failed")
             heartInfo = r
             UIPasteboard.general.string = r
         } catch {
