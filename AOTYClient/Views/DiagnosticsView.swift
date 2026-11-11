@@ -32,7 +32,7 @@ struct DiagnosticsView: View {
                 Text("Loads each page the app uses and reports what came back. Takes a few seconds.")
             }
             Section {
-                Button(capturing ? "Capturing…" : "Capture artist page info") { Task { await captureHeart() } }
+                Button(capturing ? "Capturing…" : "Capture notification info") { Task { await captureHeart() } }
                     .disabled(capturing)
                 if let heartInfo {
                     Text(heartInfo.prefix(1500) + (heartInfo.count > 1500 ? "…" : ""))
@@ -59,31 +59,28 @@ struct DiagnosticsView: View {
         capturing = true; defer { capturing = false }
         let js = #"""
         const out = [];
-        out.push("PAGE: " + location.href);
-        // Every type link on the artist page, its markup around it, and how many releases each really has.
-        const links = [...document.querySelectorAll("a[href*='type='], option[value*='type=']")];
-        const first = links[0];
-        let box = first; for (let k = 0; k < 3 && box && box.parentElement; k++) box = box.parentElement;
-        out.push("TYPE MENU: " + (box ? box.outerHTML.replace(/\s+/g, " ").slice(0, 3000) : "none"));
-        const seen = new Set();
-        for (const el of links) {
-          const h = el.getAttribute("href") || el.getAttribute("value") || "";
-          if (seen.has(h)) continue; seen.add(h);
-          let n = "?";
-          try {
-            const t = await (await fetch(h, { credentials: "include" })).text();
-            n = new DOMParser().parseFromString(t, "text/html").querySelectorAll(".albumBlock").length;
-          } catch (e) { n = "err"; }
-          out.push("TYPE " + JSON.stringify(el.textContent.trim()) + " -> " + h + " · " + n + " blocks (fetched)");
-        }
-        return out.join("\n");
+        // The header (avatar + its little notification dot), and the notifications page.
+        const home = await (await fetch("/", { credentials: "include" })).text();
+        const d = new DOMParser().parseFromString(home, "text/html");
+        const av = [...d.querySelectorAll("img")].find(i => /\/user\//.test(i.getAttribute("src") || "") && !i.closest(".albumReviewRow, .content"));
+        let box = av; for (let k = 0; k < 4 && box && box.parentElement; k++) box = box.parentElement;
+        out.push("HEADER: " + (box ? box.outerHTML.replace(/\s+/g, " ").slice(0, 4000) : "no avatar found"));
+        [...d.querySelectorAll("[class*='otif'], [id*='otif'], [class*='dot'], [class*='Dot'], [class*='unread'], [class*='badge']")].slice(0, 12)
+          .forEach(el => out.push("CAND: " + el.outerHTML.replace(/\s+/g, " ").slice(0, 500)));
+        d.querySelectorAll("script:not([src])").forEach(sc => {
+          const t = sc.textContent; const i = t.search(/otif/i);
+          if (i >= 0) out.push("INLINE: " + t.slice(Math.max(0, i - 400), i + 800));
+        });
+        const np = await (await fetch("/notifications/", { credentials: "include" })).text();
+        const nd = new DOMParser().parseFromString(np, "text/html");
+        const items = [...nd.querySelectorAll("[id^='notification_'], .notification, [class*='notification']")];
+        out.push("NOTIF ITEMS: " + items.length);
+        items.slice(0, 3).forEach(el => out.push("ITEM: " + el.outerHTML.replace(/\s+/g, " ").slice(0, 1200)));
+        if (!items.length) { const c = nd.querySelector(".content, #content, main"); out.push("NOTIF PAGE: " + (c ? c.outerHTML : np).replace(/\s+/g, " ").slice(0, 3000)); }
+        return out.join("\n\n").slice(0, 30000);
         """#
         do {
-            var parts: [String] = []
-            let base = (await AOTYAPI.shared.findArtistPath(name: "kanye west")) ?? "/artist/183-kanye-west/"
-            let b = base.hasSuffix("/") ? base : base + "/"
-            parts.append((try? await AOTYScraper.shared.runOnRealPage(b, js, timeout: 90)) ?? "FAILED " + b)
-            let r = parts.joined(separator: "\n\n")
+            let r = try await AOTYScraper.shared.runJS(js, args: [:], timeout: 60)
             heartInfo = r
             UIPasteboard.general.string = r
         } catch {
