@@ -1,4 +1,4 @@
-// parser rev 2026-11-11b
+// parser rev 2026-11-11c
 // AOTY page extractors. Run inside the app's hidden WKWebView (same-origin with
 // albumoftheyear.org) and in CI under linkedom for tests.
 // Selectors ported from edideaur/AOTY-api's scrapers.
@@ -527,16 +527,45 @@ function aotySlugFromAvatar(src) {
 
 // The header bell: where it links and the unread count on its badge (if any).
 function aotyNotifications(doc) {
-  var a = doc.querySelector("a[href*='notification'], a[href*='Notification'], a[title*='otification']");
-  if (!a) {
-    var bell = doc.querySelector(".fa-bell, [class*='bell'], [class*='Bell']");
-    a = bell ? bell.closest("a") : null;
+  // Unread: AOTY puts a small teal ".alertNotification" dot in the header (next to your avatar).
+  var alert = null, alerts = doc.querySelectorAll(".alertNotification");
+  for (var i = 0; i < alerts.length; i++) { if (!alerts[i].closest(".notificationRow")) { alert = alerts[i]; break; } }
+  var count = 0;
+  if (alert) { var m = aotyTxt(alert).match(/\d+/); count = m ? parseInt(m[0], 10) : 1; }
+  var a = doc.querySelector("a[href*='/notifications']");
+  return { href: a ? a.getAttribute("href") : "/notifications/", count: count };
+}
+
+// The notifications page: one ".notificationRow" each. A teal <i> dot in the row marks it unread.
+function aotyNotificationList(doc) {
+  var rows = doc.querySelectorAll(".notificationRow"), items = [];
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    var img = r.querySelector("img");
+    var links = r.querySelectorAll("a[href]");
+    var userA = r.querySelector("strong a[href^='/user/']") || r.querySelector("a[href^='/user/'][title]") || r.querySelector("a[href^='/user/']");
+    var target = null;
+    for (var k = links.length - 1; k >= 0; k--) {
+      var h = links[k].getAttribute("href") || "";
+      if (!/^\/user\/[^\/]+\/?$/.test(h)) { target = h; break; }
+    }
+    var time = aotyTxt(r.querySelector(".gray-font"));
+    var clone = r.cloneNode(true);
+    clone.querySelectorAll(".gray-font").forEach(function (x) { x.remove(); });
+    var strongs = r.querySelectorAll("strong");
+    items.push({
+      id: i,
+      user: userA ? (userA.getAttribute("title") || aotyTxt(userA)) : null,
+      userSlug: userA ? (((userA.getAttribute("href") || "").match(/\/user\/([^\/?#]+)/) || [])[1] || null) : null,
+      avatar: img ? aotyImgSrc(img) : null,
+      text: aotyTxt(clone),
+      subject: strongs.length > 1 ? aotyTxt(strongs[strongs.length - 1]) : null,
+      href: target ? aotyAbs(target) : null,
+      time: time || null,
+      unread: !!r.querySelector(":scope > i, i.fa-circle, i[class*='circle']")
+    });
   }
-  if (!a) return null;
-  var badge = a.querySelector("[class*='count'], [class*='Count'], [class*='badge'], [class*='Badge'], [class*='unread'], span");
-  var txt = aotyTxt(badge || a);
-  var m = txt.match(/\d+/);
-  return { href: a.getAttribute("href") || "/notifications/", count: m ? parseInt(m[0], 10) : 0 };
+  return { items: items };
 }
 
 function aotyMe(doc) {
@@ -885,6 +914,7 @@ function aotyExtract(kind, html, pageURL) {
   if (kind === "follows") return aotyFollows(doc, false);
   if (kind === "textBlocks") return aotyTextBlocks(doc);
   if (kind === "artist") return aotyArtist(doc, pageURL);
+  if (kind === "notifications") return aotyNotificationList(doc);
   if (kind === "artistSearch") {
     var links = doc.querySelectorAll("a[href^='/artist/'], a[href*='albumoftheyear.org/artist/']");
     var paths = [];

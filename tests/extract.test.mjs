@@ -278,6 +278,11 @@ for (const [kind, path] of pages) {
   check(sb.albums.length === 1 && sb.albums[0].criticScore === 82 && sb.albums[0].userScore === 83 && sb.albums[0].userCount === 10600, "signed-in artist block: both scores");
   const ty = aotyExtract("artist", `<h1 class="artistHeadline">x</h1><a href="?type=featured&amp;s=critic">Critic Score</a><a href="?type=all">Clear</a><a href="?type=dj+mix">DJ Mix</a><a href="?type=music+video">Music Video</a><a href="?type=lp&amp;filter=listened">You've</a><a href="?type=live">Live</a>`, "x");
   check(JSON.stringify(ty.types.map(t => t.type)) === '["dj+mix","music+video","live"]', "artist type links: " + JSON.stringify(ty.types));
+  const nl = aotyExtract("notifications", `<div class="notificationRow"><a href="/user/janedoesong/"><img src="https://cdn.albumoftheyear.org/user/thumbs/janedoesong_1778023645.jpg" loading="lazy"></a><strong><a href="/user/janedoesong/" title="Janedoesong">Janedoesong</a></strong> commented on your review of <strong><a href="/user/harperseemscool/album/1576264-idle-viewer/#show1729162">Eveline Breaker - Idle Viewer</a></strong> <span class="gray-font">2h</span></div>`, "x");
+  const n0 = nl.items[0];
+  check(n0 && n0.user === "Janedoesong" && n0.time === "2h" && /commented on your review of Eveline Breaker/.test(n0.text) && /1576264-idle-viewer/.test(n0.href) && n0.unread === false, "notification row: " + JSON.stringify(n0));
+  const hb = aotyExtract("me", `<div id="header"><div class="mobileProfile"><button><img src="https://cdn.albumoftheyear.org/user/thumbs/x.jpg"></button><i class="fas fa-circle alertNotification mobile"></i><div id="userLinks"><div><a href="/notifications/">Notifications</a></div></div></div></div>`, "x");
+  check(hb.notifications && hb.notifications.count === 1, "header unread dot: " + JSON.stringify(hb.notifications));
 }
 
 console.log(`\n${failures} failure(s)`);

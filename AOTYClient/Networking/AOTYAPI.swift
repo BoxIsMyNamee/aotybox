@@ -95,6 +95,24 @@ actor AOTYAPI {
         return try await device("/", .me, Me.self)
     }
 
+    struct NotificationItem: Decodable, Identifiable, Hashable {
+        let id: Int
+        let user: String?
+        let userSlug: String?
+        let avatar: String?
+        let text: String
+        let subject: String?
+        let href: String?
+        let time: String?
+        let unread: Bool?
+    }
+    /// Your notifications (opening this page is what marks them read on AOTY too).
+    func notifications() async throws -> [NotificationItem] {
+        struct R: Decodable { let items: [NotificationItem] }
+        await AOTYScraper.shared.forget("/notifications/")
+        return try await device("/notifications/", .notifications, R.self).items
+    }
+
     func profile(username: String) async throws -> Profile {
         try await device("/user/\(username)/", .profile, Profile.self)
     }

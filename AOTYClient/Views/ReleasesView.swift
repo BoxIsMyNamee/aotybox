@@ -244,10 +244,9 @@ struct NotificationBell: View {
         .buttonStyle(.plain)
         .accessibilityLabel(count > 0 ? "\(count) notifications" : "Notifications")
         .sheet(isPresented: $showing, onDismiss: { Task { await check(fresh: true) } }) {
-            if let u = URL(string: href, relativeTo: URL(string: "https://www.albumoftheyear.org")) {
-                AOTYWebSheet(url: u.absoluteURL, title: "Notifications").accentTint()
-            }
+            NotificationsSheet(href: href).accentTint()
         }
+        .onChange(of: showing) { if showing { count = 0 } }   // opening the list reads them on AOTY
         .task {
             try? await Task.sleep(for: .seconds(2))      // let the first page load first
             while !Task.isCancelled {
@@ -263,3 +262,81 @@ struct NotificationBell: View {
         if let h = n.href, !h.isEmpty { href = h }
     }
 }
+
+
+/// Your AOTY notifications, listed natively. Tap one to open what it's about.
+struct NotificationsSheet: View {
+    let href: String
+    @State private var items: [AOTYAPI.NotificationItem]?
+    @State private var failed = false
+    @State private var open: URL?
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.push) private var push
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if let items, !items.isEmpty {
+                    List(items) { n in
+                        Button { if let h = n.href { open = URL(string: h) } } label: { row(n) }
+                            .buttonStyle(.plain)
+                            .listRowBackground((n.unread ?? false) ? Color.accentColor.opacity(0.08) : nil)
+                    }
+                    .listStyle(.plain)
+                    .refreshable { await load() }
+                } else if items != nil {
+                    ContentUnavailableView("No notifications", systemImage: "bell.slash")
+                } else if failed {
+                    ContentUnavailableView("Couldn't load notifications", systemImage: "exclamationmark.triangle",
+                                           description: Text("Pull to try again, or open them on AOTY."))
+                } else {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .navigationTitle("Notifications")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { open = URL(string: href, relativeTo: URL(string: "https://www.albumoftheyear.org"))?.absoluteURL } label: {
+                        Image(systemName: "safari")
+                    }
+                    .accessibilityLabel("Open on AOTY")
+                }
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+            .sheet(item: $open) { u in AOTYWebSheet(url: u, title: "AOTY").accentTint() }
+        }
+        .task { await load() }
+    }
+
+    private func row(_ n: AOTYAPI.NotificationItem) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Avatar(url: n.avatar.flatMap(URL.init(string:)), name: n.user ?? "?", size: 40)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(styled(n)).font(.subheadline).foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let t = n.time { Text(t).font(.caption).foregroundStyle(.secondary) }
+            }
+            Spacer(minLength: 0)
+            if n.unread ?? false { Circle().fill(Color.accentColor).frame(width: 8, height: 8).padding(.top, 6) }
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+
+    /// Name and the thing it's about in bold, like AOTY shows them.
+    private func styled(_ n: AOTYAPI.NotificationItem) -> AttributedString {
+        var a = AttributedString(n.text)
+        for part in [n.user, n.subject].compactMap({ $0 }) where !part.isEmpty {
+            if let r = a.range(of: part) { a[r].font = .subheadline.weight(.semibold) }
+        }
+        return a
+    }
+
+    private func load() async {
+        do { let list = try await AOTYAPI.shared.notifications(); withAnimation { items = list }; failed = false }
+        catch { failed = true }
+    }
+}
+
+extension URL: @retroactive Identifiable { public var id: String { absoluteString } }

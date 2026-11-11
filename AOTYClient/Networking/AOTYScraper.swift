@@ -53,7 +53,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         pruneOldCache()
     }
 
-    enum Kind: String { case blocks, chart, album, userReviews, me, profile, follows, userReviewList, textBlocks, artist, artistSearch }
+    enum Kind: String { case blocks, chart, album, userReviews, me, profile, follows, userReviewList, textBlocks, artist, artistSearch, notifications }
 
     enum ScrapeError: LocalizedError {
         case blocked
