@@ -82,6 +82,8 @@ struct SettingsView: View {
                     Text("Black is pure black (best on OLED). Dim uses softer dark grays.")
                 }
 
+                ProfileBackgroundSettings()
+
                 Section {
                     Toggle("Album track-name check", isOn: $albumCheckOn)
                 } header: {

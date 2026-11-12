@@ -135,7 +135,7 @@ struct AlbumDetailView: View {
             // Your score, review, and Listened / Like / Save (signed in)
             if let me = a.me, me.albumID != nil {
                 Section {
-                    MyAlbumCard(box: me, slug: slug)
+                    MyAlbumCard(box: me, slug: slug, album: ShareAlbum(title: a.title, artist: a.artist, cover: a.coverURL))
                         .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
                 }
             }
@@ -195,6 +195,7 @@ struct AlbumDetailView: View {
                 Section("Popular User Reviews") {
                     ForEach(reviews.prefix(3)) { r in
                         UserReviewRow(review: r, learn: { push(Learn.route(artist: a.artist, album: a.title, song: nil, isSingle: isSingle(a), cover: a.coverURL)) })
+                            .environment(\.shareAlbum, ShareAlbum(title: a.title, artist: a.artist, cover: a.coverURL))
                     }
                     if let slug {
                         Button { push(UserReviewsRoute(slug: slug, title: a.title, artist: a.artist, cover: a.coverURL)) } label: {

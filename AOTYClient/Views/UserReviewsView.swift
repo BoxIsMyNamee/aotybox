@@ -55,6 +55,7 @@ struct UserReviewsView: View {
                     UserReviewRow(review: r, lineLimit: 10, learn: artist.map { art in
                         { push(Learn.route(artist: art, album: title, song: nil, isSingle: false, cover: cover)) }
                     })
+                        .environment(\.shareAlbum, artist.map { ShareAlbum(title: title, artist: $0, cover: cover) })
                         .onAppear { if r == reviews.last { Task { await loadMore() } } }
                 }
                 if loading { ProgressView().frame(maxWidth: .infinity) }

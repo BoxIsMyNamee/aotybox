@@ -7,6 +7,7 @@ import UIKit
 struct MyAlbumCard: View {
     @State var box: MyAlbumBox
     let slug: String?
+    var album: ShareAlbum? = nil
     @AppStorage("profileUsername") private var myUsername = ""
     @State private var scoreText = ""
     @State private var reviewText = ""
@@ -15,6 +16,14 @@ struct MyAlbumCard: View {
     @State private var expanded = false
     @State private var editing = false
     @State private var loadingFull = false
+
+    private var shareData: ShareCardData? {
+        guard let album, let r = box.review, !r.isEmpty else { return nil }
+        return ShareCardData(title: album.title, artist: album.artist, cover: album.cover, score: box.rating,
+                             text: r, author: box.name ?? myUsername, authorColor: box.nameColor,
+                             avatar: box.avatar.flatMap(URL.init(string:)),
+                             fullURL: isCut ? (box.reviewURL ?? box.userSlug.flatMap { u in slug.map { "/user/\(u)/album/\($0)/" } }) : nil)
+    }
 
     /// AOTY's album page cuts long reviews with "… read more".
     private static let moreRE = #"\s*(\.\.\.|…)?\s*read more\s*$"#
@@ -127,6 +136,7 @@ struct MyAlbumCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .task { await loadFull() }      // show your whole review, not AOTY's cut-off copy
+        .reviewShareMenu(editing ? nil : shareData)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()

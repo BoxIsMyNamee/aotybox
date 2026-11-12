@@ -140,6 +140,14 @@ struct UserReviewRow: View {
     var learn: (() -> Void)? = nil
     @State private var showFull = false
     @Environment(\.push) private var push
+    @Environment(\.shareAlbum) private var album
+
+    private var shareData: ShareCardData? {
+        guard let album, !review.text.isEmpty else { return nil }
+        return ShareCardData(title: album.title, artist: album.artist, cover: album.cover, score: review.rating,
+                             text: review.text, author: review.username, authorColor: review.nameColor, avatar: review.avatarURL,
+                             fullURL: review.isTruncated == true ? review.url : nil)
+    }
 
     private var actions: some View {
         HStack(spacing: 2) {
@@ -191,6 +199,7 @@ struct UserReviewRow: View {
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture { if review.url != nil { showFull = true } }
+        .reviewShareMenu(shareData)
         .heartSwipe(reviewID: review.reviewId, liked: review.liked ?? false, likes: review.likes ?? 0, learn: learn,
                     view: review.url != nil ? { showFull = true } : nil)
         .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }

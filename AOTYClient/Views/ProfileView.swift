@@ -90,6 +90,7 @@ struct UserProfileView: View {
     var fallbackName: String? = nil
     var fallbackColor: String? = nil
     var isMe: Bool = false
+    @AppStorage(ProfileBackground.revKey) private var bgRev = 0
     var onChangeUser: (() -> Void)? = nil
     var onAutoDetect: (() -> Void)? = nil
 
@@ -116,7 +117,12 @@ struct UserProfileView: View {
             if profile != nil || error != nil {
             if let reviews = profile?.reviews, !reviews.isEmpty {
                 Section("Reviews") {
-                    ForEach(reviews.prefix(5)) { r in ProfileReviewRow(review: r, own: isMe) }
+                    ForEach(reviews.prefix(5)) { r in
+                        ProfileReviewRow(review: r, own: isMe)
+                            .environment(\.shareAuthor, ShareAuthor(name: profile?.displayName ?? fallbackName ?? username,
+                                                                    color: profile?.nameColor ?? fallbackColor,
+                                                                    avatar: profile?.avatar.flatMap(URL.init(string:))))
+                    }
                     Button { push(ProfileReviewsRoute(username: username)) } label: {
                         Label("View All Reviews", systemImage: "text.bubble").foregroundStyle(.tint)
                     }
@@ -189,8 +195,11 @@ struct UserProfileView: View {
     }
 
     @ViewBuilder private var header: some View {
+        let bg = isMe ? ProfileBackground.load() : nil
+        let _ = bgRev
         Section {
             VStack(alignment: .leading, spacing: 12) {
+                if bg != nil { Color.clear.frame(height: 120) }     // let the picture show above you
                 HStack(spacing: 16) {
                     Avatar(url: (profile?.avatar ?? fallbackAvatar).flatMap(URL.init(string:)), name: username, size: 80)
                         .onTapGesture { if (profile?.avatar ?? fallbackAvatar) != nil { showAvatar = true } }
@@ -221,8 +230,22 @@ struct UserProfileView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 8, trailing: 4))
+            .listRowBackground(
+                Group {
+                    if let bg {
+                        Image(uiImage: bg).resizable().scaledToFill()
+                            .overlay {
+                                LinearGradient(stops: [.init(color: .black.opacity(0.05), location: 0),
+                                                       .init(color: .black.opacity(0.35), location: 0.45),
+                                                       .init(color: Color(.systemBackground), location: 1)],
+                                               startPoint: .top, endPoint: .bottom)
+                            }
+                            .clipped()
+                            .padding(.horizontal, -40)
+                    } else { Color.clear }
+                }
+            )
+            .listRowInsets(EdgeInsets(top: bg == nil ? 0 : 12, leading: bg == nil ? 4 : 16, bottom: 8, trailing: bg == nil ? 4 : 16))
 
         }
     }
@@ -336,8 +359,15 @@ struct ProfileReviewRow: View {
     @State private var fullText: String?
     @State private var loadingFull = false
     @Environment(\.push) private var push
+    @Environment(\.shareAuthor) private var author
 
     var own = false
+    private var shareData: ShareCardData? {
+        guard let author, !review.text.isEmpty else { return nil }
+        return ShareCardData(title: review.album, artist: review.artist, cover: review.coverURL, score: review.rating,
+                             text: fullText ?? review.text, author: author.name, authorColor: author.color, avatar: author.avatar,
+                             fullURL: (fullText == nil && review.isTruncated == true) ? review.url : nil)
+    }
     private var heart: some View {
         HStack(spacing: 2) {
             if review.url != nil { CommentButton(count: review.commentCount) { showFull = true } }
@@ -409,6 +439,7 @@ struct ProfileReviewRow: View {
         // The whole review (art, title, text) opens the album; buttons inside keep their own taps.
         .contentShape(Rectangle())
         .onTapGesture { if let s = review.slug { push(AlbumRoute(slug: s, title: review.album)) } }
+        .reviewShareMenu(shareData)
         .heartSwipe(reviewID: review.reviewId ?? Int(review.id), liked: review.liked ?? false, likes: review.likes ?? 0, enabled: !own,
                     learn: { push(Learn.route(artist: review.artist, album: review.album, song: nil, isSingle: false, cover: review.coverURL)) },
                     view: own || review.url == nil ? nil : { showFull = true })
@@ -423,6 +454,7 @@ struct ProfileReviewsView: View {
     let username: String
     @AppStorage("profileUsername") private var myUsername = ""
     @State private var reviews: [ProfileReview] = []
+    @State private var author: ShareAuthor?
     @State private var page = 1
     @State private var more = true
     @State private var loading = false
@@ -434,12 +466,18 @@ struct ProfileReviewsView: View {
             else if reviews.isEmpty && !loading { ContentUnavailableView("No reviews yet", systemImage: "text.bubble") }
             ForEach(reviews) { r in
                 ProfileReviewRow(review: r, own: username.lowercased() == myUsername.lowercased())
+                    .environment(\.shareAuthor, author ?? ShareAuthor(name: username))
                     .onAppear { if r == reviews.last { Task { await loadMore() } } }
             }
             if loading { ProgressView().frame(maxWidth: .infinity) }
         }
         .listStyle(.insetGrouped)
         .environment(\.swipeRowBackground, Color(.secondarySystemGroupedBackground))
+        .task {
+            if author == nil, let p = try? await AOTYAPI.shared.profile(username: username) {
+                author = ShareAuthor(name: p.displayName ?? username, color: p.nameColor, avatar: p.avatar.flatMap(URL.init(string:)))
+            }
+        }
         .navigationTitle("Reviews")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await reload() }

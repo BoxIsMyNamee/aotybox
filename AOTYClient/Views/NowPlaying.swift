@@ -95,8 +95,7 @@ struct NowPlayingCard: View {
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 5) {
-                                Image(systemName: "waveform")
-                                    .symbolEffect(.variableColor.iterative.dimInactiveLayers.nonReversing, options: .repeating, isActive: np.isPlaying)
+                                EqualizerBars(playing: np.isPlaying)
                                 Text("Now Playing")
                             }
                             .font(.caption.weight(.semibold)).foregroundStyle(.tint)
@@ -170,5 +169,29 @@ struct NowPlayingCard: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+
+/// Little equalizer: four bars that grow and shrink while music plays, resting low when paused.
+struct EqualizerBars: View {
+    let playing: Bool
+    private let speeds: [Double] = [5.3, 7.1, 4.2, 6.4]
+    private let phases: [Double] = [0, 1.7, 3.1, 4.6]
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !playing)) { ctx in
+            let t = ctx.date.timeIntervalSinceReferenceDate
+            HStack(alignment: .bottom, spacing: 2) {
+                ForEach(0..<4, id: \.self) { i in
+                    let wave = (sin(t * speeds[i] + phases[i]) + sin(t * speeds[i] * 0.53 + phases[i] * 2)) / 2   // -1…1
+                    let h: CGFloat = playing ? 0.25 + 0.75 * CGFloat((wave + 1) / 2) : 0.25
+                    Capsule().frame(width: 2.5, height: 12 * h)
+                }
+            }
+            .frame(width: 16, height: 12, alignment: .bottom)
+            .animation(.easeOut(duration: 0.25), value: playing)
+        }
+        .accessibilityHidden(true)
     }
 }
