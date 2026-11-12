@@ -54,34 +54,36 @@ struct ShareCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .center, spacing: 14) {
+            // Cover, title, artist and score centered on top; the review below.
+            VStack(spacing: 10) {
                 Group {
                     if let cover { Image(uiImage: cover).resizable().scaledToFill() }
                     else { Rectangle().fill(.white.opacity(0.12)) }
                 }
-                .frame(width: 92, height: 92)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .shadow(color: .black.opacity(0.4), radius: 10, y: 4)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(data.title).font(.system(size: 21, weight: .bold)).lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(data.artist).font(.system(size: 15, weight: .medium)).opacity(0.75).lineLimit(2)
-                }
-                Spacer(minLength: 0)
-            }
-
-            if let s = data.score {
-                HStack(alignment: .center, spacing: 12) {
-                    Text(String(Int(s.rounded())))
-                        .font(.system(size: 44, weight: .heavy, design: .rounded))
-                        .monospacedDigit()
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.18))
-                        Capsule().fill(scoreColor(s)).frame(width: 120 * s / 100)
+                .frame(width: 150, height: 150)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .shadow(color: .black.opacity(0.45), radius: 14, y: 6)
+                .padding(.bottom, 4)
+                Text(data.title).font(.system(size: 22, weight: .bold)).lineLimit(3)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(data.artist).font(.system(size: 15, weight: .medium)).opacity(0.75).lineLimit(2)
+                    .multilineTextAlignment(.center)
+                if let s = data.score {
+                    VStack(spacing: 6) {
+                        Text(String(Int(s.rounded())))
+                            .font(.system(size: 46, weight: .heavy, design: .rounded))
+                            .monospacedDigit()
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(.white.opacity(0.18))
+                            Capsule().fill(scoreColor(s)).frame(width: 120 * s / 100)
+                        }
+                        .frame(width: 120, height: 6)
                     }
-                    .frame(width: 120, height: 6)
+                    .padding(.top, 4)
                 }
             }
+            .frame(maxWidth: .infinity)
 
             Text(data.text)
                 .font(bodyFont)
