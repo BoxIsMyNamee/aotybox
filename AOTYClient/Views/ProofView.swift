@@ -21,6 +21,11 @@ struct ProofView: View {
     private enum Field { case text, album }
 
     var body: some View {
+        content
+            .onReceive(NotificationCenter.default.publisher(for: .notesImported)) { _ in resetResults() }
+    }
+
+    @ViewBuilder private var content: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {

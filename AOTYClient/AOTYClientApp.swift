@@ -37,6 +37,21 @@ struct AOTYClientApp: App {
             .sheet(item: $scraper.challenge) { ChallengeSheet(url: $0.url).accentTint() }
             .onReceive(NotificationCenter.default.publisher(for: .musicAppOpenFailed)) { _ in musicLinkFailed = true }
             .onOpenURL { url in
+                // aotybox://notes?text=…  → put shared text (e.g. a Google Keep note) into Notes.
+                if url.scheme == "aotybox", url.host == "notes" {
+                    let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+                    var text = items.first(where: { $0.name == "text" })?.value ?? ""
+                    // Shortcuts can also send it base64-encoded (safer for long notes with symbols).
+                    if let b = items.first(where: { $0.name == "b64" })?.value,
+                       let d = Data(base64Encoded: b.replacingOccurrences(of: " ", with: "+")),
+                       let s = String(data: d, encoding: .utf8) { text = s }
+                    text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else { tab = 4; return }
+                    UserDefaults.standard.set(text, forKey: "notesText")
+                    tab = 4
+                    NotificationCenter.default.post(name: .notesImported, object: nil)
+                    return
+                }
                 // aotybox://learn?artist=…&title=…[&album=…]  → the song's Learn page on Search
                 guard url.scheme == "aotybox", url.host == "learn",
                       let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems,
@@ -201,6 +216,7 @@ extension Notification.Name {
     static let releasesReady = Notification.Name("releasesReady")
     /// Open a song's Learn page (from an aotybox:// link).
     static let openLearn = Notification.Name("openLearn")
+    static let notesImported = Notification.Name("notesImported")
     /// Tapping the Search tab while on it: back to a fresh search.
     static let resetSearch = Notification.Name("resetSearch")
 }
