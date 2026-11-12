@@ -53,7 +53,7 @@ private struct SearchContent: View {
             let s = await AOTYAPI.shared.suggestions(q)
             if !Task.isCancelled, query.trimmingCharacters(in: .whitespaces) == q { suggestions = s }
         }
-        .task { if thisWeek.isEmpty { thisWeek = Array(((try? await AOTYAPI.shared.thisWeek()) ?? []).prefix(18)) } }
+        .task { if thisWeek.isEmpty { thisWeek = Array(((try? await AOTYAPI.shared.upcoming()) ?? []).prefix(24)) } }
     }
 
     // MARK: Idle
@@ -87,7 +87,7 @@ private struct SearchContent: View {
 
                 if !thisWeek.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("New This Week").font(.title3.bold())
+                        Text("Upcoming").font(.title3.bold())
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 16) {
                             ForEach(thisWeek) { a in
                                 VStack(alignment: .leading, spacing: 4) {
@@ -96,6 +96,9 @@ private struct SearchContent: View {
                                         .clipShape(RoundedRectangle(cornerRadius: 8))
                                     Text(a.title).font(.caption.weight(.semibold)).lineLimit(1)
                                     Text(a.artist).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                    if let d = a.releaseDate, !d.isEmpty {
+                                        Text(d).font(.caption2.weight(.medium)).foregroundStyle(.tint).lineLimit(1)
+                                    }
                                 }
                                 .contentShape(Rectangle())
                                 .onTapGesture { push(a) }

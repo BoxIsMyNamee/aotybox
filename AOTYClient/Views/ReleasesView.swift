@@ -8,7 +8,8 @@ struct ReleasesView: View {
     }
 
     /// Singles have no upcoming list on AOTY.
-    private var feeds: [Feed] { singles ? [.thisWeek, .new] : [.thisWeek, .upcoming, .new] }
+    /// Upcoming lives on the Search tab now.
+    private var feeds: [Feed] { [.thisWeek, .new] }
 
     @State private var feed: Feed = .thisWeek
     @State private var singles = false     // always opens on Albums
