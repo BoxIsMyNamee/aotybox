@@ -26,6 +26,7 @@ struct SwipeRow: ViewModifier {
     /// so the color stays behind it on the way home instead of vanishing the instant you let go.
     @State private var side: Int = 0
     @State private var firedLit = false
+    @State private var dragging = false
 
     private var threshold: CGFloat { max(70, width * 0.22) }
     private var active: SwipeAction? { side > 0 ? leading : (side < 0 ? trailing : nil) }
@@ -38,6 +39,9 @@ struct SwipeRow: ViewModifier {
             .background(side == 0 ? Color.clear : rowBackground)
             .offset(x: offset)
             .background { actionBackground }
+            // Follow the finger exactly while dragging; glide home when let go. (An implicit animation:
+            // withAnimation from the UIKit pan callback was being dropped, so the row snapped back.)
+            .animation(dragging ? nil : .smooth(duration: 0.32), value: offset)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
             .gesture(HorizontalPan(
                 onChange: { raw in
@@ -50,19 +54,20 @@ struct SwipeRow: ViewModifier {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
                     if t != 0 { side = t > 0 ? 1 : -1 }
+                    dragging = true
                     offset = t
                 },
                 onEnd: { _ in
                     let fire = armed ? active : nil
                     firedLit = fire != nil          // keep the color lit while it slides back
-                    withAnimation(.smooth(duration: 0.3)) {
-                        offset = 0
-                    } completion: {
-                        if offset == 0 { side = 0; firedLit = false; armed = false }
+                    dragging = false
+                    offset = 0
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.34) {
+                        if offset == 0 && !dragging { side = 0; firedLit = false; armed = false }
                     }
                     if fire == nil { armed = false }
                     // Let the slide-back start before the action re-renders the row.
-                    if let fire { DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { fire.perform() } }
+                    if let fire { DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { fire.perform() } }
                 }
             ))
             .listRowInsets(EdgeInsets())
@@ -78,6 +83,7 @@ struct SwipeRow: ViewModifier {
                 }
             }
             .animation(.easeOut(duration: 0.12), value: armed)
+            .animation(dragging ? nil : .smooth(duration: 0.32), value: offset)
         }
     }
 
