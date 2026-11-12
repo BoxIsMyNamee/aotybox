@@ -14,10 +14,18 @@ final class ShareViewController: UIViewController {
 
     private func handle() async {
         let text = await sharedText()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !text.isEmpty, let data = text.data(using: .utf8) else { return finish() }
+        guard !text.isEmpty else { return finish() }
         var c = URLComponents()
-        c.scheme = "aotybox"; c.host = "notes"
-        c.queryItems = [URLQueryItem(name: "b64", value: data.base64EncodedString())]
+        c.scheme = "aotybox"
+        if let link = musicLink(in: text), let d = link.absoluteString.data(using: .utf8) {
+            // A song/album link from Marvis, Apple Music, song.link, Spotify…: open the album in AOTY.
+            c.host = "open"
+            c.queryItems = [URLQueryItem(name: "b64", value: d.base64EncodedString())]
+        } else {
+            guard let data = text.data(using: .utf8) else { return finish() }
+            c.host = "notes"
+            c.queryItems = [URLQueryItem(name: "b64", value: data.base64EncodedString())]
+        }
         if let url = c.url, openApp(url) { return finish() }
         // Couldn't hand off directly: leave it on the clipboard so Notes' Paste picks it up.
         UIPasteboard.general.string = text
@@ -26,23 +34,41 @@ final class ShareViewController: UIViewController {
         finish()
     }
 
+    /// The first music-service link in what was shared (it may be inside a sentence).
+    private func musicLink(in text: String) -> URL? {
+        let hosts = ["music.apple.com", "itunes.apple.com", "song.link", "album.link", "odesli.co",
+                     "open.spotify.com", "spotify.link", "tidal.com", "music.youtube.com", "deezer.com"]
+        guard let det = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return nil }
+        let ns = text as NSString
+        for m in det.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+            guard let u = m.url, let h = u.host?.lowercased() else { continue }
+            if hosts.contains(where: { h == $0 || h.hasSuffix("." + $0) }) { return u }
+        }
+        return nil
+    }
+
+    /// Everything shared, text and links together (apps often send a sentence plus a separate link).
     private func sharedText() async -> String? {
+        var parts: [String] = []
         let items = (extensionContext?.inputItems as? [NSExtensionItem]) ?? []
         for item in items {
             for p in item.attachments ?? [] {
-                if p.hasItemConformingToTypeIdentifier(UTType.plainText.identifier),
-                   let s = try? await p.loadItem(forTypeIdentifier: UTType.plainText.identifier) {
-                    if let str = s as? String { return str }
-                    if let d = s as? Data, let str = String(data: d, encoding: .utf8) { return str }
-                }
                 if p.hasItemConformingToTypeIdentifier(UTType.url.identifier),
                    let u = try? await p.loadItem(forTypeIdentifier: UTType.url.identifier) as? URL {
-                    return u.absoluteString
+                    parts.append(u.absoluteString)
+                } else if p.hasItemConformingToTypeIdentifier(UTType.plainText.identifier),
+                          let s = try? await p.loadItem(forTypeIdentifier: UTType.plainText.identifier) {
+                    if let str = s as? String { parts.append(str) }
+                    else if let d = s as? Data, let str = String(data: d, encoding: .utf8) { parts.append(str) }
                 }
             }
-            if let t = item.attributedContentText?.string, !t.isEmpty { return t }
+            if parts.isEmpty, let t = item.attributedContentText?.string, !t.isEmpty { parts.append(t) }
         }
-        return nil
+        // Text first (that's the note), then any links that weren't already in it.
+        let texts = parts.filter { !$0.hasPrefix("http") }
+        let links = parts.filter { $0.hasPrefix("http") && !texts.joined().contains($0) }
+        let all = (texts + links).joined(separator: "\n")
+        return all.isEmpty ? nil : all
     }
 
     /// Extensions can't call UIApplication.shared; find the application object through the

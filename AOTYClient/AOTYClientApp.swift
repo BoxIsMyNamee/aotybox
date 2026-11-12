@@ -38,6 +38,20 @@ struct AOTYClientApp: App {
             .onReceive(NotificationCenter.default.publisher(for: .musicAppOpenFailed)) { _ in musicLinkFailed = true }
             .onReceive(NotificationCenter.default.publisher(for: .openNotes)) { _ in tab = 4 }
             .onOpenURL { url in
+                // aotybox://open?b64=<music link>  → find that album on AOTY (from the share sheet).
+                if url.scheme == "aotybox", url.host == "open" {
+                    let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+                    let raw = items.first(where: { $0.name == "b64" })?.value
+                        .flatMap { Data(base64Encoded: $0.replacingOccurrences(of: " ", with: "+")) }
+                        .flatMap { String(data: $0, encoding: .utf8) } ?? items.first(where: { $0.name == "url" })?.value
+                    if let raw, let link = URL(string: raw) {
+                        tab = 2
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            NotificationCenter.default.post(name: .openMusicLink, object: link)
+                        }
+                    }
+                    return
+                }
                 // aotybox://notes?text=…  → put shared text (e.g. a Google Keep note) into Notes.
                 if url.scheme == "aotybox", url.host == "notes" {
                     let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
@@ -219,6 +233,7 @@ extension Notification.Name {
     static let openLearn = Notification.Name("openLearn")
     static let notesImported = Notification.Name("notesImported")
     static let openNotes = Notification.Name("openNotes")
+    static let openMusicLink = Notification.Name("openMusicLink")
     /// Tapping the Search tab while on it: back to a fresh search.
     static let resetSearch = Notification.Name("resetSearch")
 }

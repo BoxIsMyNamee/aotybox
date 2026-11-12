@@ -22,6 +22,7 @@ private struct SearchContent: View {
     @State private var albums: [AlbumBlock] = []
     @State private var artists: [AOTYAPI.ArtistHit] = []
     @State private var searchError: String?
+    @State private var resolvingLink = false
 
     private var recents: [String] {
         (try? JSONDecoder().decode([String].self, from: Data(recentJSON.utf8))) ?? []
@@ -36,6 +37,22 @@ private struct SearchContent: View {
         .tabTitle("Search")
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Albums, artists, songs")
         .onSubmit(of: .search) { run(query) }
+        // A shared Apple Music / song.link / Spotify link: open that album here.
+        .onReceive(NotificationCenter.default.publisher(for: .openMusicLink)) { n in
+            guard let link = n.object as? URL else { return }
+            Task { await openMusicLink(link) }
+        }
+        .overlay(alignment: .top) {
+            if resolvingLink {
+                Label("Finding that album on AOTY…", systemImage: "music.note")
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .glassEffect(.regular, in: Capsule())
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: resolvingLink)
         .onReceive(NotificationCenter.default.publisher(for: .openLearn)) { n in
             guard let r = n.object as? SongRoute else { return }
             push(r)
@@ -229,6 +246,21 @@ private struct SearchContent: View {
         let pictured = Set(all.filter { $0.image != nil }.map { $0.name.lowercased() })
         artists = all.filter { $0.image != nil || !pictured.contains($0.name.lowercased()) }
         if a1 == nil && a2 == nil { searchError = "Couldn't reach AOTY. Try again." }
+    }
+
+    private func openMusicLink(_ link: URL) async {
+        resolvingLink = true; defer { resolvingLink = false }
+        guard let a = await MusicLinkResolver.resolve(link) else {
+            searchError = "Couldn't tell which album that link is."
+            return
+        }
+        if let slug = await AOTYAPI.shared.findAlbumSlug(artist: a.artist, title: a.title) {
+            push(AlbumRoute(slug: slug, title: a.title))
+        } else {
+            // Not matched exactly: show AOTY's search for it.
+            query = "\(a.artist) \(a.title)"
+            run(query)
+        }
     }
 
     private func remember(_ q: String) {
