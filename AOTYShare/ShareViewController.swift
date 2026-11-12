@@ -45,12 +45,17 @@ final class ShareViewController: UIViewController {
         return nil
     }
 
-    /// Extensions can't call UIApplication.shared directly; reach it through the responder chain.
+    /// Extensions can't call UIApplication.shared; find the application object through the
+    /// responder chain and call its open(_:options:completionHandler:) by selector.
     @discardableResult private func openApp(_ url: URL) -> Bool {
+        typealias OpenFn = @convention(c) (AnyObject, Selector, NSURL, NSDictionary, AnyObject?) -> Void
+        let sel = NSSelectorFromString("openURL:options:completionHandler:")
         var r: UIResponder? = self
         while let current = r {
-            if let app = current as? UIApplication {
-                app.open(url, options: [:], completionHandler: nil)
+            if NSStringFromClass(type(of: current)).contains("Application"), current.responds(to: sel),
+               let imp = current.method(for: sel) {
+                let f = unsafeBitCast(imp, to: OpenFn.self)
+                f(current, sel, url as NSURL, NSDictionary(), nil)
                 return true
             }
             r = current.next
