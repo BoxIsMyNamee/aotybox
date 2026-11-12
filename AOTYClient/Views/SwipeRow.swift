@@ -53,34 +53,40 @@ struct SwipeRow: ViewModifier {
                         armed = nowArmed
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
-                    if t != 0 { side = t > 0 ? 1 : -1 }
+                    if t != 0 { side = t > 0 ? 1 : -1; firedLit = false }
                     dragging = true
                     offset = t
                 },
                 onEnd: { _ in
-                    let fire = armed ? active : nil
-                    firedLit = fire != nil          // keep the color lit while it slides back
+                    // Only once per swipe: a second end/cancel callback used to fire the action again,
+                    // which un-liked what you'd just liked.
+                    guard dragging else { return }
                     dragging = false
+                    let fire = armed ? active : nil
+                    armed = false
+                    firedLit = fire != nil          // keep the color lit while it slides back
                     offset = 0
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.34) {
-                        if offset == 0 && !dragging { side = 0; firedLit = false; armed = false }
+                        if offset == 0 && !dragging { side = 0; firedLit = false }
                     }
-                    if fire == nil { armed = false }
-                    // Let the slide-back start before the action re-renders the row.
+                    // Let the row settle before the action re-renders it.
                     if let fire { DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { fire.perform() } }
                 }
             ))
             .listRowInsets(EdgeInsets())
     }
 
+    /// Only the strip the row has uncovered gets colored, so it can never fill the whole review.
     @ViewBuilder private var actionBackground: some View {
         if let a = active {
-            ZStack {
-                (armed || firedLit) ? a.color : a.color.opacity(0.35)
-                HStack {
-                    if side > 0 { icon(a).padding(.leading, 22); Spacer() }
-                    else { Spacer(); icon(a).padding(.trailing, 22) }
+            ZStack(alignment: side > 0 ? .leading : .trailing) {
+                Color.clear
+                ZStack(alignment: side > 0 ? .leading : .trailing) {
+                    (armed || firedLit) ? a.color : a.color.opacity(0.35)
+                    icon(a).padding(side > 0 ? .leading : .trailing, 22)
                 }
+                .frame(width: max(0, abs(offset)))
+                .clipped()
             }
             .animation(.easeOut(duration: 0.12), value: armed)
             .animation(dragging ? nil : .smooth(duration: 0.32), value: offset)
