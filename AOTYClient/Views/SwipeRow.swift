@@ -22,16 +22,20 @@ struct SwipeRow: ViewModifier {
     @State private var offset: CGFloat = 0
     @State private var armed = false
     @State private var width: CGFloat = 390
+    /// Which side is showing (+1 leading, -1 trailing). Kept until the row has fully slid back,
+    /// so the color stays behind it on the way home instead of vanishing the instant you let go.
+    @State private var side: Int = 0
+    @State private var firedLit = false
 
     private var threshold: CGFloat { max(70, width * 0.22) }
-    private var active: SwipeAction? { offset > 0 ? leading : (offset < 0 ? trailing : nil) }
+    private var active: SwipeAction? { side > 0 ? leading : (side < 0 ? trailing : nil) }
 
     func body(content: Content) -> some View {
         content
             .padding(.horizontal, 20)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(offset == 0 ? Color.clear : rowBackground)
+            .background(side == 0 ? Color.clear : rowBackground)
             .offset(x: offset)
             .background { actionBackground }
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
@@ -45,13 +49,20 @@ struct SwipeRow: ViewModifier {
                         armed = nowArmed
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
+                    if t != 0 { side = t > 0 ? 1 : -1 }
                     offset = t
                 },
                 onEnd: { _ in
                     let fire = armed ? active : nil
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { offset = 0 }
-                    armed = false
-                    fire?.perform()
+                    firedLit = fire != nil          // keep the color lit while it slides back
+                    withAnimation(.smooth(duration: 0.3)) {
+                        offset = 0
+                    } completion: {
+                        if offset == 0 { side = 0; firedLit = false; armed = false }
+                    }
+                    if fire == nil { armed = false }
+                    // Let the slide-back start before the action re-renders the row.
+                    if let fire { DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { fire.perform() } }
                 }
             ))
             .listRowInsets(EdgeInsets())
@@ -60,9 +71,9 @@ struct SwipeRow: ViewModifier {
     @ViewBuilder private var actionBackground: some View {
         if let a = active {
             ZStack {
-                armed ? a.color : a.color.opacity(0.35)
+                (armed || firedLit) ? a.color : a.color.opacity(0.35)
                 HStack {
-                    if offset > 0 { icon(a).padding(.leading, 22); Spacer() }
+                    if side > 0 { icon(a).padding(.leading, 22); Spacer() }
                     else { Spacer(); icon(a).padding(.trailing, 22) }
                 }
             }
@@ -76,7 +87,7 @@ struct SwipeRow: ViewModifier {
             Text(a.title).font(.caption2.weight(.semibold))
         }
         .foregroundStyle(.white)
-        .scaleEffect(armed ? 1.15 : 0.9)
+        .scaleEffect((armed || firedLit) ? 1.15 : 0.9)
         .opacity(Double(min(CGFloat(1), abs(offset) / CGFloat(50))))
     }
 }
