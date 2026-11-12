@@ -204,9 +204,21 @@ private struct ReviewShareMenu: ViewModifier {
                     Button { UIPasteboard.general.url = u } label: { Label("Copy Link", systemImage: "link") }
                 }
             } preview: {
+                // Long reviews make a tall card; show it from the top (cover first) and fade out
+                // the rest, instead of letting iOS center-crop it.
+                let long = data.text.count > 420
                 ShareCardView(data: data,
                               cover: data.cover.flatMap { ImageCache.shared.cachedIncludingDisk($0) },
                               avatar: data.avatar.flatMap { ImageCache.shared.cachedIncludingDisk($0) })
+                    .frame(width: 380, height: long ? 600 : nil, alignment: .top)
+                    .clipped()
+                    .mask {
+                        LinearGradient(stops: [.init(color: .black, location: 0),
+                                               .init(color: .black, location: long ? 0.86 : 1),
+                                               .init(color: long ? .clear : .black, location: 1)],
+                                       startPoint: .top, endPoint: .bottom)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 28))
             }
             .sheet(item: $sharing) { d in ShareCardSheet(data: d).accentTint() }
     }

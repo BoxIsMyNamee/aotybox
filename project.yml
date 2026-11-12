@@ -21,6 +21,9 @@ targets:
         buildPhase: resources
       - path: AOTYClient/Art/aoty-logo@3x.png
         buildPhase: resources
+    dependencies:
+      - target: AOTYShare
+        embed: true
     info:
       path: Support/Info.plist
       properties:
@@ -38,3 +41,28 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
+
+  AOTYShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: AOTYShare
+    info:
+      path: Support/ShareInfo.plist
+      properties:
+        CFBundleDisplayName: AOTYbox
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.harper.aotyclient.share
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: AOTYbox
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        APPLICATION_EXTENSION_API_ONLY: NO
