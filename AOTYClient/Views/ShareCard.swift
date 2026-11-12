@@ -13,6 +13,8 @@ struct ShareCardData: Hashable, Identifiable {
     var avatar: URL?
     /// When the text is AOTY's cut-off copy: where the whole review lives.
     var fullURL: String? = nil
+    /// The review's page on AOTY (for "Open in Safari").
+    var pageURL: URL? = nil
     var id: String { title + artist + author }
 }
 
@@ -197,6 +199,10 @@ private struct ReviewShareMenu: ViewModifier {
         content
             .contextMenu {
                 Button { sharing = data } label: { Label("Share as Image", systemImage: "photo.on.rectangle") }
+                if let u = data.pageURL {
+                    Button { UIApplication.shared.open(u) } label: { Label("Open in Safari", systemImage: "safari") }
+                    Button { UIPasteboard.general.url = u } label: { Label("Copy Link", systemImage: "link") }
+                }
             } preview: {
                 ShareCardView(data: data,
                               cover: data.cover.flatMap { ImageCache.shared.cachedIncludingDisk($0) },

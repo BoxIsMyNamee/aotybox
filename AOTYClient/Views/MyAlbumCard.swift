@@ -17,12 +17,16 @@ struct MyAlbumCard: View {
     @State private var editing = false
     @State private var loadingFull = false
 
+    /// Your review's page on AOTY: /user/<you>/album/<album>/
+    private var reviewPage: String? { box.reviewURL ?? box.userSlug.flatMap { u in slug.map { "/user/\(u)/album/\($0)/" } } }
+
     private var shareData: ShareCardData? {
         guard let album, let r = box.review, !r.isEmpty else { return nil }
         return ShareCardData(title: album.title, artist: album.artist, cover: album.cover, score: box.rating,
                              text: r, author: box.name ?? myUsername, authorColor: box.nameColor,
                              avatar: box.avatar.flatMap(URL.init(string:)),
-                             fullURL: isCut ? (box.reviewURL ?? box.userSlug.flatMap { u in slug.map { "/user/\(u)/album/\($0)/" } }) : nil)
+                             fullURL: isCut ? reviewPage : nil,
+                             pageURL: reviewPage.flatMap { URL(string: $0, relativeTo: URL(string: "https://www.albumoftheyear.org"))?.absoluteURL })
     }
 
     // MARK: Drafts — what you've typed is kept (even after closing the app) until you post, save or cancel.

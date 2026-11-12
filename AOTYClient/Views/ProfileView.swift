@@ -366,7 +366,8 @@ struct ProfileReviewRow: View {
         guard let author, !review.text.isEmpty else { return nil }
         return ShareCardData(title: review.album, artist: review.artist, cover: review.coverURL, score: review.rating,
                              text: fullText ?? review.text, author: author.name, authorColor: author.color, avatar: author.avatar,
-                             fullURL: (fullText == nil && review.isTruncated == true) ? review.url : nil)
+                             fullURL: (fullText == nil && review.isTruncated == true) ? review.url : nil,
+                             pageURL: review.url.flatMap { URL(string: $0, relativeTo: URL(string: "https://www.albumoftheyear.org"))?.absoluteURL })
     }
     private var heart: some View {
         HStack(spacing: 2) {

@@ -146,7 +146,8 @@ struct UserReviewRow: View {
         guard let album, !review.text.isEmpty else { return nil }
         return ShareCardData(title: album.title, artist: album.artist, cover: album.cover, score: review.rating,
                              text: review.text, author: review.username, authorColor: review.nameColor, avatar: review.avatarURL,
-                             fullURL: review.isTruncated == true ? review.url : nil)
+                             fullURL: review.isTruncated == true ? review.url : nil,
+                             pageURL: review.url.flatMap { URL(string: $0, relativeTo: URL(string: "https://www.albumoftheyear.org"))?.absoluteURL })
     }
 
     private var actions: some View {
