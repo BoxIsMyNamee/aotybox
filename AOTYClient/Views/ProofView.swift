@@ -231,7 +231,9 @@ struct ProofView: View {
 
     private func mergedTrackIssues(_ r: ProofReport) -> [ProofIssue] {
         var seen = Set(trackIssues.map { $0.text.lowercased() })
-        return trackIssues + r.trackNames.filter { seen.insert($0.text.lowercased()).inserted }
+        // Titles only mentioned in favs: / least favs: lines don't count.
+        let body = ProofStats.withoutFavLines(text).lowercased()
+        return trackIssues + r.trackNames.filter { body.contains($0.text.lowercased()) && seen.insert($0.text.lowercased()).inserted }
     }
 
     private func check() async {
@@ -247,7 +249,7 @@ struct ProofView: View {
             if let found = await MusicAppLink.searchAlbum(q) {
                 matchedAlbum = "Matched: \(found.title) by \(found.artist) · \(found.tracks.count) tracks"
                 tracklist = found.tracks.map(\.title)
-                trackIssues = ProofStats.unquotedTracks(in: review, tracks: tracklist)
+                trackIssues = ProofStats.unquotedTracks(in: ProofStats.withoutFavLines(review), tracks: tracklist)
             } else {
                 matchedAlbum = "Couldn't find that album on Apple Music."
             }
@@ -331,7 +333,8 @@ struct ProofReport: Decodable {
     - commas: lingering or trailing commas, commas before a period, missing commas after introductory \
       phrases, commas that split a subject from its verb.
     - other: clear grammar slips (subject-verb agreement, wrong tense mid-sentence, missing words).
-    - trackNames: the writer always puts song titles in single quotes, like 'blinding lights'. List any \
+    - trackNames: the writer always puts song titles in single quotes, like 'blinding lights'. Ignore lines \
+      that start with "favs:" or "least favs:" (those are plain lists of titles, unquoted on purpose). List any \
       song title mentioned in the body that is NOT wrapped in quotes. Only flag text that is clearly being \
       used as a song title, not ordinary words.
 
@@ -415,6 +418,14 @@ struct ProofStats {
 
 extension ProofStats {
     /// Track titles that appear in the review without quotes around them.
+    /// The review without "favs:" / "least favs:" lines (those are plain lists of song titles,
+    /// written without quotes on purpose).
+    static func withoutFavLines(_ review: String) -> String {
+        review.components(separatedBy: .newlines)
+            .filter { $0.range(of: #"^\s*(least\s+)?fav(s|ou?rites?)?\s*:"#, options: [.regularExpression, .caseInsensitive]) == nil }
+            .joined(separator: "\n")
+    }
+
     static func unquotedTracks(in review: String, tracks: [String]) -> [ProofIssue] {
         let quotes = Set("'\"‘’“”`")
         let text = review as NSString

@@ -130,6 +130,12 @@ struct AlbumDetailView: View {
                 } label: {
                     Label("Learn about this \(isSingle(a) ? "Song" : "Album")", systemImage: "magnifyingglass")
                 }
+                // Same group as Learn (one card, two rows).
+                Button {
+                    Task { await MusicAppLink.open(artist: a.artist, album: a.title, song: nil, appleMusicURL: appleMusicLink(a)) }
+                } label: {
+                    Label("Listen on \(MusicAppLink.name)", systemImage: "play.circle")
+                }
             }
 
             // Your score, review, and Listened / Like / Save (signed in)
@@ -137,25 +143,6 @@ struct AlbumDetailView: View {
                 Section {
                     MyAlbumCard(box: me, slug: slug, album: ShareAlbum(title: a.title, artist: a.artist, cover: a.coverURL))
                         .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
-                }
-            }
-
-            // Listen
-            if true {
-                Section("Listen") {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack {
-                            Button(MusicAppLink.name) {
-                                Task { await MusicAppLink.open(artist: a.artist, album: a.title, song: nil, appleMusicURL: appleMusicLink(a)) }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            ForEach((a.streamingLinks ?? []).filter { !$0.platform.lowercased().contains("apple") && !$0.url.contains("music.apple.com") }, id: \.url) { link in
-                                if let url = URL(string: link.url) {
-                                    Button(link.platform.capitalized) { openURL(url) }.buttonStyle(.bordered)
-                                }
-                            }
-                        }
-                    }
                 }
             }
 

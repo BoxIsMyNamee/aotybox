@@ -64,6 +64,11 @@ struct MyAlbumCard: View {
         saveDraft()
         focus = nil
         UserDefaults.standard.set(t, forKey: "notesText")
+        // Fill Notes' album field too, so the track-name check knows the tracklist.
+        if let album {
+            UserDefaults.standard.set("\(album.artist) \(album.title)", forKey: "notesAlbum")
+            UserDefaults.standard.set(true, forKey: "notesAlbumCheck")
+        }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         NotificationCenter.default.post(name: .notesImported, object: nil)
         NotificationCenter.default.post(name: .openNotes, object: nil)
