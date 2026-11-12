@@ -117,10 +117,10 @@ struct MiniScore: View {
         HStack(spacing: 6) {
             Text(label).font(.caption2).foregroundStyle(.secondary)
             Text(score.map { String(Int($0.rounded())) } ?? "NR")
-                .font(.system(large ? .title2 : .subheadline, design: .rounded).weight(large ? .bold : .semibold).monospacedDigit())
+                .font(.system(large ? .title3 : .subheadline, design: .rounded).weight(large ? .bold : .semibold).monospacedDigit())
                 .foregroundStyle(.white)
-                .frame(minWidth: large ? 52 : 34, minHeight: large ? 38 : 24)
-                .background(scoreColor(score), in: RoundedRectangle(cornerRadius: large ? 8 : 5))
+                .frame(minWidth: large ? 46 : 34, minHeight: large ? 32 : 24)
+                .background(scoreColor(score), in: RoundedRectangle(cornerRadius: large ? 7 : 5))
         }
     }
 }
