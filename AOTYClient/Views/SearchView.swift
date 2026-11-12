@@ -219,7 +219,12 @@ private struct SearchContent: View {
         async let ar = try? AOTYAPI.shared.searchArtists(q)
         let (a1, a2) = await (al, ar)
         guard q == submitted else { return }
-        albums = a1 ?? []; artists = a2 ?? []
+        albums = a1 ?? []
+        // AOTY also lists empty stub artists that share a name (no picture, no releases); drop those
+        // when an artist with that name and a picture is there.
+        let all = a2 ?? []
+        let pictured = Set(all.filter { $0.image != nil }.map { $0.name.lowercased() })
+        artists = all.filter { $0.image != nil || !pictured.contains($0.name.lowercased()) }
         if a1 == nil && a2 == nil { searchError = "Couldn't reach AOTY. Try again." }
     }
 
