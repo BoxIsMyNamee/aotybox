@@ -97,6 +97,9 @@ private struct FeedList: View {
         .listStyle(.plain)
         .refreshable { await refresh() }
         .task { if !loaded { await reload() } }
+        .onReceive(NotificationCenter.default.publisher(for: .aotyReady)) { _ in
+            if albums.isEmpty || error != nil { Task { await reload() } }
+        }
     }
 
     private func fetch(_ page: Int) async throws -> [AlbumBlock] {

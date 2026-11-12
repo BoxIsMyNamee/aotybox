@@ -18,6 +18,8 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
 
     /// Set when the user needs to pass a Cloudflare check. Root view presents a sheet.
     @Published var challenge: Challenge?
+    /// While the first-run sign-in sheet is up, it handles Cloudflare itself.
+    var suppressChallenges = false
 
     let webView: WKWebView
     private let extractorJS: String
@@ -187,6 +189,8 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         challenge = nil
         originReady = false
         clearCache()
+        // Screens that failed while blocked load again.
+        NotificationCenter.default.post(name: .aotyReady, object: nil)
     }
 
     /// POST a form the way AOTY's own buttons do, then run the extractor on the HTML it returns.
@@ -248,7 +252,9 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         if let done = lastChallengeDone, Date().timeIntervalSince(done) < 90 {
             throw ScrapeError.stillBlocked
         }
-        challenge = Challenge(url: url)
+        // One sheet at a time: several screens getting blocked at once used to swap the sheet
+        // out repeatedly (it popped up and away three times on a fresh install).
+        if challenge == nil && !suppressChallenges { challenge = Challenge(url: url) }
         throw ScrapeError.blocked
     }
 
@@ -442,20 +448,26 @@ struct HiddenScraperHost: UIViewRepresentable {
 }
 
 /// Shown when Cloudflare wants a human check. The user passes it on AOTY's real page;
-/// the clearance cookie lands in the shared WebKit store and the fetcher retries.
+/// the clearance cookie lands in the shared WebKit store and everything reloads.
 struct ChallengeSheet: View {
     let url: URL
     @State private var loading = true
+    @State private var passed = false
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                Text("AOTY wants a quick check. Complete it, then tap Done.")
-                    .font(.footnote).foregroundStyle(.secondary)
-                    .padding(8).frame(maxWidth: .infinity).background(.bar)
-                AOTYWebView(url: url, isLoading: $loading)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(passed ? "You're through" : "Quick check from AOTY's website")
+                        .font(.subheadline.weight(.semibold))
+                    Text(passed ? "Closing…" : "Album of the Year's site (via Cloudflare) wants to make sure you're a person. Tap the \u{201C}Verify you are human\u{201D} box if it shows up. This closes on its own once the page loads.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12).frame(maxWidth: .infinity, alignment: .leading).background(.bar)
+                AOTYWebView(url: url, isLoading: $loading, onFinish: { web in check(web) })
             }
-            .navigationTitle("Verify")
+            .navigationTitle("Checking…")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -464,6 +476,78 @@ struct ChallengeSheet: View {
             }
         }
         .interactiveDismissDisabled()
+    }
+
+    private func check(_ web: WKWebView) {
+        web.evaluateJavaScript("[document.title, !!document.querySelector('#challenge-form, #challenge-stage, .cf-turnstile, #cf-challenge-running')]") { r, _ in
+            guard let a = r as? [Any], let title = a.first as? String else { return }
+            let blocked = (a.last as? Bool) == true || title.localizedCaseInsensitiveContains("just a moment")
+            if !blocked, !passed {
+                passed = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { AOTYScraper.shared.challengeFinished() }
+            }
+        }
+    }
+}
+
+/// First launch: sign in to AOTY on its own website (and get past Cloudflare in the same place).
+struct WelcomeSignInSheet: View {
+    let done: () -> Void
+    @State private var loading = true
+    @State private var signedInAs: String?
+    @State private var cloudflare = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(signedInAs.map { "Signed in as \($0)" } ?? "Sign in to Album of the Year")
+                        .font(.headline)
+                    Text(signedInAs != nil
+                         ? "All set. Tap Done to start."
+                         : cloudflare
+                           ? "First, AOTY's website wants to check you're a person. Tap \u{201C}Verify you are human\u{201D} below."
+                           : "Log in with your albumoftheyear.org account below. That's how the app shows your ratings and reviews and lets you rate, like and follow. Your password goes only to AOTY's website.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(14).frame(maxWidth: .infinity, alignment: .leading).background(.bar)
+                AOTYWebView(url: URL(string: "https://www.albumoftheyear.org/account/")!, isLoading: $loading,
+                            onFinish: { web in check(web) })
+                    .overlay(alignment: .top) { if loading { ProgressView().padding(10) } }
+            }
+            .navigationTitle("Welcome")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Skip") { done() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { done() }.bold().disabled(signedInAs == nil && cloudflare)
+                }
+            }
+        }
+        .interactiveDismissDisabled()
+    }
+
+    private func check(_ web: WKWebView) {
+        let js = """
+        [document.title,
+         !!document.querySelector('#challenge-form, #challenge-stage, .cf-turnstile, #cf-challenge-running'),
+         (function(){ var a = document.querySelector("a[href*='logout']"); if (!a) return null;
+           var p = document.querySelector(".mobileProfile img, .userLinks a[href^='/user/']");
+           var u = document.querySelector(".userLinks a[href^='/user/']");
+           return u ? u.getAttribute('href').split('/')[2] : (p ? (p.getAttribute('alt') || 'you') : 'you'); })()]
+        """
+        web.evaluateJavaScript(js) { r, _ in
+            guard let a = r as? [Any], let title = a.first as? String else { return }
+            cloudflare = (a.count > 1 && (a[1] as? Bool) == true) || title.localizedCaseInsensitiveContains("just a moment")
+            if let who = a.count > 2 ? a[2] as? String : nil {
+                withAnimation { signedInAs = who }
+                // Signed in from the login page: show their profile so it's obvious it worked.
+                if web.url?.path.hasPrefix("/account") == true, let me = URL(string: "https://www.albumoftheyear.org/user/\(who)/") {
+                    web.load(URLRequest(url: me))
+                }
+            }
+        }
     }
 }
 

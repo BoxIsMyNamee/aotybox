@@ -36,6 +36,8 @@ struct AOTYWebView: UIViewRepresentable {
     var onAlbumTap: ((String) -> Void)? = nil
     /// If set, taps on AOTY artist links open the native artist page ("/artist/123-name/").
     var onArtistTap: ((String) -> Void)? = nil
+    /// Called after each page finishes loading (to check sign-in / Cloudflare state).
+    var onFinish: ((WKWebView) -> Void)? = nil
 
     func makeUIView(context: Context) -> WKWebView {
         let web = WKWebView(frame: .zero, configuration: AOTYSession.makeConfiguration())
@@ -86,7 +88,10 @@ struct AOTYWebView: UIViewRepresentable {
             decisionHandler(.allow)
         }
         func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) { parent.isLoading = true }
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { parent.isLoading = false }
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            parent.isLoading = false
+            parent.onFinish?(webView)
+        }
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { parent.isLoading = false }
     }
 }

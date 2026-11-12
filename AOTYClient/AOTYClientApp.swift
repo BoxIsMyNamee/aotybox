@@ -9,6 +9,8 @@ struct AOTYClientApp: App {
     @State private var tab = UserDefaults.standard.integer(forKey: "initialTab")
 
     @State private var showSplash = true
+    @AppStorage("didOnboard") private var didOnboard = false
+    @State private var showWelcome = false
 
     var body: some Scene {
         WindowGroup {
@@ -35,6 +37,31 @@ struct AOTYClientApp: App {
             .onChange(of: appearance) { Appearance.apply(appearance) }
             .background(HiddenScraperHost().frame(width: 2, height: 2).allowsHitTesting(false))
             .sheet(item: $scraper.challenge) { ChallengeSheet(url: $0.url).accentTint() }
+            .background {
+                // First run: one sign-in sheet (which also gets you past Cloudflare) instead of
+                // Cloudflare check sheets popping up for every screen.
+                Color.clear
+                    .sheet(isPresented: $showWelcome) {
+                        WelcomeSignInSheet {
+                            didOnboard = true
+                            showWelcome = false
+                            scraper.suppressChallenges = false
+                            scraper.challengeFinished()
+                        }
+                        .accentTint()
+                    }
+            }
+            .task {
+                guard !didOnboard else { return }
+                scraper.suppressChallenges = true
+                if let me = try? await AOTYAPI.shared.me(), me.username != nil {
+                    didOnboard = true                 // already signed in (e.g. an update): skip it
+                    scraper.suppressChallenges = false
+                } else {
+                    try? await Task.sleep(for: .seconds(1.2))   // let the launch animation finish
+                    showWelcome = true
+                }
+            }
             .onReceive(NotificationCenter.default.publisher(for: .musicAppOpenFailed)) { _ in musicLinkFailed = true }
             .onReceive(NotificationCenter.default.publisher(for: .openNotes)) { _ in tab = 4 }
             .onOpenURL { url in
@@ -233,6 +260,7 @@ extension Notification.Name {
     static let openLearn = Notification.Name("openLearn")
     static let notesImported = Notification.Name("notesImported")
     static let openNotes = Notification.Name("openNotes")
+    static let aotyReady = Notification.Name("aotyReady")
     static let openMusicLink = Notification.Name("openMusicLink")
     /// Tapping the Search tab while on it: back to a fresh search.
     static let resetSearch = Notification.Name("resetSearch")

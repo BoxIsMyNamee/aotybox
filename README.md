@@ -25,6 +25,7 @@ There is no server in between. The app reads AOTY directly on your phone through
   - [Now Playing](#now-playing)
   - [Learn (Genius + Ask AI)](#learn-genius--ask-ai)
   - [Notes (proofreading)](#notes-proofreading)
+  - [Share sheet (AOTYbox)](#share-sheet-aotybox)
   - [Settings](#settings)
   - [Look & feel](#look--feel)
 - [How it works](#how-it-works)
@@ -55,7 +56,13 @@ https://raw.githubusercontent.com/BoxIsMyNamee/aotybox/source/AOTYClient.ipa
 Both are mirrored to `raw.githubusercontent.com`, because GitHub's release download links often time out (HTTP 504). Each build is also attached to a GitHub release (`build-N`); the 10 newest are kept.
 
 - **Requires:** iOS 26.
-- **First launch:** go to **Settings → Account → Sign in** and log in to AOTY once. Everything personal (your box on album pages, likes, follows, notifications, your profile) needs that session.
+- **SideStore / AltStore:** the app includes a share extension, so it signs **two app IDs**, the app and `…aotyclient.share`.
+- **First launch:** a **Welcome** sheet opens AOTY's real login page.
+  - If AOTY's Cloudflare "Verify you are human" check appears first, it's handled in that same sheet, with a plain explanation.
+  - Once you're logged in, the header says **Signed in as …** and **Done** starts the app. **Skip** lets you browse signed out.
+  - Updating from an older version you were already signed in on skips this.
+  - Everything personal needs that session: your box on album pages, likes, follows, notifications, your profile.
+  - You can sign in again any time from **Settings → Account**.
 
 ---
 
@@ -63,7 +70,7 @@ Both are mirrored to `raw.githubusercontent.com`, because GitHub's release downl
 
 ### Releases
 
-- **This Week** and **New**, switched with a floating glass control at the bottom. You can tap a segment or drag across it.
+- **This Week** and **New**, switched with a floating glass control at the bottom. You can tap a segment or drag across it. Upcoming lives on the Search tab.
 - **Albums / Singles toggle:** the round button beside the switcher. Releases always opens on Albums.
 - Each row shows:
   - the cover, artist and title
@@ -93,7 +100,7 @@ Both are mirrored to `raw.githubusercontent.com`, because GitHub's release downl
   - Matching recent searches appear first. **Search for "…"** at the bottom runs a full search.
 - AOTY's empty duplicate artists with the same name (no photo, no releases) are hidden when a real one exists.
 - **Recent searches:** you can remove one at a time, or use **Clear**.
-- **Upcoming:** a grid of AOTY's next 24 releases, with the release date under each.
+- **Upcoming:** a grid of AOTY's next 24 releases, with the release date under each in your accent color. It replaced "New This Week".
 - **Now Playing card** at the top (see [Now Playing](#now-playing)).
 - Tapping the Search tab again resets it.
 
@@ -107,15 +114,16 @@ Top to bottom:
    - the date, type and label
    - critic and user scores with counts
    - the year ranking ("#47 of 2020"), and genres
-2. **Learn about this Album:** the Genius write-up, tracklist and Ask AI.
+2. **Learn & Listen:** one card, two rows.
+   - **Learn about this Album** opens the Genius write-up, tracklist and Ask AI.
+   - **Listen on Marvis Pro / Apple Music** uses whichever app you picked in Settings.
 3. **Your box:** your score, review, and Listen / Like / Save. See [below](#your-rating--review-box).
-4. **Listen:** your chosen music app first (Marvis Pro or Apple Music), then AOTY's other streaming links (Spotify, Amazon, Bandcamp…). The Apple duplicates are removed.
-5. **Tracklist:** track numbers, titles, lengths, and **AOTY track scores colored like album scores**. Tap a track to Learn about that song. If AOTY has no tracklist, it falls back to Apple Music or Genius.
-6. **Popular User Reviews:** see [Reviews](#reviews-likes--swipes). **See all user reviews** opens the full list, with:
+4. **Tracklist:** track numbers, titles, lengths, and **AOTY track scores colored like album scores**. Tap a track to Learn about that song. If AOTY has no tracklist, it falls back to Apple Music or Genius.
+5. **Popular User Reviews:** see [Reviews](#reviews-likes--swipes). **See all user reviews** opens the full list, with:
    - a rating distribution you can tap to filter by score range
    - sorting at the bottom
-7. **Critic Reviews.**
-8. **Similar albums.**
+6. **Critic Reviews.**
+7. **Similar albums.**
 
 The share and compass buttons at the top share the album, or open it on AOTY.
 
@@ -130,6 +138,10 @@ A rounded card on every album page when you're signed in, built like AOTY's own 
   - If AOTY cut it off with "… read more", the app fetches the whole review from your review page.
   - **Show more / Show less** on very long reviews.
 - **Add a review** box with **Post**, which turns green once you've typed 3 characters, matching AOTY's minimum.
+- **Drafts are kept:** what you type is saved per album as you go. It survives leaving the page, switching tabs and closing the app. If you left while editing, the album reopens in edit mode with your changes. A draft is cleared on **Post**, **Save** or **Cancel**.
+- **Proof** (yellow, on the left while writing or editing) copies your draft into **Notes** and jumps there.
+  - It fills Notes' **Album** field with the artist and title, and turns the tracklist check on.
+  - Old proof results are cleared so you can proofread straight away. Your draft stays in the box.
 - **Edit → Save / Cancel** on an existing review:
   - Your score and full text become editable.
   - It never edits AOTY's cut-off copy, so a long review can't get chopped.
@@ -182,6 +194,10 @@ Every user review row shows:
 - the reviewer's avatar and name in their color, plus the AOTY wordmark
 
 It's rendered at 3× and shared through the iOS share sheet: Messages, Instagram, Save Image, and so on.
+
+- Only the **image** is shared, with no caption text tagging along into Messages.
+- In the hold-down pop-up, long reviews show **from the top** (cover first) and fade out at the bottom. The shared image always has the whole review.
+- The hold-down menu also has **Open in Safari** (the review's page on AOTY) and **Copy Link**.
 
 ### Artist pages
 
@@ -276,7 +292,25 @@ A scratchpad for reviews you write elsewhere. It **never rewrites your text**.
   - comma problems
   - **track names that aren't in quotes**
 - **Optional album field** (turn it on in Settings). When you name an album, it checks every track you mention against the real tracklist.
+- Lines starting with **favs:** or **least favs:** (or favorites: / least favorites:) are ignored by the track-name check. Those are plain lists of titles, unquoted on purpose.
+- Text can arrive from your review box (**Proof** button) or from other apps through the [share sheet](#share-sheet-aotybox).
 - Your text and album are remembered between launches.
+
+### Share sheet (AOTYbox)
+
+A share extension called **AOTYbox** appears in the iOS share sheet. If you don't see it, tap **More** at the end of the app row and turn it on.
+
+- **Text** (a Google Keep note, Notes, anything) opens the app on **Notes** with that text in the box.
+  - From Keep: open a note, then **⋮ → Send → Send via other apps → AOTYbox**.
+  - It replaces what was in Notes.
+- **Music links** open that **album in AOTY**:
+  - Marvis, Apple Music, song.link / album.link, Spotify, Tidal, YouTube Music and Deezer.
+  - It works for songs and albums, whether the link is shared on its own or inside a sentence.
+  - Apple Music links are identified with Apple's iTunes lookup. Other services go through [Odesli](https://odesli.co) (the service behind song.link) to find the matching Apple Music album.
+  - The app then searches AOTY for that artist and album and opens the album page on the Search tab. If there's no exact match, you get AOTY's search results.
+- The text goes in as base64, so emoji, quotes, "&" and line breaks survive.
+- If iOS ever refuses to open the app from the extension, the text is copied and you're told to tap **Paste** in Notes.
+- The same thing works through links: `aotybox://notes?text=…` (or `?b64=…`), and `aotybox://open?b64=<base64 music link>`.
 
 ### Settings
 
@@ -321,6 +355,10 @@ A scratchpad for reviews you write elsewhere. It **never rewrites your text**.
 
   Scores come from AOTY's own number and bar width, and anything outside 0–100 is dropped. The same script runs in Node for the tests.
 - **Actions** go through `AOTYAPI.albumAction` and friends. They are form POSTs to AOTY's own `/scripts/*.php` endpoints (with `X-Requested-With: XMLHttpRequest`, as the site sends). Endpoints that might change, like the review Update action, are read from AOTY's own JavaScript each time.
+- **Cloudflare:** only one check sheet is ever shown at a time. It used to pop up and away for every blocked screen.
+  - The sheet closes on its own once the page loads past the check.
+  - Screens that failed while you were blocked reload automatically.
+  - On first run, the Welcome sign-in sheet takes care of the check instead.
 - **Requests** are serialized and throttled, and background work (genre lookups, for example) waits behind what you're looking at.
 - **Cache:** pages are kept on disk for **15 minutes**, keyed by a hash of the parser.
   - A new parser version never reuses old results.
@@ -395,6 +433,8 @@ AOTYClient/
     GenreStore.swift         background genre / release-date lookups
   Scripts/extract.js         AOTY HTML → JSON
   Scripts/genius.js          Genius HTML → JSON
+  Networking/MusicLinkResolver.swift   Apple Music / song.link / Spotify link → artist + album
+AOTYShare/ShareViewController.swift    the "AOTYbox" share extension
   Views/
     ReleasesView.swift       Releases, notification bell + list, glass helpers, AOTY logo
     ChartsView.swift         Charts
@@ -425,6 +465,8 @@ project.yml                  XcodeGen spec
 
 - **LiveContainer says "HTTP 504" or 0 KB:** GitHub's release links are timing out. Use the `raw.githubusercontent.com` source above.
 - **Nothing personal shows up:** sign in under **Settings → Account**.
-- **A "verify you are human" sheet appears:** AOTY's Cloudflare check. Pass it once in the sheet and the app carries on.
+- **A "verify you are human" sheet appears:** AOTY's Cloudflare check. Tap the box. The sheet closes by itself once you're through, and the app reloads what it was showing.
+- **AOTYbox isn't in the share sheet:** tap **More** at the end of the app row in the share sheet and turn it on. With SideStore, make sure both app IDs were registered.
+- **A shared music link opens search results instead of the album:** AOTY didn't have an exact match for that title, so pick it from the results.
 - **A like un-does itself:** you've probably hit AOTY's hourly like limit, and the toast will say so. Wait a bit.
 - **Something looks wrong on a page:** **Settings → Diagnostics → Capture**, then share the copied text in an issue. It contains AOTY page code only, never your password.
