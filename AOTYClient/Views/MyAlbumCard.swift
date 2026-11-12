@@ -25,6 +25,46 @@ struct MyAlbumCard: View {
                              fullURL: isCut ? (box.reviewURL ?? box.userSlug.flatMap { u in slug.map { "/user/\(u)/album/\($0)/" } }) : nil)
     }
 
+    // MARK: Drafts — what you've typed is kept (even after closing the app) until you post, save or cancel.
+    private var draftKey: String { "draft.\(editing ? "edit." : "")\(id)" }
+    private func saveDraft() {
+        guard !id.isEmpty else { return }
+        let t = reviewText
+        // An unchanged edit isn't a draft (otherwise the page would reopen in edit mode for nothing).
+        if t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (editing && t == box.review) {
+            UserDefaults.standard.removeObject(forKey: draftKey)
+        }
+        else { UserDefaults.standard.set(t, forKey: draftKey) }
+    }
+    private func clearDrafts() {
+        UserDefaults.standard.removeObject(forKey: "draft.\(id)")
+        UserDefaults.standard.removeObject(forKey: "draft.edit.\(id)")
+    }
+    private func restoreDraft() {
+        guard !id.isEmpty, reviewText.isEmpty else { return }
+        if let r = box.review, !r.isEmpty {
+            // You were editing your review when you left: pick up where you were.
+            if let d = UserDefaults.standard.string(forKey: "draft.edit.\(id)") {
+                scoreText = box.rating.map { String(Int($0.rounded())) } ?? ""
+                instantly { editing = true; reviewText = d }
+            }
+        } else if let d = UserDefaults.standard.string(forKey: "draft.\(id)") {
+            reviewText = d
+        }
+    }
+
+    /// Copy what you've typed into Notes and jump there to proofread it.
+    private func proofIt() {
+        let t = reviewText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return }
+        saveDraft()
+        focus = nil
+        UserDefaults.standard.set(t, forKey: "notesText")
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        NotificationCenter.default.post(name: .notesImported, object: nil)
+        NotificationCenter.default.post(name: .openNotes, object: nil)
+    }
+
     /// AOTY's album page cuts long reviews with "… read more".
     private static let moreRE = #"\s*(\.\.\.|…)?\s*read more\s*$"#
     private var isCut: Bool { box.review?.range(of: Self.moreRE, options: [.regularExpression, .caseInsensitive]) != nil }
@@ -113,7 +153,7 @@ struct MyAlbumCard: View {
                                 guard await loadFull(), let whole = box.review else {
                                     error = "Couldn't load your full review to edit. Try again."; return
                                 }
-                                reviewText = whole
+                                reviewText = UserDefaults.standard.string(forKey: "draft.edit.\(id)") ?? whole
                                 scoreText = box.rating.map { String(Int($0.rounded())) } ?? ""
                                 error = nil
                                 instantly { editing = true }
@@ -136,6 +176,8 @@ struct MyAlbumCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .task { await loadFull() }      // show your whole review, not AOTY's cut-off copy
+        .onAppear { restoreDraft() }
+        .onChange(of: reviewText) { saveDraft() }
         .reviewShareMenu(editing ? nil : shareData)
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -218,12 +260,25 @@ struct MyAlbumCard: View {
             .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
 
             HStack {
+                Button { proofIt() } label: {
+                    Text("Proof").bold()
+                        .frame(width: 76, height: 34)
+                        .background(Color.yellow.opacity(reviewText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.35 : 1), in: Capsule())
+                        .foregroundStyle(.black)
+                }
+                .buttonStyle(.plain)
+                .disabled(reviewText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityLabel("Proofread in Notes")
                 if !reviewText.isEmpty && reviewText.trimmingCharacters(in: .whitespacesAndNewlines).count < 3 {
                     Text("At least 3 characters").font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
             if editing {
-                Button("Cancel") { focus = nil; error = nil; instantly { editing = false } }
+                Button("Cancel") {
+                    focus = nil; error = nil
+                    UserDefaults.standard.removeObject(forKey: "draft.edit.\(id)")
+                    instantly { editing = false; reviewText = "" }
+                }
                     .buttonStyle(.borderless).foregroundStyle(.secondary).padding(.trailing, 6)
             }
             Button { Task { if editing { await saveEdit() } else { await post() } } } label: {
@@ -249,6 +304,7 @@ struct MyAlbumCard: View {
         let reply = await AOTYAPI.shared.albumAction("insertReview.php", ["albumID": id, "text": text])
         if let reply, !reply.contains("type=\"password\"") {   // a login form back means the session lapsed
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            clearDrafts()
             instantly { box.review = text; reviewText = "" }
             forgetPage()
         } else {
@@ -276,6 +332,7 @@ struct MyAlbumCard: View {
             }
         }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        clearDrafts()
         instantly { box.review = text; reviewText = ""; editing = false }
         forgetPage()
     }

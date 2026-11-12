@@ -36,6 +36,7 @@ struct AOTYClientApp: App {
             .background(HiddenScraperHost().frame(width: 2, height: 2).allowsHitTesting(false))
             .sheet(item: $scraper.challenge) { ChallengeSheet(url: $0.url).accentTint() }
             .onReceive(NotificationCenter.default.publisher(for: .musicAppOpenFailed)) { _ in musicLinkFailed = true }
+            .onReceive(NotificationCenter.default.publisher(for: .openNotes)) { _ in tab = 4 }
             .onOpenURL { url in
                 // aotybox://notes?text=…  → put shared text (e.g. a Google Keep note) into Notes.
                 if url.scheme == "aotybox", url.host == "notes" {
@@ -217,6 +218,7 @@ extension Notification.Name {
     /// Open a song's Learn page (from an aotybox:// link).
     static let openLearn = Notification.Name("openLearn")
     static let notesImported = Notification.Name("notesImported")
+    static let openNotes = Notification.Name("openNotes")
     /// Tapping the Search tab while on it: back to a fresh search.
     static let resetSearch = Notification.Name("resetSearch")
 }

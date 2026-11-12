@@ -148,10 +148,8 @@ struct ShareCardSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     if let image {
-                        let pic = Image(uiImage: image)
-                        ShareLink(item: pic, preview: SharePreview("\(data.title) review", image: pic)) {
-                            Image(systemName: "square.and.arrow.up")
-                        }
+                        // Just the picture: no caption text tags along into Messages etc.
+                        Button { shareImage(image) } label: { Image(systemName: "square.and.arrow.up") }
                     }
                 }
             }
@@ -159,6 +157,16 @@ struct ShareCardSheet: View {
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .task { await render() }
+    }
+
+    private func shareImage(_ img: UIImage) {
+        let vc = UIActivityViewController(activityItems: [img], applicationActivities: nil)
+        guard let top = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene })
+            .flatMap(\.windows).first(where: \.isKeyWindow)?.rootViewController else { return }
+        var presenter = top
+        while let p = presenter.presentedViewController { presenter = p }
+        vc.popoverPresentationController?.sourceView = presenter.view
+        presenter.present(vc, animated: true)
     }
 
     private func render() async {
