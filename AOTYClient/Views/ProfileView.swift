@@ -253,7 +253,9 @@ struct UserProfileView: View {
     // MARK: Loading
 
     private func excludeSelf(_ list: [FollowUser]) -> [FollowUser] {
-        list.filter { $0.username.lowercased() != username.lowercased() && $0.username.lowercased() != myUsername.lowercased() }
+        // Only the profile's owner is left out of their own friends list; on someone else's
+        // profile you still show up if you're one of their friends.
+        list.filter { $0.username.lowercased() != username.lowercased() }
     }
 
     private func load(force: Bool) async {
