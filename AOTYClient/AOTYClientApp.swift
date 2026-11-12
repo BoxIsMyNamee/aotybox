@@ -23,6 +23,7 @@ struct AOTYClientApp: App {
                 ProfileView().tabItem { Label("Profile", systemImage: "person.crop.circle") }.tag(3)
                 ProofView().tabItem { Label("Notes", systemImage: "text.badge.checkmark") }.tag(4)
             }
+            LikeNoticeToast().zIndex(2)
             if showSplash {
                 LaunchSplash { showSplash = false }
                     .zIndex(1)

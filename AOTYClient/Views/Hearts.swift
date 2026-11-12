@@ -6,6 +6,8 @@ import UIKit
 final class LikeStore: ObservableObject {
     static let shared = LikeStore()
     @Published private(set) var state: [Int: (liked: Bool, count: Int)] = [:]
+    /// A short message when AOTY refuses a like (shown as a toast at the top of the app).
+    @Published var notice: String?
 
     func liked(_ id: Int?, default d: Bool) -> Bool { id.flatMap { state[$0]?.liked } ?? d }
     func count(_ id: Int?, default d: Int) -> Int { id.flatMap { state[$0]?.count } ?? d }
@@ -16,7 +18,17 @@ final class LikeStore: ObservableObject {
         state[id] = new
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         let r = await AOTYAPI.shared.setReviewLike(id, liked: new.liked)
-        if r != .ok { state[id] = (liked, count) }
+        if r != .ok {
+            state[id] = (liked, count)
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            switch r {
+            case .limited: notice = "AOTY's hourly like limit reached. Try again in a bit."
+            case .failed(let why): notice = "AOTY didn't take that like. " + why
+            case .ok: break
+            }
+            let shown = notice
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { if self.notice == shown { self.notice = nil } }
+        }
         return r
     }
 }
@@ -207,5 +219,29 @@ struct LikersSheet: View {
                 withAnimation { people = list }
             } else { failed = true }
         }
+    }
+}
+
+
+/// The like-refused toast.
+struct LikeNoticeToast: View {
+    @ObservedObject private var store = LikeStore.shared
+    var body: some View {
+        VStack {
+            if let n = store.notice {
+                Label(n, systemImage: "heart.slash")
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(3)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .glassEffect(.regular, in: Capsule())
+                    .padding(.horizontal, 20)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .onTapGesture { store.notice = nil }
+            }
+            Spacer()
+        }
+        .padding(.top, 6)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: store.notice)
+        .allowsHitTesting(store.notice != nil)
     }
 }
