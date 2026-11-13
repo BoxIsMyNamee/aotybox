@@ -542,34 +542,6 @@ struct ProfileReviewsView: View {
         }
     }
 
-    enum ReviewSort: String, CaseIterable, Identifiable {
-        case newest = "Newest", highest = "Highest", lowest = "Lowest", liked = "Most Liked"
-        var id: String { rawValue }
-        var icon: String {
-            switch self { case .newest: "clock"; case .highest: "arrow.up"; case .lowest: "arrow.down"; case .liked: "heart" }
-        }
-    }
-
-    private var shown: [ProfileReview] {
-        switch sort {
-        case .newest: return reviews
-        case .highest: return reviews.sorted { ($0.rating ?? -1) > ($1.rating ?? -1) }
-        case .lowest: return reviews.sorted { ($0.rating ?? 101) < ($1.rating ?? 101) }
-        case .liked: return reviews.sorted { ($0.likes ?? 0) > ($1.likes ?? 0) }
-        }
-    }
-
-    private func loadAll() async {
-        guard more, !loadingAll else { return }
-        loadingAll = true; defer { loadingAll = false }
-        var guardPages = 0
-        while more && guardPages < 60 {
-            guardPages += 1
-            while loading { try? await Task.sleep(for: .milliseconds(150)) }
-            await loadMore()
-        }
-    }
-
     private func loadMore() async {
         guard more, !loading else { return }
         loading = true; defer { loading = false }
