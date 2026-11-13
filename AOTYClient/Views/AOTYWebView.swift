@@ -18,6 +18,10 @@ enum AOTYSession {
         config.allowsPictureInPictureMediaPlayback = false
         config.allowsAirPlayForMediaPlayback = false
         config.mediaTypesRequiringUserActionForPlayback = .all
+        // Look like Safari (the default in-app user agent has no "Safari" token, which Cloudflare's
+        // check is pickier about). Same for every web view, so the clearance cookie fits all of them.
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        config.applicationNameForUserAgent = "Version/\(v.majorVersion).\(v.minorVersion) Mobile/15E148 Safari/604.1"
         return config
     }
 

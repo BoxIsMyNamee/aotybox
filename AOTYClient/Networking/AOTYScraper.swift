@@ -20,6 +20,9 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
     @Published var challenge: Challenge?
     /// While the first-run sign-in sheet is up, it handles Cloudflare itself.
     var suppressChallenges = false
+    /// While you're passing Cloudflare's check (or signing in), the app makes no requests of its own:
+    /// the hidden view loading challenge pages at the same time kept the check spinning forever.
+    var paused = false
 
     let webView: WKWebView
     private let extractorJS: String
@@ -185,6 +188,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
     private var lastChallengeDone: Date?
 
     func challengeFinished() {
+        paused = false
         lastChallengeDone = Date()
         challenge = nil
         originReady = false
@@ -254,7 +258,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         }
         // One sheet at a time: several screens getting blocked at once used to swap the sheet
         // out repeatedly (it popped up and away three times on a fresh install).
-        if challenge == nil && !suppressChallenges { challenge = Challenge(url: url) }
+        if challenge == nil && !suppressChallenges { challenge = Challenge(url: url); paused = true }
         throw ScrapeError.blocked
     }
 
@@ -369,6 +373,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         let task = Task { @MainActor () throws -> T in
             defer { self.pending -= 1 }
             _ = await previous.value
+            while self.paused { try await Task.sleep(for: .milliseconds(250)) }
             return try await op()
         }
         queueTail = Task { _ = try? await task.value }
@@ -453,6 +458,7 @@ struct ChallengeSheet: View {
     let url: URL
     @State private var loading = true
     @State private var passed = false
+    @State private var ref = WebRef()
 
     var body: some View {
         NavigationStack {
@@ -460,16 +466,20 @@ struct ChallengeSheet: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(passed ? "You're through" : "Quick check from AOTY's website")
                         .font(.subheadline.weight(.semibold))
-                    Text(passed ? "Closing…" : "Album of the Year's site (via Cloudflare) wants to make sure you're a person. Tap the \u{201C}Verify you are human\u{201D} box if it shows up. This closes on its own once the page loads.")
+                    Text(passed ? "Closing…" : "Album of the Year's site (via Cloudflare) wants to make sure you're a person. Tap the \u{201C}Verify you are human\u{201D} box if it shows up. Cloudflare can be finicky: it may take a few tries or sit for a bit. If it keeps spinning, tap \u{21BB} to reload. This closes on its own once you're through.")
                         .font(.footnote).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(12).frame(maxWidth: .infinity, alignment: .leading).background(.bar)
-                AOTYWebView(url: url, isLoading: $loading, onFinish: { web in check(web) })
+                AOTYWebView(url: url, isLoading: $loading, onFinish: { web in ref.web = web; check(web) })
             }
             .navigationTitle("Checking…")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { ref.web?.load(URLRequest(url: url)) } label: { Image(systemName: "arrow.clockwise") }
+                        .accessibilityLabel("Reload")
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { AOTYScraper.shared.challengeFinished() }
                 }
@@ -490,9 +500,14 @@ struct ChallengeSheet: View {
     }
 }
 
+/// Lets a sheet reload its web view.
+final class WebRef { weak var web: WKWebView? }
+
 /// First launch: sign in to AOTY on its own website (and get past Cloudflare in the same place).
 struct WelcomeSignInSheet: View {
     let done: () -> Void
+    @State private var ref = WebRef()
+    @State private var firstLoad = true
     @State private var loading = true
     @State private var signedInAs: String?
     @State private var cloudflare = false
@@ -506,22 +521,26 @@ struct WelcomeSignInSheet: View {
                     Text(signedInAs != nil
                          ? "All set. Tap Done to start."
                          : cloudflare
-                           ? "First, AOTY's website wants to check you're a person. Tap \u{201C}Verify you are human\u{201D} below."
+                           ? "First, AOTY's website (via Cloudflare) wants to check you're a person. Tap \u{201C}Verify you are human\u{201D} below. Cloudflare can be finicky: it may take a few tries or sit for a bit. If it keeps spinning, tap \u{21BB} to reload."
                            : "Log in with your albumoftheyear.org account below. That's how the app shows your ratings and reviews and lets you rate, like and follow. Your password goes only to AOTY's website.")
                         .font(.footnote).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(14).frame(maxWidth: .infinity, alignment: .leading).background(.bar)
                 AOTYWebView(url: URL(string: "https://www.albumoftheyear.org/account/")!, isLoading: $loading,
-                            onFinish: { web in check(web) })
+                            onFinish: { web in ref.web = web; check(web) })
                     .overlay(alignment: .top) { if loading { ProgressView().padding(10) } }
             }
             .navigationTitle("Welcome")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Skip") { done() } }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { ref.web?.reload() } label: { Image(systemName: "arrow.clockwise") }
+                        .accessibilityLabel("Reload")
+                }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { done() }.bold().disabled(signedInAs == nil && cloudflare)
+                    Button("Done") { done() }.bold()
                 }
             }
         }
@@ -540,8 +559,12 @@ struct WelcomeSignInSheet: View {
         web.evaluateJavaScript(js) { r, _ in
             guard let a = r as? [Any], let title = a.first as? String else { return }
             cloudflare = (a.count > 1 && (a[1] as? Bool) == true) || title.localizedCaseInsensitiveContains("just a moment")
+            let wasFirst = firstLoad
+            if !cloudflare { firstLoad = false }
             if let who = a.count > 2 ? a[2] as? String : nil {
                 withAnimation { signedInAs = who }
+                // Already signed in (e.g. after an update): nothing to do here.
+                if wasFirst { DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { done() }; return }
                 // Signed in from the login page: show their profile so it's obvious it worked.
                 if web.url?.path.hasPrefix("/account") == true, let me = URL(string: "https://www.albumoftheyear.org/user/\(who)/") {
                     web.load(URLRequest(url: me))

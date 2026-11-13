@@ -46,21 +46,19 @@ struct AOTYClientApp: App {
                             didOnboard = true
                             showWelcome = false
                             scraper.suppressChallenges = false
-                            scraper.challengeFinished()
+                            scraper.challengeFinished()      // also un-pauses and reloads
                         }
                         .accentTint()
                     }
             }
             .task {
                 guard !didOnboard else { return }
+                // Hold all of the app's own requests until you're signed in (or skip), so only this
+                // sheet talks to AOTY while Cloudflare checks you.
                 scraper.suppressChallenges = true
-                if let me = try? await AOTYAPI.shared.me(), me.username != nil {
-                    didOnboard = true                 // already signed in (e.g. an update): skip it
-                    scraper.suppressChallenges = false
-                } else {
-                    try? await Task.sleep(for: .seconds(1.2))   // let the launch animation finish
-                    showWelcome = true
-                }
+                scraper.paused = true
+                try? await Task.sleep(for: .seconds(1.2))   // let the launch animation finish
+                showWelcome = true
             }
             .onReceive(NotificationCenter.default.publisher(for: .musicAppOpenFailed)) { _ in musicLinkFailed = true }
             .onReceive(NotificationCenter.default.publisher(for: .openNotes)) { _ in tab = 4 }
