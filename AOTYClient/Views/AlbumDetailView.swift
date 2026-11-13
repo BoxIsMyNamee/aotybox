@@ -12,7 +12,7 @@ struct AlbumDetailView: View {
     @State private var fallbackTracks: [Track] = []
     @State private var fallbackSource: String?
     @State private var showChat = false
-    @State private var chat: [ChatMessage] = []
+    @State private var chat = ChatThread()
     @Environment(\.openURL) private var openURL
     @Environment(\.push) private var push
 
@@ -43,7 +43,7 @@ struct AlbumDetailView: View {
             if let album, let url = album.coverURL { CoverViewer(url: url, title: album.title).accentTint() }
         }
         .sheet(isPresented: $showChat) {
-            if let album { AlbumChatSheet(album: album, tracks: tracks(album), messages: $chat).accentTint() }
+            if let album { AlbumChatSheet(album: album, tracks: tracks(album), thread: chat).accentTint() }
         }
         .sheet(isPresented: $showRateSheet) {
             if let album, let url = URL(string: album.url) {
@@ -265,7 +265,7 @@ struct AlbumDetailView: View {
 struct AlbumChatSheet: View {
     let album: AlbumDetail
     let tracks: [Track]
-    @Binding var messages: [ChatMessage]
+    let thread: ChatThread
     @Environment(\.dismiss) private var dismiss
 
     private var kind: String { (album.format ?? "").lowercased().contains("single") ? "single" : "album" }
@@ -295,7 +295,7 @@ struct AlbumChatSheet: View {
                             Text(album.artist).font(.subheadline).foregroundStyle(.secondary)
                         }
                     }
-                    SongChatView(context: context, messages: $messages, nothingOnGenius: false, subject: kind)
+                    SongChatView(context: context, thread: thread, nothingOnGenius: false, subject: kind)
                 }
                 .padding()
             }
@@ -304,9 +304,9 @@ struct AlbumChatSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-                if !messages.isEmpty {
+                if !thread.messages.isEmpty {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button { messages.removeAll() } label: { Image(systemName: "arrow.counterclockwise") }
+                        Button { thread.messages.removeAll(); thread.error = nil } label: { Image(systemName: "arrow.counterclockwise") }
                             .accessibilityLabel("New chat")
                     }
                 }

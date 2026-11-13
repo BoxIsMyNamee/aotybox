@@ -25,7 +25,7 @@ struct SongView: View {
     @State private var loading = true
     @State private var lyricsError: String?
     @State private var selectedRef: GeniusClient.Referent?
-    @State private var chat: [ChatMessage] = []
+    @State private var chat = ChatThread()
     @Environment(\.openURL) private var openURL
     @State private var keyboardUp = false
 
@@ -43,7 +43,7 @@ struct SongView: View {
                     case .lyrics: lyricsView
                     case .about: aboutView
                     case .comments: commentsView
-                    case .ask: SongChatView(context: aiContext, messages: $chat, nothingOnGenius: nothingOnGenius)
+                    case .ask: SongChatView(context: aiContext, thread: chat, nothingOnGenius: nothingOnGenius)
                     }
                 }
             }
@@ -296,15 +296,23 @@ struct AnnotationSheet: View {
 
 // MARK: - AI chat
 
+/// One Ask AI conversation. Owned by the page, not the chat view, so a question keeps
+/// running (and its answer lands) while you look at another tab.
+@Observable final class ChatThread {
+    var messages: [ChatMessage] = []
+    var thinking = false
+    var thinkingSince: Date?
+    var error: String?
+    var input = ""
+}
+
 struct SongChatView: View {
     let context: String
-    @Binding var messages: [ChatMessage]
+    let thread: ChatThread
     let nothingOnGenius: Bool
     var subject: String = "song"
-    @State private var input = ""
-    @State private var thinking = false
-    @State private var thinkingSince: Date?
-    @State private var error: String?
+    private var messages: [ChatMessage] { thread.messages }
+    private var thinking: Bool { thread.thinking }
     @FocusState private var focused: Bool
     @State private var showAISettings = false
 
@@ -332,26 +340,26 @@ struct SongChatView: View {
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 ForEach(messages) { m in bubble(m) }
-                if thinking, let started = thinkingSince { ThinkingBubble(since: started) }
-                if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+                if thinking, let started = thread.thinkingSince { ThinkingBubble(since: started) }
+                if let error = thread.error { Text(error).font(.footnote).foregroundStyle(.red) }
                 if messages.isEmpty {
                     ChipLayout(spacing: 8) {
                         ForEach(suggestions.prefix(3), id: \.self) { s in
-                            Button(s) { input = s; Task { await send() } }
+                            Button(s) { thread.input = s; ask() }
                                 .buttonStyle(.bordered).font(.callout)
                         }
                     }
                 }
                 HStack(alignment: .bottom, spacing: 8) {
-                    TextField("Ask about this \(subject)…", text: $input, axis: .vertical)
+                    TextField("Ask about this \(subject)…", text: Bindable(thread).input, axis: .vertical)
                         .lineLimit(1...5)
                         .textFieldStyle(.roundedBorder)
                         .focused($focused)
-                        .onSubmit { Task { await send() } }
-                    Button { Task { await send() } } label: {
+                        .onSubmit { ask() }
+                    Button { ask() } label: {
                         Image(systemName: "arrow.up.circle.fill").font(.title2)
                     }
-                    .disabled(input.trimmingCharacters(in: .whitespaces).isEmpty || thinking)
+                    .disabled(thread.input.trimmingCharacters(in: .whitespaces).isEmpty || thinking)
                 }
                 Text("Answers come from \(AISettings.provider.name) and may be wrong.").font(.caption2).foregroundStyle(.tertiary)
             }
@@ -405,15 +413,15 @@ struct SongChatView: View {
         """
     }
 
-    private func send() async {
-        let q = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        let structured = (q == meaningQuestion)
-        guard !q.isEmpty, !thinking else { return }
-        input = ""; error = nil
-        messages.append(ChatMessage(role: .user, text: q))
-        thinking = true; thinkingSince = Date()
-        defer { thinking = false; thinkingSince = nil }
-        let system = """
+    /// Sends in a task that isn't tied to this view, and drops the keyboard so the tab bar comes back.
+    private func ask() {
+        focused = false
+        let thread = thread, system = systemPrompt(structured: thread.input.trimmingCharacters(in: .whitespacesAndNewlines) == meaningQuestion)
+        Task { @MainActor in await Self.send(thread, system: system) }
+    }
+
+    private func systemPrompt(structured: Bool) -> String {
+        """
         You are a music expert inside an Album of the Year app. Answer questions about one \(subject): its meaning, \
         lyrics, references, production, samples, reception, and online discussion. Be concise and specific; \
         quote at most a line or two of lyrics. If you search the web, prefer reputable music sources. \
@@ -422,10 +430,19 @@ struct SongChatView: View {
 
         \(context)
         """
+    }
+
+    @MainActor private static func send(_ thread: ChatThread, system: String) async {
+        let q = thread.input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty, !thread.thinking else { return }
+        thread.input = ""; thread.error = nil
+        thread.messages.append(ChatMessage(role: .user, text: q))
+        thread.thinking = true; thread.thinkingSince = Date()
+        defer { thread.thinking = false; thread.thinkingSince = nil }
         do {
-            messages.append(try await AIClient.reply(system: system, history: messages))
+            thread.messages.append(try await AIClient.reply(system: system, history: thread.messages))
         } catch {
-            self.error = error.localizedDescription
+            thread.error = error.localizedDescription
         }
     }
 }

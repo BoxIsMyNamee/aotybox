@@ -13,7 +13,7 @@ struct LearnAlbumView: View {
     @State private var info: GeniusClient.AlbumInfo?
     @State private var tracks: [Track] = []
     @State private var loading = true
-    @State private var chat: [ChatMessage] = []
+    @State private var chat = ChatThread()
     @Environment(\.push) private var push
     @Environment(\.openURL) private var openURL
     @State private var keyboardUp = false
@@ -59,7 +59,7 @@ struct LearnAlbumView: View {
                         }
                     }
                 case .ask:
-                    SongChatView(context: context, messages: $chat, nothingOnGenius: false, subject: "album")
+                    SongChatView(context: context, thread: chat, nothingOnGenius: false, subject: "album")
                 }
             }
             .padding()
