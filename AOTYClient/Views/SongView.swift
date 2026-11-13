@@ -1,4 +1,5 @@
 import SwiftUI
+import CryptoKit
 import UIKit
 
 /// Song page: Genius bio, lyrics with tappable annotations, comments, and an AI chat.
@@ -69,6 +70,7 @@ struct SongView: View {
             }
         }
         .sheet(item: $selectedRef) { ref in AnnotationSheet(referent: ref).presentationDetents([.medium, .large]).accentTint() }
+        .onAppear { chat.attach(ChatThread.key("song", artist, title)) }
         .task { await load() }
         // Ask right away on Learn: don't wait forever on Genius, and start the moment Ask AI is opened.
         .task { try? await Task.sleep(for: .seconds(4)); kickOffAsk() }
@@ -308,11 +310,40 @@ struct AnnotationSheet: View {
 /// One Ask AI conversation. Owned by the page, not the chat view, so a question keeps
 /// running (and its answer lands) while you look at another tab.
 @Observable final class ChatThread {
-    var messages: [ChatMessage] = []
+    var messages: [ChatMessage] = [] { didSet { save() } }
     var thinking = false
     var thinkingSince: Date?
     var error: String?
     var input = ""
+    @ObservationIgnored private var key: String?
+
+    /// Ties this chat to one song or album, loading the conversation saved for it last time.
+    /// Saved answers are reused, so going back to a song doesn't ask the AI again.
+    func attach(_ key: String) {
+        guard self.key == nil else { return }
+        self.key = key
+        if messages.isEmpty, let data = try? Data(contentsOf: Self.file(key)),
+           let saved = try? JSONDecoder().decode([ChatMessage].self, from: data) {
+            messages = saved
+        }
+    }
+
+    private func save() {
+        guard let key else { return }
+        let url = Self.file(key)
+        if messages.isEmpty { try? FileManager.default.removeItem(at: url); return }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? JSONEncoder().encode(messages).write(to: url, options: .atomic)
+    }
+
+    static func key(_ kind: String, _ artist: String, _ title: String) -> String {
+        "\(kind)|\(artist)|\(title)".lowercased()
+    }
+
+    private static func file(_ key: String) -> URL {
+        let name = SHA256.hash(data: Data(key.utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
+        return URL.applicationSupportDirectory.appending(path: "AIChats/\(name).json")
+    }
 }
 
 struct SongChatView: View {
@@ -350,7 +381,14 @@ struct SongChatView: View {
                 }
                 ForEach(messages) { m in bubble(m) }
                 if thinking, let started = thread.thinkingSince { ThinkingBubble(since: started) }
-                if let error = thread.error { Text(error).font(.footnote).foregroundStyle(.red) }
+                if let error = thread.error {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(error).font(.footnote).foregroundStyle(.red)
+                        Spacer()
+                        Button { retry() } label: { Label("Retry", systemImage: "arrow.clockwise") }
+                            .font(.footnote).buttonStyle(.borderless)
+                    }
+                }
                 if messages.isEmpty {
                     ChipLayout(spacing: 8) {
                         ForEach(suggestions.prefix(3), id: \.self) { s in
@@ -389,8 +427,37 @@ struct SongChatView: View {
                     }
                 }
             }
+            if !thinking {
+                if m.role == .user {
+                    Button { edit(m) } label: { Image(systemName: "pencil") }
+                        .accessibilityLabel("Edit question")
+                        .font(.footnote).foregroundStyle(.secondary).buttonStyle(.borderless)
+                } else if m.id == messages.last?.id {
+                    Button { retry() } label: { Label("Ask again", systemImage: "arrow.clockwise") }
+                        .font(.footnote).foregroundStyle(.secondary).buttonStyle(.borderless)
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: m.role == .user ? .trailing : .leading)
+    }
+
+    /// Drops the last answer (or failed attempt) and asks the same question again.
+    private func retry() {
+        guard !thinking, let i = messages.lastIndex(where: { $0.role == .user }) else { return }
+        let q = messages[i].text
+        thread.messages.removeSubrange(i...)
+        thread.error = nil
+        thread.input = q
+        ask()
+    }
+
+    /// Puts a question back in the box to change; it and everything after it are removed.
+    private func edit(_ m: ChatMessage) {
+        guard !thinking, let i = messages.firstIndex(where: { $0.id == m.id }) else { return }
+        thread.messages.removeSubrange(i...)
+        thread.error = nil
+        thread.input = m.text
+        focused = true
     }
 
     /// The original first suggestion; tapping it gets the structured answer.

@@ -82,15 +82,15 @@ enum AISettings {
     }
 }
 
-struct ChatMessage: Identifiable, Hashable {
-    enum Role { case user, assistant }
-    let id = UUID()
+struct ChatMessage: Identifiable, Hashable, Codable {
+    enum Role: String, Codable { case user, assistant }
+    var id = UUID()
     let role: Role
     var text: String
     var sources: [Source] = []
     var model: String? = nil
 
-    struct Source: Hashable { let title: String; let url: URL }
+    struct Source: Hashable, Codable { let title: String; let url: URL }
 }
 
 enum AIError: LocalizedError {

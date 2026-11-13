@@ -79,6 +79,7 @@ struct LearnAlbumView: View {
         .toolbar {
             if let u = info?.url { Button { openURL(u) } label: { Image(systemName: "arrow.up.right.square") } }
         }
+        .onAppear { chat.attach(ChatThread.key("album", artist, album)) }
         .task { await load() }
         .task { try? await Task.sleep(for: .seconds(4)); kickOffAsk() }
         .onChange(of: tab) { if tab == .ask { kickOffAsk() } }

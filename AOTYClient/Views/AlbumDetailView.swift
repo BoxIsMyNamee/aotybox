@@ -312,6 +312,7 @@ struct AlbumChatSheet: View {
                 }
             }
         }
+        .onAppear { thread.attach(ChatThread.key("album", album.artist, album.title)) }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
