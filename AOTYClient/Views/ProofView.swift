@@ -15,6 +15,7 @@ struct ProofView: View {
     @State private var stats: ProofStats?
     @State private var checking = false
     @State private var stage: String?
+    @State private var stageStart = Date()
     @State private var job: Task<Void, Never>?
     @State private var error: String?
     @State private var copied = false
@@ -100,8 +101,15 @@ struct ProofView: View {
                 } label: {
                     HStack(spacing: 6) {
                         if checking { ProgressView().tint(.white) }
-                        Text(checking ? (stage ?? "Checking") : "Proof").bold()
+                        if checking {
+                            TimelineView(.periodic(from: stageStart, by: 1)) { ctx in
+                                let secs = Int(ctx.date.timeIntervalSince(stageStart))
+                                Text((stage ?? "Checking") + (secs >= 3 ? " · \(secs)s" : "")).bold().monospacedDigit()
+                            }
                             .lineLimit(1).minimumScaleFactor(0.7)
+                        } else {
+                            Text("Proof").bold()
+                        }
                     }
                     .frame(maxWidth: .infinity, minHeight: 34)
                 }
@@ -242,13 +250,26 @@ struct ProofView: View {
         return trackIssues + r.trackNames.filter { body.contains($0.text.lowercased()) && seen.insert($0.text.lowercased()).inserted }
     }
 
-    /// Runs `work`, giving up after `seconds` (the network request is cancelled too).
+    /// Runs `work`, giving up after `seconds`. Returns right away on timeout or Stop, without
+    /// waiting for the request to wind down (a task group would wait, which could hang forever).
     private func within<T: Sendable>(_ seconds: Double, _ work: @escaping @Sendable () async throws -> T) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { g in
-            g.addTask { try await work() }
-            g.addTask { try await Task.sleep(for: .seconds(seconds)); throw CancellationError() }
-            defer { g.cancelAll() }
-            return try await g.next()!
+        let gate = ResumeOnce<T>()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<T, Error>) in
+                gate.set(cont)
+                let w = Task {
+                    do { gate.resume(.success(try await work())) } catch { gate.resume(.failure(error)) }
+                }
+                gate.worker = w
+                Task {
+                    try? await Task.sleep(for: .seconds(seconds))
+                    w.cancel()
+                    gate.resume(.failure(ProofTimeout()))
+                }
+            }
+        } onCancel: {
+            gate.worker?.cancel()
+            gate.resume(.failure(CancellationError()))
         }
     }
 
@@ -263,7 +284,7 @@ struct ProofView: View {
         var tracklist: [String] = []
         let q = albumCheckOn ? albumQuery.trimmingCharacters(in: .whitespaces) : ""
         if !q.isEmpty {
-            stage = "Finding album"
+            stage = "Finding album"; stageStart = Date()
             if let found = try? await within(25, { await MusicAppLink.searchAlbum(q) }) {
                 matchedAlbum = "Matched: \(found.title) by \(found.artist) · \(found.tracks.count) tracks"
                 tracklist = found.tracks.map(\.title)
@@ -277,7 +298,7 @@ struct ProofView: View {
             error = "Repeated words are counted above. For typo and punctuation notes, set up the AI."
             return
         }
-        stage = "Proofing"
+        stage = "Proofing"; stageStart = Date()
         let system = ProofReport.systemPrompt + (tracklist.isEmpty ? "" :
             "\n\nThe review is about an album with these tracks: " + tracklist.joined(separator: "; "))
         do {
@@ -285,12 +306,35 @@ struct ProofView: View {
                 try await AIClient.reply(system: system, history: [ChatMessage(role: .user, text: review)], webSearch: false)
             }
             if let r = ProofReport.parse(reply.text) { report = r } else { rawReply = reply.text }
-        } catch is CancellationError {
+        } catch is ProofTimeout {
             if !Task.isCancelled { self.error = "The AI didn't answer within a minute. It may be busy, so try again in a bit." }
+        } catch is CancellationError {
         } catch {
             if !Task.isCancelled { self.error = error.localizedDescription }
         }
     }}
+
+struct ProofTimeout: Error {}
+
+/// Resumes a continuation exactly once, whichever side (answer, timeout, Stop) gets there first.
+final class ResumeOnce<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cont: CheckedContinuation<T, Error>?
+    private var pending: Result<T, Error>?
+    private var done = false
+    var worker: Task<Void, Never>?
+    func set(_ c: CheckedContinuation<T, Error>) {
+        lock.lock()
+        if let p = pending { pending = nil; lock.unlock(); c.resume(with: p); return }
+        cont = c; lock.unlock()
+    }
+    func resume(_ r: Result<T, Error>) {
+        lock.lock()
+        guard !done else { lock.unlock(); return }
+        done = true
+        if let c = cont { cont = nil; lock.unlock(); c.resume(with: r) } else { pending = r; lock.unlock() }
+    }
+}
 
 // MARK: - AI report
 
