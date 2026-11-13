@@ -80,6 +80,8 @@ struct LearnAlbumView: View {
             if let u = info?.url { Button { openURL(u) } label: { Image(systemName: "arrow.up.right.square") } }
         }
         .task { await load() }
+        .task { try? await Task.sleep(for: .seconds(4)); kickOffAsk() }
+        .onChange(of: tab) { if tab == .ask { kickOffAsk() } }
     }
 
     private var context: String {
@@ -90,11 +92,15 @@ struct LearnAlbumView: View {
         return lines.joined(separator: "\n")
     }
 
+    private func kickOffAsk() {
+        SongChatView(context: context, thread: chat, nothingOnGenius: false, subject: "album").autoAsk()
+    }
+
     private func load() async {
         guard loading else { return }
         defer {
             loading = false
-            SongChatView(context: context, thread: chat, nothingOnGenius: false, subject: "album").autoAsk()
+            kickOffAsk()
         }
         if let id = await GeniusClient.findAlbumID(artist: artist, album: album) {
             async let i = GeniusClient.albumInfo(id: id)

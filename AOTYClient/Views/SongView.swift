@@ -70,6 +70,9 @@ struct SongView: View {
         }
         .sheet(item: $selectedRef) { ref in AnnotationSheet(referent: ref).presentationDetents([.medium, .large]).accentTint() }
         .task { await load() }
+        // Ask right away on Learn: don't wait forever on Genius, and start the moment Ask AI is opened.
+        .task { try? await Task.sleep(for: .seconds(4)); kickOffAsk() }
+        .onChange(of: tab) { if tab == .ask { kickOffAsk() } }
     }
 
     // MARK: Header
@@ -217,6 +220,10 @@ struct SongView: View {
 
     // MARK: Loading
 
+    private func kickOffAsk() {
+        SongChatView(context: aiContext, thread: chat, nothingOnGenius: nothingOnGenius).autoAsk()
+    }
+
     private func load() async {
         guard hit == nil, loading else { return }
         let found = await GeniusClient.search(artist: artist, title: title)
@@ -224,7 +231,7 @@ struct SongView: View {
         guard let found else {
             loading = false
             tab = .ask
-            SongChatView(context: aiContext, thread: chat, nothingOnGenius: true).autoAsk()
+            kickOffAsk()
             return
         }
         async let songTask = try? GeniusClient.song(id: found.id)
@@ -238,7 +245,7 @@ struct SongView: View {
         loading = false
         let empty = (lyrics?.segments.isEmpty ?? true) && song?.about == nil
         if empty { tab = .ask }
-        SongChatView(context: aiContext, thread: chat, nothingOnGenius: false).autoAsk()
+        kickOffAsk()
     }
 
     // MARK: AI context
