@@ -14,6 +14,8 @@ struct ProofView: View {
     @State private var rawReply: String?
     @State private var stats: ProofStats?
     @State private var checking = false
+    @State private var stage: String?
+    @State private var job: Task<Void, Never>?
     @State private var error: String?
     @State private var copied = false
     @State private var showAISettings = false
@@ -92,17 +94,21 @@ struct ProofView: View {
                 .accessibilityLabel("Paste")
                 .frame(maxWidth: .infinity)
 
-                Button { Task { await check() } } label: {
+                Button {
+                    if checking { job?.cancel(); job = nil; checking = false; stage = nil; return }
+                    job = Task { await check() }
+                } label: {
                     HStack(spacing: 6) {
                         if checking { ProgressView().tint(.white) }
-                        Text(checking ? "Checking" : "Proof").bold()
+                        Text(checking ? (stage ?? "Checking") : "Proof").bold()
+                            .lineLimit(1).minimumScaleFactor(0.7)
                     }
                     .frame(maxWidth: .infinity, minHeight: 34)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
                 .buttonBorderShape(.capsule)
-                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || checking)
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !checking)
                 .frame(maxWidth: .infinity)
                 .layoutPriority(1)
 
@@ -119,7 +125,7 @@ struct ProofView: View {
                 .disabled(text.isEmpty)
                 .frame(maxWidth: .infinity)
             }
-            Text("Proof only points things out. It never rewrites your review.")
+            Text(checking ? "Tap again to stop." : "Proof only points things out. It never rewrites your review.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -236,39 +242,53 @@ struct ProofView: View {
         return trackIssues + r.trackNames.filter { body.contains($0.text.lowercased()) && seen.insert($0.text.lowercased()).inserted }
     }
 
+    /// Runs `work`, giving up after `seconds` (the network request is cancelled too).
+    private func within<T: Sendable>(_ seconds: Double, _ work: @escaping @Sendable () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { g in
+            g.addTask { try await work() }
+            g.addTask { try await Task.sleep(for: .seconds(seconds)); throw CancellationError() }
+            defer { g.cancelAll() }
+            return try await g.next()!
+        }
+    }
+
     private func check() async {
         let review = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !review.isEmpty else { return }
         focus = nil
         error = nil; report = nil; rawReply = nil; trackIssues = []
         stats = ProofStats(review)
+        checking = true
+        defer { if !Task.isCancelled { checking = false; stage = nil; job = nil } }
         var tracklist: [String] = []
         let q = albumCheckOn ? albumQuery.trimmingCharacters(in: .whitespaces) : ""
         if !q.isEmpty {
-            checking = true
-            if let found = await MusicAppLink.searchAlbum(q) {
+            stage = "Finding album"
+            if let found = try? await within(25, { await MusicAppLink.searchAlbum(q) }) {
                 matchedAlbum = "Matched: \(found.title) by \(found.artist) · \(found.tracks.count) tracks"
                 tracklist = found.tracks.map(\.title)
                 trackIssues = ProofStats.unquotedTracks(in: ProofStats.withoutFavLines(review), tracks: tracklist)
-            } else {
-                matchedAlbum = "Couldn't find that album on Apple Music."
+            } else if !Task.isCancelled {
+                matchedAlbum = "Couldn't find that album. Try \"artist album\" spelled like on AOTY."
             }
-            checking = false
         }
+        if Task.isCancelled { return }
         guard AISettings.isConfigured else {
             error = "Repeated words are counted above. For typo and punctuation notes, set up the AI."
             return
         }
-        checking = true; defer { checking = false }
+        stage = "Proofing"
+        let system = ProofReport.systemPrompt + (tracklist.isEmpty ? "" :
+            "\n\nThe review is about an album with these tracks: " + tracklist.joined(separator: "; "))
         do {
-            let system = ProofReport.systemPrompt + (tracklist.isEmpty ? "" :
-                "\n\nThe review is about an album with these tracks: " + tracklist.joined(separator: "; "))
-            let reply = try await AIClient.reply(system: system,
-                                                 history: [ChatMessage(role: .user, text: review)],
-                                                 webSearch: false)
+            let reply = try await within(60) {
+                try await AIClient.reply(system: system, history: [ChatMessage(role: .user, text: review)], webSearch: false)
+            }
             if let r = ProofReport.parse(reply.text) { report = r } else { rawReply = reply.text }
+        } catch is CancellationError {
+            if !Task.isCancelled { self.error = "The AI didn't answer within a minute. It may be busy, so try again in a bit." }
         } catch {
-            self.error = error.localizedDescription
+            if !Task.isCancelled { self.error = error.localizedDescription }
         }
     }}
 

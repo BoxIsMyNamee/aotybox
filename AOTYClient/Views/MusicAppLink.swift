@@ -65,7 +65,7 @@ enum MusicAppLink {
         var c = URLComponents(string: "https://itunes.apple.com/" + path)!
         c.queryItems = items + [URLQueryItem(name: "country", value: storefront)]
         guard let url = c.url,
-              let (data, _) = try? await URLSession.shared.data(from: url),
+              let (data, _) = try? await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 10)),
               let r = try? JSONDecoder().decode(ITunesResponse.self, from: data) else { return [] }
         return r.results
     }
@@ -104,7 +104,7 @@ enum MusicAppLink {
         var c = URLComponents(string: "https://itunes.apple.com/search")!
         c.queryItems = [URLQueryItem(name: "term", value: artist), URLQueryItem(name: "entity", value: "musicArtist"),
                         URLQueryItem(name: "limit", value: "5"), URLQueryItem(name: "country", value: storefront)]
-        guard let url = c.url, let (data, _) = try? await URLSession.shared.data(from: url),
+        guard let url = c.url, let (data, _) = try? await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 10)),
               let artists = try? JSONDecoder().decode(ArtistResponse.self, from: data).results,
               let artistID = (artists.first { norm($0.artistName ?? "") == a } ?? artists.first)?.artistId else { return nil }
         return match(await itunes("lookup", [
@@ -153,14 +153,37 @@ enum MusicAppLink {
     }
 
     /// Free-text album lookup ("the weeknd after hours") → name, artist and tracks. Used by Proof.
+    /// Apple's free-text search often misses new releases or picks the wrong album, so the hit
+    /// must actually look like what was typed; otherwise AOTY's own search finds the album and
+    /// its tracklist (from AOTY, falling back to Apple's).
     static func searchAlbum(_ term: String) async -> (title: String, artist: String, tracks: [Track])? {
+        let q = norm(term)
         let hits = await itunes("search", [URLQueryItem(name: "term", value: term),
-                                           URLQueryItem(name: "entity", value: "album"), URLQueryItem(name: "limit", value: "5")])
-        guard let best = hits.first(where: { $0.collectionId != nil }), let id = best.collectionId else { return nil }
-        let tracks = await tracklist(artist: best.artistName ?? "", album: best.collectionName ?? "",
-                                     appleMusicURL: "https://music.apple.com/us/album/x/\(id)")
-        let title = (best.collectionName ?? "").replacingOccurrences(of: #"\s+-\s+(Single|EP)$"#, with: "", options: .regularExpression)
-        return (title, best.artistName ?? "", tracks)
+                                           URLQueryItem(name: "entity", value: "album"), URLQueryItem(name: "limit", value: "10")])
+        if let best = hits.first(where: { h in
+            guard h.collectionId != nil else { return false }
+            let t = norm(h.collectionName ?? "")
+            return !t.isEmpty && q.contains(t.prefix(12))
+        }), let id = best.collectionId {
+            let tracks = await tracklist(artist: best.artistName ?? "", album: best.collectionName ?? "",
+                                         appleMusicURL: "https://music.apple.com/us/album/x/\(id)")
+            if !tracks.isEmpty {
+                let title = (best.collectionName ?? "").replacingOccurrences(of: #"\s+-\s+(Single|EP)$"#, with: "", options: .regularExpression)
+                return (title, best.artistName ?? "", tracks)
+            }
+        }
+        // AOTY's search box.
+        let sugg = await AOTYAPI.shared.suggestions(term)
+        guard let s = sugg.first(where: { $0.kind == "album" }) else { return nil }
+        let artist = s.sub?.components(separatedBy: " · ").first ?? ""
+        if let url = s.url, let m = url.range(of: #"/album/[^/?#]+\.php"#, options: .regularExpression) {
+            let slug = String(url[m].dropFirst(7).dropLast(4))
+            if let d = try? await AOTYAPI.shared.album(slug: slug), let t = d.tracklist, !t.isEmpty {
+                return (d.title, d.artist, t)
+            }
+        }
+        let tracks = await tracklist(artist: artist, album: s.label, appleMusicURL: nil)
+        return tracks.isEmpty ? nil : (s.label, artist, tracks)
     }
 
     // MARK: Opening
