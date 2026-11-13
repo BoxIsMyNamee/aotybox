@@ -15,6 +15,8 @@ struct MyAlbumCard: View {
     @State private var error: String?
     @State private var expanded = false
     @State private var editing = false
+    @State private var draftSaved = false
+    @State private var draftTick: Task<Void, Never>?
     @State private var loadingFull = false
 
     /// Your review's page on AOTY: /user/<you>/album/<album>/
@@ -38,7 +40,17 @@ struct MyAlbumCard: View {
         if t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (editing && t == box.review) {
             UserDefaults.standard.removeObject(forKey: draftKey)
         }
-        else { UserDefaults.standard.set(t, forKey: draftKey) }
+        else {
+            UserDefaults.standard.set(t, forKey: draftKey)
+            // Little "Draft saved" check, shown once you pause typing.
+            draftTick?.cancel()
+            draftSaved = false
+            draftTick = Task {
+                try? await Task.sleep(for: .milliseconds(700))
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeOut(duration: 0.2)) { draftSaved = true }
+            }
+        }
     }
     private func clearDrafts() {
         UserDefaults.standard.removeObject(forKey: "draft.\(id)")
@@ -280,6 +292,10 @@ struct MyAlbumCard: View {
                 .accessibilityLabel("Proofread in Notes")
                 if !reviewText.isEmpty && reviewText.trimmingCharacters(in: .whitespacesAndNewlines).count < 3 {
                     Text("At least 3 characters").font(.caption).foregroundStyle(.secondary)
+                } else if draftSaved && !reviewText.isEmpty {
+                    Label("Draft saved", systemImage: "checkmark")
+                        .font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                        .transition(.opacity)
                 }
                 Spacer(minLength: 0)
             if editing {

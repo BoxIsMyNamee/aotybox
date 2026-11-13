@@ -32,7 +32,7 @@ struct DiagnosticsView: View {
                 Text("Loads each page the app uses and reports what came back. Takes a few seconds.")
             }
             Section {
-                Button(capturing ? "Capturing…" : "Capture search info") { Task { await captureHeart() } }
+                Button(capturing ? "Capturing…" : "Capture friends & sort info") { Task { await captureHeart() } }
                     .disabled(capturing)
                 if let heartInfo {
                     Text(heartInfo.prefix(1500) + (heartInfo.count > 1500 ? "…" : ""))
@@ -59,27 +59,37 @@ struct DiagnosticsView: View {
         capturing = true; defer { capturing = false }
         let js = #"""
         const out = [];
-        const get = async (u, opt) => {
+        const get = async (u) => {
           const c = new AbortController(); const t = setTimeout(() => c.abort(), 15000);
-          try { const r = await fetch(u, Object.assign({ credentials: "include", signal: c.signal }, opt || {})); return r.status + " " + await r.text(); }
-          catch (e) { return "ERR " + e.message; } finally { clearTimeout(t); }
+          try { return await (await fetch(u, { credentials: "include", signal: c.signal })).text(); }
+          catch (e) { out.push("FETCH " + u + " failed: " + e.message); return ""; } finally { clearTimeout(t); }
         };
-        // 1. Artist search results: every artist link with its surroundings.
-        const sp = await get("/search/artists/?q=mac+miller");
-        const d = new DOMParser().parseFromString(sp.replace(/^\d+ /, ""), "text/html");
-        const links = [...d.querySelectorAll("a[href*='/artist/']")];
-        out.push("ARTIST LINKS: " + links.length);
-        links.slice(0, 12).forEach(a => out.push("LINK " + a.getAttribute("href") + " | " + JSON.stringify(a.textContent.trim().slice(0, 60)) + " | parent " + (a.parentElement ? a.parentElement.outerHTML.replace(/\s+/g, " ").slice(0, 500) : "")));
-        // 2. The search box's suggestion source in AOTY's scripts.
-        for (const src of ["/scripts/loggedInScript.js", "/scripts/main.js"]) {
-          const t = await get(src);
-          let i = t.indexOf("autocomplete"), n = 0;
-          while (i >= 0 && n < 4) { out.push("AC " + src + ": " + t.slice(Math.max(0, i - 1500), i + 1500)); i = t.indexOf("autocomplete", i + 1500); n++; }
+        const me = (__ME__ || "").trim();
+        // 1. Your reviews page: its sort options.
+        const rp = await get("/user/" + me + "/reviews/");
+        const rd = new DOMParser().parseFromString(rp, "text/html");
+        [...rd.querySelectorAll("a[href*='sort'], a[href*='?'], select, option, #sortDrop, .menuDropSelected")].slice(0, 25)
+          .forEach(el => out.push("REVIEWS SORT: " + el.outerHTML.replace(/\s+/g, " ").slice(0, 400)));
+        // 2. An album page you rated: anything about friends' ratings.
+        const link = [...rd.querySelectorAll("a[href*='/album/']")].map(a => a.getAttribute("href")).find(h => /\/album\/\d+-[^/]+\.php/.test(h));
+        out.push("ALBUM: " + link);
+        if (link) {
+          const ap = await get(link);
+          let last = -5000, n = 0;
+          for (const m of ap.matchAll(/friend/gi)) {
+            if (m.index - last < 1200 || n >= 6) continue;
+            last = m.index; n++;
+            out.push("FRIEND CTX: " + ap.slice(Math.max(0, m.index - 300), m.index + 1200).replace(/\s+/g, " "));
+          }
+          out.push("FRIEND MENTIONS: " + n);
+          const ad = new DOMParser().parseFromString(ap, "text/html");
+          [...ad.querySelectorAll("a[href*='friend'], [class*='riend'], [id*='riend']")].slice(0, 8)
+            .forEach(el => out.push("FRIEND EL: " + el.outerHTML.replace(/\s+/g, " ").slice(0, 1500)));
         }
         return out.join("\n\n").slice(0, 40000);
         """#
         do {
-            let r = try await AOTYScraper.shared.runJS(js, args: [:], timeout: 50)
+            let r = try await AOTYScraper.shared.runJS(js.replacingOccurrences(of: "__ME__", with: "\"\(myUsername)\""), args: [:], timeout: 50)
             heartInfo = r
             UIPasteboard.general.string = r
         } catch {

@@ -18,7 +18,15 @@ struct AlbumDetailView: View {
 
     var body: some View {
         Group {
-            if let album { content(album) }
+            if let album {
+                content(album)
+                    // Pull down for fresh reviews and scores.
+                    .refreshable {
+                        if let slug { await AOTYScraper.shared.forget("/album/\(slug).php") }
+                        await AOTYScraper.shared.bypassCache()
+                        await load()
+                    }
+            }
             else if let error { ErrorView(message: error) { await load() } }
             else { ProgressView() }
         }
@@ -142,6 +150,7 @@ struct AlbumDetailView: View {
             if let me = a.me, me.albumID != nil {
                 Section {
                     MyAlbumCard(box: me, slug: slug, album: ShareAlbum(title: a.title, artist: a.artist, cover: a.coverURL))
+                        .id(me)      // a refresh brings in the latest score / review
                         .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
                 }
             }

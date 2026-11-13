@@ -127,6 +127,12 @@ struct MiniScore: View {
 
 func scoreColor(_ s: Double?) -> Color {
     guard let s else { return .gray }
+    // Settings → Color-blind friendly scores: blue / orange / purple instead of green / yellow / red.
+    if UserDefaults.standard.bool(forKey: "colorBlindScores") {
+        if s >= 70 { return Color(red: 0.25, green: 0.55, blue: 0.95) }
+        if s >= 50 { return Color(red: 0.98, green: 0.6, blue: 0.15) }
+        return Color(red: 0.62, green: 0.35, blue: 0.85)
+    }
     if s >= 70 { return .green }
     if s >= 50 { return .yellow.opacity(0.9) }
     return .red

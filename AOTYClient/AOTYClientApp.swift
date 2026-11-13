@@ -119,6 +119,7 @@ struct SettingsView: View {
     @State private var cacheBytes: Int64?
     @AppStorage(Appearance.key) private var appearance = Appearance.dark.rawValue
     @AppStorage("notesAlbumCheck") private var albumCheckOn = false
+    @AppStorage("colorBlindScores") private var colorBlind = false
     @State private var clearing = false
     @Environment(\.dismiss) private var dismiss
 
@@ -133,10 +134,11 @@ struct SettingsView: View {
                     Picker("Theme", selection: $appearance) {
                         ForEach(Appearance.allCases) { Text($0.name).tag($0.rawValue) }
                     }
+                    Toggle("Color-blind friendly scores", isOn: $colorBlind)
                 } header: {
                     Text("Appearance")
                 } footer: {
-                    Text("Black is pure black (best on OLED). Dim uses softer dark grays.")
+                    Text("Black is pure black (best on OLED). Dim uses softer dark grays. Color-blind friendly scores use blue, orange and purple instead of green, yellow and red.")
                 }
 
                 ProfileBackgroundSettings()
