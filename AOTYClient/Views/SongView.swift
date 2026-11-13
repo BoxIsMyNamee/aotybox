@@ -232,7 +232,6 @@ struct SongView: View {
         hit = found
         guard let found else {
             loading = false
-            tab = .ask
             kickOffAsk()
             return
         }
@@ -245,8 +244,6 @@ struct SongView: View {
         referents = await refsTask
         comments = await commentsTask
         loading = false
-        let empty = (lyrics?.segments.isEmpty ?? true) && song?.about == nil
-        if empty { tab = .ask }
         kickOffAsk()
     }
 
