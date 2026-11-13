@@ -489,7 +489,11 @@ struct ChallengeSheet: View {
     }
 
     private func check(_ web: WKWebView) {
-        web.evaluateJavaScript("[document.title, !!document.querySelector('#challenge-form, #challenge-stage, .cf-turnstile, #cf-challenge-running')]") { r, _ in
+        // Read the page from an isolated script world, so nothing is injected into the page
+        // Cloudflare's check is running on.
+        web.evaluateJavaScript("[document.title, !!document.querySelector('#challenge-form, #challenge-stage, .cf-turnstile, #cf-challenge-running')]",
+                               in: nil, in: .defaultClient) { result in
+            guard case let .success(r) = result else { return }
             guard let a = r as? [Any], let title = a.first as? String else { return }
             let blocked = (a.last as? Bool) == true || title.localizedCaseInsensitiveContains("just a moment")
             if !blocked, !passed {
@@ -522,12 +526,12 @@ struct WelcomeSignInSheet: View {
                          ? "All set. Tap Done to start."
                          : cloudflare
                            ? "First, AOTY's website (via Cloudflare) wants to check you're a person. Tap \u{201C}Verify you are human\u{201D} below. Cloudflare can be finicky: it may take a few tries or sit for a bit. If it keeps spinning, tap \u{21BB} to reload."
-                           : "Log in with your albumoftheyear.org account below. That's how the app shows your ratings and reviews and lets you rate, like and follow. Your password goes only to AOTY's website.")
+                           : "Log in to your albumoftheyear.org account below (tap the menu or Sign In on AOTY's site). That's how the app shows your ratings and reviews and lets you rate, like and follow. Your password goes only to AOTY's website. When you're signed in, tap Done.")
                         .font(.footnote).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(14).frame(maxWidth: .infinity, alignment: .leading).background(.bar)
-                AOTYWebView(url: URL(string: "https://www.albumoftheyear.org/account/")!, isLoading: $loading,
+                AOTYWebView(url: AOTYSession.home, isLoading: $loading,
                             onFinish: { web in ref.web = web; check(web) })
                     .overlay(alignment: .top) { if loading { ProgressView().padding(10) } }
             }
@@ -556,8 +560,8 @@ struct WelcomeSignInSheet: View {
            var u = document.querySelector(".userLinks a[href^='/user/']");
            return u ? u.getAttribute('href').split('/')[2] : (p ? (p.getAttribute('alt') || 'you') : 'you'); })()]
         """
-        web.evaluateJavaScript(js) { r, _ in
-            guard let a = r as? [Any], let title = a.first as? String else { return }
+        web.evaluateJavaScript(js, in: nil, in: .defaultClient) { result in
+            guard case let .success(r) = result, let a = r as? [Any], let title = a.first as? String else { return }
             cloudflare = (a.count > 1 && (a[1] as? Bool) == true) || title.localizedCaseInsensitiveContains("just a moment")
             let wasFirst = firstLoad
             if !cloudflare { firstLoad = false }
