@@ -28,9 +28,6 @@ struct UserReviewsView: View {
     @State private var sort: Sort = .best
     @State private var reviews: [UserReview] = []
     @State private var distribution: [DistributionRow] = []
-    @State private var followingOnly = false
-    @State private var followingDist: [DistributionRow]?
-    @State private var loadingFollowing = false
     @State private var total: Int?
     @State private var page = 1
     @State private var totalPages = 1
@@ -42,38 +39,10 @@ struct UserReviewsView: View {
             if range == nil {
                 if !distribution.isEmpty {
                     Section {
-                        Picker("Who", selection: $followingOnly) {
-                            Text("Everyone").tag(false)
-                            Text("People You Follow").tag(true)
+                        DistributionChart(rows: distribution) { label in
+                            push(UserReviewsRoute(slug: slug, title: title, range: label, artist: artist, cover: cover))
                         }
-                        .pickerStyle(.segmented)
-                        if followingOnly {
-                            if let f = followingDist {
-                                if f.allSatisfy({ $0.count == 0 }) {
-                                    Text("Nobody you follow has rated this yet.").font(.subheadline).foregroundStyle(.secondary)
-                                } else {
-                                    DistributionChart(rows: f)
-                                }
-                            } else if loadingFollowing {
-                                ProgressView().frame(maxWidth: .infinity)
-                            } else {
-                                Text("Couldn't load. Try again.").font(.subheadline).foregroundStyle(.secondary)
-                            }
-                        } else {
-                            DistributionChart(rows: distribution) { label in
-                                push(UserReviewsRoute(slug: slug, title: title, range: label, artist: artist, cover: cover))
-                            }
-                        }
-                    } header: { Text("Rating Distribution") } footer: {
-                        Text(followingOnly ? "How the people you follow rated it." : "Tap a row to see those reviews.")
-                    }
-                    .onChange(of: followingOnly) {
-                        guard followingOnly, followingDist == nil, let id = slug.split(separator: "-").first.map(String.init) else { return }
-                        Task {
-                            loadingFollowing = true; defer { loadingFollowing = false }
-                            followingDist = await AOTYAPI.shared.followingDistribution(albumID: id)
-                        }
-                    }
+                    } header: { Text("Rating Distribution") } footer: { Text("Tap a row to see those reviews.") }
                 }
             }
 
