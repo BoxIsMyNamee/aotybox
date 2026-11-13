@@ -32,7 +32,7 @@ struct DiagnosticsView: View {
                 Text("Loads each page the app uses and reports what came back. Takes a few seconds.")
             }
             Section {
-                Button(capturing ? "Capturing…" : "Capture friends & sort info") { Task { await captureHeart() } }
+                Button(capturing ? "Capturing…" : "Capture friends & sort info (2)") { Task { await captureHeart() } }
                     .disabled(capturing)
                 if let heartInfo {
                     Text(heartInfo.prefix(1500) + (heartInfo.count > 1500 ? "…" : ""))
@@ -59,32 +59,39 @@ struct DiagnosticsView: View {
         capturing = true; defer { capturing = false }
         let js = #"""
         const out = [];
-        const get = async (u) => {
+        const get = async (u, opt) => {
           const c = new AbortController(); const t = setTimeout(() => c.abort(), 15000);
-          try { return await (await fetch(u, { credentials: "include", signal: c.signal })).text(); }
-          catch (e) { out.push("FETCH " + u + " failed: " + e.message); return ""; } finally { clearTimeout(t); }
+          try { const r = await fetch(u, Object.assign({ credentials: "include", signal: c.signal }, opt || {})); return r.status + " " + r.url.replace(location.origin, "") + " :: " + await r.text(); }
+          catch (e) { return "ERR " + e.message; } finally { clearTimeout(t); }
         };
         const me = (__ME__ || "").trim();
-        // 1. Your reviews page: its sort options.
-        const rp = await get("/user/" + me + "/reviews/");
-        const rd = new DOMParser().parseFromString(rp, "text/html");
-        [...rd.querySelectorAll("a[href*='sort'], a[href*='?'], select, option, #sortDrop, .menuDropSelected")].slice(0, 25)
-          .forEach(el => out.push("REVIEWS SORT: " + el.outerHTML.replace(/\s+/g, " ").slice(0, 400)));
-        // 2. An album page you rated: anything about friends' ratings.
-        const link = [...rd.querySelectorAll("a[href*='/album/']")].map(a => a.getAttribute("href")).find(h => /\/album\/\d+-[^/]+\.php/.test(h));
-        out.push("ALBUM: " + link);
-        if (link) {
-          const ap = await get(link);
-          let last = -5000, n = 0;
-          for (const m of ap.matchAll(/friend/gi)) {
-            if (m.index - last < 1200 || n >= 6) continue;
-            last = m.index; n++;
-            out.push("FRIEND CTX: " + ap.slice(Math.max(0, m.index - 300), m.index + 1200).replace(/\s+/g, " "));
+        const ratingsOf = h => { const d = new DOMParser().parseFromString(h.replace(/^[^:]*:: /, ""), "text/html");
+          return [...d.querySelectorAll(".albumReviewRow .rating, .reviewRow .rating, .rating")].slice(0, 8).map(e => e.textContent.trim()).join(","); };
+        // 1. Do review pages sort by path or query? (first scores on each)
+        for (const p of ["/user/" + me + "/reviews/", "/user/" + me + "/reviews/highest/", "/user/" + me + "/reviews/lowest/",
+                         "/user/" + me + "/reviews/?sort=highest", "/user/" + me + "/reviews/popular/", "/user/" + me + "/reviews/?type=highest"]) {
+          const h = await get(p);
+          out.push("REVIEWS " + p + " -> " + h.slice(0, 60).split(" :: ")[0] + " · scores " + ratingsOf(h));
+        }
+        // 2. "Following" distribution on an album (AOTY's own toggle on album pages).
+        const al = await get("/user/" + me + "/reviews/");
+        const m = al.match(/\/album\/(\d+)-[^"']+\.php/);
+        if (m) {
+          out.push("ALBUM ID " + m[1] + " " + m[0]);
+          const r = await get("/scripts/changeDistribution.php", { method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest" },
+            body: "type=album&format=following&itemID=" + m[1] });
+          out.push("DIST FOLLOWING: " + r.slice(0, 3000).replace(/\s+/g, " "));
+          const slug = m[0].replace("/album/", "").replace(".php", "");
+          for (const q of ["?type=following", "?following=1", "?sort=following", "following/"]) {
+            const h = await get("/album/" + slug + "/user-reviews/" + q);
+            const d = new DOMParser().parseFromString(h.replace(/^[^:]*:: /, ""), "text/html");
+            out.push("USER-REVIEWS " + q + " -> " + h.slice(0, 80).split(" :: ")[0] + " · names " +
+              [...d.querySelectorAll(".userReviewName a")].slice(0, 6).map(e => e.textContent.trim()).join(","));
           }
-          out.push("FRIEND MENTIONS: " + n);
-          const ad = new DOMParser().parseFromString(ap, "text/html");
-          [...ad.querySelectorAll("a[href*='friend'], [class*='riend'], [id*='riend']")].slice(0, 8)
-            .forEach(el => out.push("FRIEND EL: " + el.outerHTML.replace(/\s+/g, " ").slice(0, 1500)));
+          const ap = await get(m[0]);
+          const i = ap.search(/changeDistribution|Following/);
+          out.push("ALBUM PAGE TOGGLE: " + (i < 0 ? "none" : ap.slice(Math.max(0, i - 600), i + 900).replace(/\s+/g, " ")));
         }
         return out.join("\n\n").slice(0, 40000);
         """#
