@@ -224,6 +224,7 @@ struct SongView: View {
         guard let found else {
             loading = false
             tab = .ask
+            SongChatView(context: aiContext, thread: chat, nothingOnGenius: true).autoAsk()
             return
         }
         async let songTask = try? GeniusClient.song(id: found.id)
@@ -237,6 +238,7 @@ struct SongView: View {
         loading = false
         let empty = (lyrics?.segments.isEmpty ?? true) && song?.about == nil
         if empty { tab = .ask }
+        SongChatView(context: aiContext, thread: chat, nothingOnGenius: false).autoAsk()
     }
 
     // MARK: AI context
@@ -411,6 +413,15 @@ struct SongChatView: View {
         Rules: quote no more than 4 lyric lines in total, and only in Noteworthy Lyrics. If a credit can't be \
         verified, write "Unconfirmed" instead of guessing. No other sections and no closing summary.
         """
+    }
+
+    /// The Settings → AI "Ask right away on Learn" kick-off: the meaning question, sent in the background.
+    @MainActor func autoAsk() {
+        guard UserDefaults.standard.bool(forKey: AISettings.autoAskKey), AISettings.isConfigured,
+              thread.messages.isEmpty, !thread.thinking else { return }
+        thread.input = meaningQuestion
+        let thread = thread, system = systemPrompt(structured: true)
+        Task { @MainActor in await Self.send(thread, system: system) }
     }
 
     /// Sends in a task that isn't tied to this view, and drops the keyboard so the tab bar comes back.

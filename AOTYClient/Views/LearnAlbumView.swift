@@ -92,7 +92,10 @@ struct LearnAlbumView: View {
 
     private func load() async {
         guard loading else { return }
-        defer { loading = false }
+        defer {
+            loading = false
+            SongChatView(context: context, thread: chat, nothingOnGenius: false, subject: "album").autoAsk()
+        }
         if let id = await GeniusClient.findAlbumID(artist: artist, album: album) {
             async let i = GeniusClient.albumInfo(id: id)
             async let t = GeniusClient.albumTracks(id: id)

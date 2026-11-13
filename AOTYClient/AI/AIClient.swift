@@ -60,6 +60,8 @@ enum AISettings {
     static let providerKey = "aiProvider"
     static let modelKey = "aiModel"
     static let baseURLKey = "aiBaseURL"
+    /// Ask "what is this about?" as soon as a Learn page opens.
+    static let autoAskKey = "aiAutoAskOnLearn"
 
     static var provider: AIProvider {
         AIProvider(rawValue: UserDefaults.standard.string(forKey: providerKey) ?? "") ?? .gemini

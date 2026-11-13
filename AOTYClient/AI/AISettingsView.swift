@@ -4,6 +4,7 @@ struct AISettingsView: View {
     @AppStorage(AISettings.providerKey) private var providerRaw = AIProvider.gemini.rawValue
     @AppStorage(AISettings.modelKey) private var model = ""
     @AppStorage(AISettings.baseURLKey) private var baseURL = ""
+    @AppStorage(AISettings.autoAskKey) private var autoAsk = false
     @State private var key = ""
     @State private var testResult: String?
     @State private var testing = false
@@ -37,6 +38,12 @@ struct AISettingsView: View {
                 if AISettings.apiKey(provider) != nil {
                     Button("Remove key", role: .destructive) { AISettings.setAPIKey(nil, provider); key = "" }
                 }
+            }
+
+            Section {
+                Toggle("Ask right away on Learn", isOn: $autoAsk)
+            } footer: {
+                Text("When you open Learn for a song or album, Ask AI starts on \"What is this about?\" in the background, so the answer is ready when you switch to it.")
             }
         }
         .navigationTitle("AI Assistant")
