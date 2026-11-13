@@ -95,6 +95,24 @@ actor AOTYAPI {
         return try await device("/", .me, Me.self)
     }
 
+    /// The rating breakdown among people you follow (AOTY's own "Following" toggle).
+    func followingDistribution(albumID: String) async -> [DistributionRow]? {
+        let js = #"""
+        const r = await fetch("/scripts/changeDistribution.php", { method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest" },
+          body: "type=album&format=following&itemID=" + encodeURIComponent(id) });
+        if (r.status != 200) return "ERR";
+        const d = new DOMParser().parseFromString("<table>" + await r.text() + "</table>", "text/html");
+        return JSON.stringify([...d.querySelectorAll("tr.distRow")].map(tr => {
+          const tds = tr.querySelectorAll("td");
+          const n = parseInt(((tds[1] && tds[1].textContent) || "").replace(/[^0-9]/g, ""), 10);
+          return { label: (tr.querySelector(".distLabel") || tds[0]).textContent.trim(), count: isNaN(n) ? 0 : n };
+        }));
+        """#
+        guard let out = try? await AOTYScraper.shared.runJS(js, args: ["id": albumID]), out != "ERR" else { return nil }
+        return try? JSONDecoder().decode([DistributionRow].self, from: Data(out.utf8))
+    }
+
     // MARK: Search (in app)
 
     struct ArtistHit: Decodable, Identifiable, Hashable { let path: String; let name: String; let image: String?; var id: String { path } }
