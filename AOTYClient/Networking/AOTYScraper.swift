@@ -56,6 +56,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         super.init()
         webView.navigationDelegate = self
         pruneOldCache()
+        blockHeavyResources()
     }
 
     enum Kind: String { case blocks, chart, album, userReviews, me, profile, follows, userReviewList, textBlocks, artist, artistSearch, notifications }
@@ -323,6 +324,16 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         if originReady, webView.url?.host?.contains("albumoftheyear.org") == true { return }
         try await navigate(to: URL(string: "https://www.albumoftheyear.org/robots.txt")!)
         originReady = true
+    }
+
+    /// The hidden reader never shows anything, so when it does load a whole page it skips
+    /// images, video and fonts (it only needs the HTML). Visible web views aren't affected.
+    private func blockHeavyResources() {
+        let rules = #"[{"trigger":{"url-filter":".*","resource-type":["image","media","font"]},"action":{"type":"block"}}]"#
+        WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "aoty-hidden-reader", encodedContentRuleList: rules) { [weak self] list, _ in
+            guard let list else { return }
+            Task { @MainActor in self?.webView.configuration.userContentController.add(list) }
+        }
     }
 
     /// The page parsers (extract.js, ~46 KB) are loaded into the hidden page once, not re-sent
