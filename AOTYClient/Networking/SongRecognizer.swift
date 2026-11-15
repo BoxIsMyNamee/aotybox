@@ -84,6 +84,8 @@ enum SongRecognizer {
             private let dft = try! vDSP.DiscreteFourierTransform(count: 2048, direction: .forward,
                                                                  transformType: .complexComplex, ofType: Float.self)
             private let zeros = [Float](repeating: 0, count: 2048)
+            private var outReal = [Float](repeating: 0, count: 2048)
+            private var outImag = [Float](repeating: 0, count: 2048)
 
             private func wrap(_ i: Int) -> Int { ((i % 256) + 256) % 256 }
 
@@ -92,10 +94,13 @@ enum SongRecognizer {
                 for (k, s) in batch.enumerated() { ring[ringPos + k] = Float(s) }
                 ringPos = (ringPos + batch.count) % 2048
                 let excerpt = Array(ring[ringPos...] + ring[..<ringPos])
-                let out = dft.transform(inputReal: vDSP.multiply(excerpt, window), inputImaginary: zeros)
+                let windowed: [Float] = vDSP.multiply(excerpt, window)
+                dft.transform(inputReal: windowed, inputImaginary: zeros, outputReal: &outReal, outputImaginary: &outImag)
                 var mags = [Float](repeating: 0, count: 1025)
                 for b in 0..<1025 {
-                    mags[b] = max((out.real[b] * out.real[b] + out.imaginary[b] * out.imaginary[b]) / 131072, 1e-10)
+                    let re: Float = outReal[b], im: Float = outImag[b]
+                    let power: Float = (re * re + im * im) / 131072
+                    mags[b] = max(power, 1e-10)
                 }
                 ffts[fftPos] = mags
                 fftPos = (fftPos + 1) % 256

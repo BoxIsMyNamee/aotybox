@@ -96,15 +96,21 @@ struct ListenSheet: View {
 
 /// Bars that rise and fall while listening.
 private struct ListeningWaves: View {
+    static func height(t: Double, i: Int) -> CGFloat {
+        let d = Double(i)
+        let a: Double = sin(t * (4 + d * 0.7) + d * 1.3)
+        let b: Double = sin(t * 2.3 + d * 2.1)
+        let wave: Double = (a + b) / 2
+        return CGFloat(12 + 44 * (wave + 1) / 2)
+    }
+
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30)) { ctx in
             let t = ctx.date.timeIntervalSinceReferenceDate
             HStack(alignment: .center, spacing: 5) {
                 ForEach(0..<9, id: \.self) { i in
-                    let d = Double(i)
-                    let wave = (sin(t * (4 + d * 0.7) + d * 1.3) + sin(t * 2.3 + d * 2.1)) / 2
                     Capsule().fill(.tint)
-                        .frame(width: 6, height: 12 + 44 * CGFloat((wave + 1) / 2))
+                        .frame(width: 6, height: Self.height(t: t, i: i))
                 }
             }
         }
