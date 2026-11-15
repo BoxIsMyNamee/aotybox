@@ -79,6 +79,24 @@ struct SongView: View {
 
     // MARK: Header
 
+    @State private var findingAlbum = false
+    @State private var albumMissing = false
+
+    /// Tapping the header opens this song's album (or the single itself) on AOTY.
+    private func openAlbum() async {
+        guard !findingAlbum else { return }
+        findingAlbum = true; defer { findingAlbum = false }
+        let name = song?.album ?? album ?? title
+        let who = song?.artist ?? artist
+        if let slug = await AOTYAPI.shared.findAlbumSlug(artist: who, title: name) {
+            pushArtist(AlbumRoute(slug: slug, title: name))
+        } else {
+            albumMissing = true
+            try? await Task.sleep(for: .seconds(2.5))
+            albumMissing = false
+        }
+    }
+
     private var header: some View {
         HStack(spacing: 14) {
             Cover(url: song?.art ?? hit?.art ?? albumCover, size: 84)
@@ -90,9 +108,15 @@ struct SongView: View {
                 .buttonStyle(.plain)
                 if let a = song?.album ?? album { Text(a).font(.caption).foregroundStyle(.tertiary) }
                 if let d = song?.releaseDate { Text(d).font(.caption).foregroundStyle(.tertiary) }
+                if albumMissing { Text("Couldn't find it on AOTY.").font(.caption).foregroundStyle(.secondary) }
             }
             Spacer()
+            if findingAlbum { ProgressView() }
         }
+        .contentShape(Rectangle())
+        .onTapGesture { Task { await openAlbum() } }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Opens the album on AOTY")
     }
 
     // MARK: Lyrics

@@ -20,7 +20,12 @@ struct ReleasesView: View {
                 HStack(alignment: .center) {
                     AOTYLogo().frame(height: 30)
                     Spacer()
-                    NotificationBell()
+                    HStack(spacing: 14) {
+                        ListenButton()
+                        NotificationBell()
+                    }
+                    .padding(.horizontal, 8)
+                    .glassEffect(.regular, in: Capsule())
                 }
                 .padding(.horizontal)
                 .padding(.top, 4)
