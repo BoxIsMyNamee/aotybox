@@ -1,23 +1,28 @@
 import SwiftUI
 import UIKit
+import ImageIO
 
 /// Two-level image cache: decoded images in memory (NSCache) plus raw bytes on disk
 /// (a dedicated 500 MB URLCache). Covers load once and stay put when you move between pages.
+///
+/// Images are decoded at the size they're shown (a 56 pt list cover becomes a ~256 px image,
+/// not the full-size original AOTY serves), which keeps memory low and scrolling smooth.
+/// The download itself happens once; every size is cut from the same saved bytes.
 final class ImageCache: @unchecked Sendable {
     static let shared = ImageCache()
 
     // NSCache is thread-safe; in-flight de-duplication lives in an actor.
-    private let memory: NSCache<NSURL, UIImage> = {
-        let c = NSCache<NSURL, UIImage>()
-        c.totalCostLimit = 150 * 1024 * 1024
+    private let memory: NSCache<NSString, UIImage> = {
+        let c = NSCache<NSString, UIImage>()
+        c.totalCostLimit = 120 * 1024 * 1024
         return c
     }()
     private let session: URLSession
     private let loader = Loader()
 
     private actor Loader {
-        var inFlight: [URL: Task<UIImage?, Never>] = [:]
-        func task(for url: URL, make: @Sendable @escaping () async -> UIImage?) -> Task<UIImage?, Never> {
+        var inFlight: [URL: Task<Data?, Never>] = [:]
+        func task(for url: URL, make: @Sendable @escaping () async -> Data?) -> Task<Data?, Never> {
             if let t = inFlight[url] { return t }
             let t = Task { await make() }
             inFlight[url] = t
@@ -34,27 +39,69 @@ final class ImageCache: @unchecked Sendable {
         session = URLSession(configuration: config)
     }
 
-    func cached(_ url: URL) -> UIImage? { memory.object(forKey: url as NSURL) }
+    /// Size buckets in pixels; nil means the full image (cover viewer, share cards).
+    private static func bucket(_ maxPixel: CGFloat?) -> Int? {
+        guard let maxPixel else { return nil }
+        return [128, 256, 512, 1024].first { CGFloat($0) >= maxPixel }
+    }
+
+    private static func key(_ url: URL, _ bucket: Int?) -> NSString {
+        (url.absoluteString + "#" + (bucket.map(String.init) ?? "full")) as NSString
+    }
+
+    /// Decodes at most `bucket` pixels on the long side, ready to draw.
+    private static func decode(_ data: Data, _ bucket: Int?) -> UIImage? {
+        if let bucket,
+           let src = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+           let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, [
+               kCGImageSourceCreateThumbnailFromImageAlways: true,
+               kCGImageSourceCreateThumbnailWithTransform: true,
+               kCGImageSourceShouldCacheImmediately: true,
+               kCGImageSourceThumbnailMaxPixelSize: bucket,
+           ] as CFDictionary) {
+            return UIImage(cgImage: cg)
+        }
+        guard let image = UIImage(data: data) else { return nil }
+        return image.preparingForDisplay() ?? image
+    }
+
+    private static func cost(_ image: UIImage) -> Int {
+        guard let cg = image.cgImage else { return 1 }
+        return cg.bytesPerRow * cg.height
+    }
+
+    private func remember(_ image: UIImage, _ url: URL, _ bucket: Int?) {
+        memory.setObject(image, forKey: Self.key(url, bucket), cost: Self.cost(image))
+    }
+
+    func cached(_ url: URL, maxPixel: CGFloat? = nil) -> UIImage? {
+        memory.object(forKey: Self.key(url, Self.bucket(maxPixel)))
+    }
 
     /// Memory, then the on-disk cache (decoded once, then kept in memory). No network.
-    func cachedIncludingDisk(_ url: URL) -> UIImage? {
-        if let hit = cached(url) { return hit }
+    func cachedIncludingDisk(_ url: URL, maxPixel: CGFloat? = nil) -> UIImage? {
+        let b = Self.bucket(maxPixel)
+        if let hit = memory.object(forKey: Self.key(url, b)) { return hit }
         guard let data = session.configuration.urlCache?.cachedResponse(for: URLRequest(url: url))?.data,
-              let image = UIImage(data: data) else { return nil }
-        let decoded = image.preparingForDisplay() ?? image
-        memory.setObject(decoded, forKey: url as NSURL, cost: data.count)
-        return decoded
+              let image = Self.decode(data, b) else { return nil }
+        remember(image, url, b)
+        return image
+    }
+
+    private func isOnDisk(_ url: URL) -> Bool {
+        session.configuration.urlCache?.cachedResponse(for: URLRequest(url: url)) != nil
     }
 
     /// Download images before a screen shows them, so nothing pops in. Waits at most `timeout`;
-    /// anything still loading keeps going in the background.
+    /// anything still loading keeps going in the background. Only the bytes are fetched here;
+    /// each view decodes them at its own size straight from disk.
     func warm(_ urls: [URL?], timeout: Double = 0.6) async {
-        let list = Array(Set(urls.compactMap { $0 })).filter { cached($0) == nil }
+        let list = Array(Set(urls.compactMap { $0 })).filter { !isOnDisk($0) }
         guard !list.isEmpty else { return }
         await withTaskGroup(of: Void.self) { group in
             group.addTask {
                 await withTaskGroup(of: Void.self) { inner in
-                    for u in list { inner.addTask { _ = await self.image(for: u) } }
+                    for u in list { inner.addTask { _ = await self.data(for: u) } }
                 }
             }
             group.addTask { try? await Task.sleep(for: .seconds(timeout)) }
@@ -63,21 +110,26 @@ final class ImageCache: @unchecked Sendable {
         }
     }
 
-    func image(for url: URL) async -> UIImage? {
-        if let hit = cached(url) { return hit }
-        let session = self.session, memory = self.memory
+    private func data(for url: URL) async -> Data? {
+        let session = self.session
         let task = await loader.task(for: url) {
             var request = URLRequest(url: url)
             request.cachePolicy = .returnCacheDataElseLoad
-            guard let (data, _) = try? await session.data(for: request),
-                  let image = UIImage(data: data) else { return nil }
-            let decoded = image.preparingForDisplay() ?? image
-            memory.setObject(decoded, forKey: url as NSURL, cost: data.count)
-            return decoded
+            guard let (data, resp) = try? await session.data(for: request),
+                  (resp as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true else { return nil }
+            return data
         }
         let result = await task.value
         await loader.finish(url)
         return result
+    }
+
+    func image(for url: URL, maxPixel: CGFloat? = nil) async -> UIImage? {
+        let b = Self.bucket(maxPixel)
+        if let hit = memory.object(forKey: Self.key(url, b)) { return hit }
+        guard let data = await data(for: url), let image = Self.decode(data, b) else { return nil }
+        remember(image, url, b)
+        return image
     }
 
     func clear() {
@@ -90,6 +142,8 @@ final class ImageCache: @unchecked Sendable {
 struct CachedImage<Placeholder: View>: View {
     let url: URL?
     var contentMode: ContentMode = .fill
+    /// Longest side in pixels it's shown at; nil decodes the full image.
+    var maxPixel: CGFloat? = nil
     @ViewBuilder var placeholder: () -> Placeholder
     @State private var image: UIImage?
 
@@ -103,18 +157,19 @@ struct CachedImage<Placeholder: View>: View {
         }
         .task(id: url) {
             guard let url else { image = nil; return }
-            if let hit = ImageCache.shared.cachedIncludingDisk(url) { image = hit; return }
+            if let hit = ImageCache.shared.cachedIncludingDisk(url, maxPixel: maxPixel) { image = hit; return }
             image = nil
-            let loaded = await ImageCache.shared.image(for: url)
+            let loaded = await ImageCache.shared.image(for: url, maxPixel: maxPixel)
             withAnimation(.easeIn(duration: 0.2)) { image = loaded }
         }
     }
 
-    init(url: URL?, contentMode: ContentMode = .fill, @ViewBuilder placeholder: @escaping () -> Placeholder) {
+    init(url: URL?, contentMode: ContentMode = .fill, maxPixel: CGFloat? = nil, @ViewBuilder placeholder: @escaping () -> Placeholder) {
         self.url = url
         self.contentMode = contentMode
+        self.maxPixel = maxPixel
         self.placeholder = placeholder
-        _image = State(initialValue: url.flatMap { ImageCache.shared.cachedIncludingDisk($0) })
+        _image = State(initialValue: url.flatMap { ImageCache.shared.cachedIncludingDisk($0, maxPixel: maxPixel) })
     }
 }
 
@@ -124,7 +179,7 @@ struct Avatar: View {
     var size: CGFloat = 36
 
     var body: some View {
-        CachedImage(url: url) {
+        CachedImage(url: url, maxPixel: size * 3) {
             Circle().fill(.quaternary.opacity(0.5))
         }
         .frame(width: size, height: size)

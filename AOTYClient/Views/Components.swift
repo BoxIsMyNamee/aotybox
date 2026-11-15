@@ -26,7 +26,7 @@ struct Cover: View {
     var size: CGFloat = 56
 
     var body: some View {
-        CachedImage(url: url) {
+        CachedImage(url: url, maxPixel: size * 3) {
             Rectangle().fill(.quaternary.opacity(0.5))
         }
         .frame(width: size, height: size)

@@ -61,9 +61,9 @@ struct AlbumDetailView: View {
         error = nil
         do {
             let a = try await AOTYAPI.shared.album(slug: slug)
-            await ImageCache.shared.warm([a.coverURL]
-                + (a.popularUserReviews ?? []).prefix(3).map(\.avatarURL)
-                + (a.reviews ?? []).prefix(15).map { $0.image.flatMap(URL.init(string:)) })
+            await ImageCache.shared.warm([a.coverURL] + (a.popularUserReviews ?? []).prefix(3).map(\.avatarURL))
+            // Critic logos sit further down: fetch them without holding the page back.
+            Task { await ImageCache.shared.warm((a.reviews ?? []).prefix(15).map { $0.image.flatMap(URL.init(string:)) }, timeout: 20) }
             album = a
         }
         catch is CancellationError {}
