@@ -111,8 +111,9 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
             return try await serialized {
                 try await self.withTimeout(30) {
                     try await self.ensureOrigin()
+                    try await self.ensureExtractor()
                     try await self.throttle()
-                    let body = self.extractorJS + """
+                    let body = """
 
                     let r, html;
                     try { r = await fetch(path, { credentials: "include", headers: { "Accept": "text/html" } }); html = await r.text(); }
@@ -202,7 +203,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         let body = form.map { k, v in
             (k.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? k) + "=" + (v.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? v)
         }.joined(separator: "&")
-        let js = extractorJS + """
+        let js = """
 
         const r = await fetch(path, { method: "POST", credentials: "include",
           headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest" },
@@ -215,6 +216,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         let out: String = try await serialized {
             try await self.withTimeout(30) {
                 try await self.ensureOrigin()
+                try await self.ensureExtractor()
                 try await self.throttle()
                 guard let s = try await self.webView.runAsyncJS(js, args: ["path": path, "form": body, "kind": kind.rawValue]) as? String else {
                     throw ScrapeError.script("no result")
@@ -266,7 +268,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
 
     private func runFetch(path: String, kind: Kind) async throws -> Outcome {
         try await throttle()
-        let body = extractorJS + """
+        let body = """
 
         const r = await fetch(path, { credentials: "include", headers: { "Accept": "text/html" } });
         const html = await r.text();
@@ -284,7 +286,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     private func runOnLoadedPage(kind: Kind, path: String, waitForBlocks: Bool = false) async throws -> Outcome {
-        let body = extractorJS + """
+        let body = """
 
         if (wait) { for (let i = 0; i < 20 && !document.querySelector(".albumBlock"); i++) await new Promise(r => setTimeout(r, 200)); }
         const html = document.documentElement.outerHTML;
@@ -299,6 +301,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
 
     private func evaluate(_ body: String, args: [String: Any], path: String) async throws -> Outcome {
         let result: Any?
+        try await ensureExtractor()
         do {
             result = try await webView.runAsyncJS(body, args: args)
         } catch {
@@ -322,7 +325,20 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
         originReady = true
     }
 
+    /// The page parsers (extract.js, ~46 KB) are loaded into the hidden page once, not re-sent
+    /// and re-compiled with every request. A new page load clears them, so this checks first.
+    private var extractorLoaded = false
+    private func ensureExtractor() async throws {
+        if extractorLoaded { return }
+        let present = (try? await webView.runAsyncJS("return typeof aotyExtract === 'function'", args: [:])) as? Bool
+        if present != true {
+            _ = try await webView.evaluateJavaScript(extractorJS + "\n;true", in: nil, contentWorld: .defaultClient)
+        }
+        extractorLoaded = true
+    }
+
     private func navigate(to url: URL) async throws {
+        extractorLoaded = false
         navContinuation?.resume(throwing: CancellationError())
         try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
             navContinuation = c
@@ -360,6 +376,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
                     self.navContinuation?.resume(throwing: ScrapeError.timeout)
                     self.navContinuation = nil
                     self.originReady = false
+                    self.extractorLoaded = false
                     cont.resume(throwing: ScrapeError.timeout)
                 }
             }
@@ -415,11 +432,20 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
     }
 
     private func store(_ path: String, _ data: Data) {
+        // Keep the in-memory copies bounded on long sessions (the disk copy stays).
+        if memory.count > 150 {
+            for (k, _) in memory.sorted(by: { $0.value.0 < $1.value.0 }).prefix(50) { memory[k] = nil }
+        }
         memory[path] = (Date(), data)
         try? data.write(to: key(path), options: .atomic)
     }
 
     // MARK: - WKNavigationDelegate
+
+    /// Any new page (ours, a redirect, or the site's own script) drops the loaded parsers.
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        extractorLoaded = false
+    }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         navContinuation?.resume()

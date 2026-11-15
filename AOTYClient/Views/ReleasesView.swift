@@ -161,7 +161,12 @@ private struct FeedList: View {
             let fresh = try await fetch(page + 1).filter { n in !albums.contains { $0.id == n.id } }
             Task { await ImageCache.shared.warm(fresh.map(\.coverURL), timeout: 20) }
             if fresh.isEmpty { canLoadMore = false } else { albums += fresh; page += 1 }
-        } catch { canLoadMore = false }
+        } catch {
+            // A dropped connection shouldn't end scrolling for good: pause, then let the
+            // last row try again when it next appears.
+            canLoadMore = false
+            Task { try? await Task.sleep(for: .seconds(5)); canLoadMore = true }
+        }
     }
 }
 
@@ -229,6 +234,7 @@ struct AOTYLogo: View {
 
 /// AOTY notifications: a bell with a red badge for unread ones; tap opens them on AOTY.
 struct NotificationBell: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var count = 0
     @State private var href = "/notifications/"
     @State private var showing = false
@@ -256,7 +262,10 @@ struct NotificationBell: View {
             NotificationsSheet(href: href).accentTint()
         }
         .onChange(of: showing) { if showing { count = 0 } }   // opening the list reads them on AOTY
-        .task {
+        // Checks every 3 minutes, only while the app is open (none in the background),
+        // and once right away when you come back to it.
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
             try? await Task.sleep(for: .seconds(2))      // let the first page load first
             while !Task.isCancelled {
                 await check(fresh: true)

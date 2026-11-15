@@ -30,13 +30,18 @@ final class GenreStore: ObservableObject {
         }
     }
 
+    // Formatters are slow to make, and this runs for every row as you scroll.
+    private static let inFmt: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"; return f
+    }()
+    private static let shortFmt: DateFormatter = { let f = DateFormatter(); f.dateFormat = "MMM d"; return f }()
+    private static let longFmt: DateFormatter = { let f = DateFormatter(); f.dateFormat = "MMM d, yyyy"; return f }()
+
     /// "Nov 6" from the album page's release date, once looked up.
     func date(for slug: String?) -> String? {
         guard let slug, let raw = dates[slug] else { return nil }
-        let inFmt = DateFormatter(); inFmt.locale = Locale(identifier: "en_US_POSIX"); inFmt.dateFormat = "yyyy-MM-dd"
-        guard let d = inFmt.date(from: String(raw.prefix(10))) else { return raw }
-        let out = DateFormatter(); out.dateFormat = Calendar.current.isDate(d, equalTo: .now, toGranularity: .year) ? "MMM d" : "MMM d, yyyy"
-        return out.string(from: d)
+        guard let d = Self.inFmt.date(from: String(raw.prefix(10))) else { return raw }
+        return (Calendar.current.isDate(d, equalTo: .now, toGranularity: .year) ? Self.shortFmt : Self.longFmt).string(from: d)
     }
 
     func label(for slug: String?) -> String? {
