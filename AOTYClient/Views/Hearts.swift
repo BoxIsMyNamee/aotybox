@@ -104,23 +104,31 @@ struct HeartSwipe: ViewModifier {
     /// Other people's reviews: swipe right to View the review instead of Learn.
     var view: (() -> Void)? = nil
     @ObservedObject private var store = LikeStore.shared
+    @AppStorage(SwipeChoice.reviewRight) private var right = SwipeChoice.Review.learn.rawValue
+    @AppStorage(SwipeChoice.reviewLeft) private var left = SwipeChoice.Review.like.rawValue
 
     func body(content: Content) -> some View {
         let isLiked = store.liked(reviewID, default: liked)
         let count = store.count(reviewID, default: likes)
-        content.swipeRow(
-            leading: view.map { v in SwipeAction(icon: "magnifyingglass", title: "View", color: .green, perform: v) }
-                ?? learn.map { l in SwipeAction(icon: "magnifyingglass", title: "Learn", color: .green, perform: l) },
-            trailing: SwipeAction(
-                icon: isLiked ? "heart.slash.fill" : "heart.fill",
-                title: isLiked ? "Unlike" : "Like",
-                color: .pink,
-                perform: {
-                    guard enabled, let id = reviewID else { return }
-                    Task { _ = await store.toggle(id: id, liked: isLiked, count: count) }
-                }
-            )
+        let learnAction = view.map { v in SwipeAction(icon: "magnifyingglass", title: "View", color: .green, perform: v) }
+            ?? learn.map { l in SwipeAction(icon: "magnifyingglass", title: "Learn", color: .green, perform: l) }
+        let likeAction = SwipeAction(
+            icon: isLiked ? "heart.slash.fill" : "heart.fill",
+            title: isLiked ? "Unlike" : "Like",
+            color: .pink,
+            perform: {
+                guard enabled, let id = reviewID else { return }
+                Task { _ = await store.toggle(id: id, liked: isLiked, count: count) }
+            }
         )
+        func pick(_ raw: String) -> SwipeAction? {
+            switch SwipeChoice.Review(rawValue: raw) ?? .none {
+            case .learn: learnAction
+            case .like: likeAction
+            case .none: nil
+            }
+        }
+        return content.swipeRow(leading: pick(right), trailing: pick(left))
     }
 }
 

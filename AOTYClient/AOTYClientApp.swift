@@ -146,6 +146,8 @@ struct SettingsView: View {
                     Text("Black is pure black (best on OLED). Dim uses softer dark grays. Color-blind friendly scores use blue, orange and purple instead of green, yellow and red.")
                 }
 
+                SwipeSettingsSection()
+
                 ProfileBackgroundSettings()
 
                 Section {

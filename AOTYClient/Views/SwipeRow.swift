@@ -108,10 +108,10 @@ extension View {
     func swipeRow(leading: SwipeAction?, trailing: SwipeAction?) -> some View {
         modifier(SwipeRow(leading: leading, trailing: trailing))
     }
-    /// Albums and songs: right = Learn (green), left = Open in the music app (blue).
+    /// Albums and songs: Learn (green) and Open in the music app (blue), on the sides chosen in
+    /// Settings → Swipe Actions (default right = Learn, left = Open).
     func swipeRow(learn: @escaping () -> Void, open: @escaping () -> Void) -> some View {
-        modifier(SwipeRow(leading: SwipeAction(icon: "magnifyingglass", title: "Learn", color: .green, perform: learn),
-                          trailing: SwipeAction(icon: "play.fill", title: "Open", color: .blue, perform: open)))
+        modifier(AlbumSwipe(learn: learn, open: open))
     }
 }
 
