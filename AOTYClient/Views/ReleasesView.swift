@@ -246,15 +246,6 @@ struct NotificationBell: View {
                 .symbolRenderingMode(.palette)
                 .foregroundStyle(count > 0 ? Color.red : Color.primary, Color.primary)
                 .frame(width: 40, height: 40)
-                .overlay(alignment: .topTrailing) {
-                    if count > 0 {
-                        Text(count > 99 ? "99+" : "\(count)")
-                            .font(.caption2.weight(.bold)).foregroundStyle(.white)
-                            .padding(.horizontal, 5).frame(minWidth: 18, minHeight: 18)
-                            .background(.red, in: Capsule())
-                            .offset(x: 4, y: -2)
-                    }
-                }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(count > 0 ? "\(count) notifications" : "Notifications")
