@@ -62,7 +62,14 @@ struct AOTYClientApp: App {
             }
             .onReceive(NotificationCenter.default.publisher(for: .musicAppOpenFailed)) { _ in musicLinkFailed = true }
             .onReceive(NotificationCenter.default.publisher(for: .openNotes)) { _ in tab = 4 }
+            .onReceive(NotificationCenter.default.publisher(for: ListenRequest.note)) { _ in tab = 0 }
             .onOpenURL { url in
+                // aotybox://listen  → the Lock Screen widget: Releases, then listen.
+                if url.scheme == "aotybox", url.host == "listen" {
+                    tab = 0
+                    ListenRequest.post()
+                    return
+                }
                 // aotybox://open?b64=<music link>  → find that album on AOTY (from the share sheet).
                 if url.scheme == "aotybox", url.host == "open" {
                     let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []

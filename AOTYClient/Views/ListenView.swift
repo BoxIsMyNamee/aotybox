@@ -16,6 +16,11 @@ struct ListenButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Identify a song")
+        // From the Lock Screen widget or control (possibly before this screen existed).
+        .onAppear { if ListenRequest.take() { showing = true } }
+        .onReceive(NotificationCenter.default.publisher(for: ListenRequest.note)) { _ in
+            if ListenRequest.take() { showing = true }
+        }
         .sheet(isPresented: $showing, onDismiss: {
             if let m = found {
                 found = nil

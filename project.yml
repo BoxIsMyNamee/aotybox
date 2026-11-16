@@ -21,8 +21,11 @@ targets:
         buildPhase: resources
       - path: AOTYClient/Art/aoty-logo@3x.png
         buildPhase: resources
+      - path: Shared
     dependencies:
       - target: AOTYShare
+        embed: true
+      - target: AOTYWidget
         embed: true
     info:
       path: Support/Info.plist
@@ -64,6 +67,27 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.harper.aotyclient.share
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: AOTYbox
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic
+        APPLICATION_EXTENSION_API_ONLY: YES
+
+  AOTYWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: AOTYWidget
+      - path: Shared
+    info:
+      path: Support/WidgetInfo.plist
+      properties:
+        CFBundleDisplayName: AOTY
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.harper.aotyclient.widget
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: AOTY
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
         APPLICATION_EXTENSION_API_ONLY: YES

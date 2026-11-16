@@ -3,12 +3,12 @@ import SwiftUI
 /// App accent color, stored as a hex string so it survives relaunches.
 enum Theme {
     static let key = "accentHex"
-    static let defaultHex = "#FF9500"
+    static let defaultHex = "#34C759"
 
     static let presets: [(String, String)] = [
-        ("Orange", "#FF9500"), ("Red", "#FF3B30"), ("Pink", "#FF2D55"), ("Purple", "#AF52DE"),
+        ("Green", "#34C759"), ("Orange", "#FF9500"), ("Red", "#FF3B30"), ("Pink", "#FF2D55"), ("Purple", "#AF52DE"),
         ("Indigo", "#5856D6"), ("Blue", "#007AFF"), ("Teal", "#30B0C7"), ("Mint", "#00C7BE"),
-        ("Green", "#34C759"), ("Yellow", "#FFCC00"), ("Brown", "#A2845E"), ("Gray", "#8E8E93"),
+        ("Yellow", "#FFCC00"), ("Brown", "#A2845E"), ("Gray", "#8E8E93"),
     ]
 }
 
@@ -16,7 +16,7 @@ extension Color {
     init(hex: String) {
         var s = hex.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "#", with: "")
         if s.count == 3 { s = s.map { "\($0)\($0)" }.joined() }
-        let v = UInt64(s, radix: 16) ?? 0xFF9500
+        let v = UInt64(s, radix: 16) ?? 0x34C759
         self.init(red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
     }
 
