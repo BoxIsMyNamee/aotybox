@@ -142,6 +142,26 @@ extension ProfileBackground {
     static let zoomKey = "profileBackgroundZoom"
 }
 
+/// Reads the saved focus/zoom directly so List's listRowBackground updates live while dragging/pinching.
+struct ProfileBackgroundLayer: View {
+    let image: UIImage
+    @AppStorage(ProfileBackground.xKey) private var focusX = 0.5
+    @AppStorage(ProfileBackground.yKey) private var focusY = 0.5
+    @AppStorage(ProfileBackground.zoomKey) private var zoom = 1.0
+
+    var body: some View {
+        FocusedFillImage(image: image, focusX: focusX, focusY: focusY, zoom: zoom)
+            .overlay {
+                LinearGradient(stops: [.init(color: .black.opacity(0.05), location: 0),
+                                       .init(color: .black.opacity(0.35), location: 0.45),
+                                       .init(color: Color(.systemBackground), location: 1)],
+                               startPoint: .top, endPoint: .bottom)
+            }
+            .clipped()
+            .padding(.horizontal, -40)
+    }
+}
+
 extension Notification.Name {
     static let adjustProfileBackground = Notification.Name("adjustProfileBackground")
 }
@@ -199,5 +219,74 @@ struct ProfileBackgroundSettings: View {
 
     private func resetPosition() {
         focusX = 0.5; focusY = 0.5; zoom = 1
+    }
+}
+
+/// UIKit gesture overlay so List/UICollectionView never swallows pan, pinch, or double-tap.
+struct PanPinchOverlay: UIViewRepresentable {
+    var onPan: (CGSize, CGSize) -> Void
+    var onPanEnd: () -> Void
+    var onPinch: (CGFloat) -> Void
+    var onPinchEnd: () -> Void
+    var onDoubleTap: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
+        pan.delegate = context.coordinator
+        view.addGestureRecognizer(pan)
+
+        let pinch = UIPinchGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePinch(_:)))
+        pinch.delegate = context.coordinator
+        view.addGestureRecognizer(pinch)
+
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleDoubleTap))
+        tap.numberOfTapsRequired = 2
+        view.addGestureRecognizer(tap)
+
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.parent = self
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var parent: PanPinchOverlay
+        init(parent: PanPinchOverlay) { self.parent = parent }
+
+        func gestureRecognizer(_ a: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith b: UIGestureRecognizer) -> Bool {
+            true
+        }
+
+        @objc func handlePan(_ g: UIPanGestureRecognizer) {
+            guard let v = g.view else { return }
+            switch g.state {
+            case .began, .changed:
+                let t = g.translation(in: v)
+                parent.onPan(CGSize(width: t.x, height: t.y), v.bounds.size)
+            case .ended, .cancelled, .failed:
+                parent.onPanEnd()
+            default: break
+            }
+        }
+
+        @objc func handlePinch(_ g: UIPinchGestureRecognizer) {
+            switch g.state {
+            case .began, .changed:
+                parent.onPinch(g.scale)
+            case .ended, .cancelled, .failed:
+                parent.onPinchEnd()
+            default: break
+            }
+        }
+
+        @objc func handleDoubleTap() {
+            parent.onDoubleTap()
+        }
     }
 }

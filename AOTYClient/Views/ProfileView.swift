@@ -245,42 +245,14 @@ struct UserProfileView: View {
         .padding(.horizontal, 16).padding(.bottom, 8)
     }
 
-    private func bgDragGesture(for image: UIImage) -> some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                if bgDragStart == nil { bgDragStart = (bgX, bgY) }
-                guard let start = bgDragStart else { return }
-                let slack = bgSlack(for: image)
-                if slack.width > 1 {
-                    let nx = start.0 - Double(value.translation.width / slack.width)
-                    bgX = min(max(nx, 0), 1)
-                }
-                if slack.height > 1 {
-                    let ny = start.1 - Double(value.translation.height / slack.height)
-                    bgY = min(max(ny, 0), 1)
-                }
-            }
-            .onEnded { _ in bgDragStart = nil }
-    }
-
-    private var bgPinchGesture: some Gesture {
-        MagnifyGesture()
-            .onChanged { value in
-                if bgZoomStart == nil { bgZoomStart = bgZoom }
-                guard let start = bgZoomStart else { return }
-                bgZoom = min(max(start * value.magnification, 1), 4)
-            }
-            .onEnded { _ in bgZoomStart = nil }
-    }
-
-    private func bgSlack(for image: UIImage) -> CGSize {
-        guard bgBoxSize.width > 0, bgBoxSize.height > 0 else { return .zero }
+    private func bgSlack(for image: UIImage, in box: CGSize) -> CGSize {
+        guard box.width > 0, box.height > 0 else { return .zero }
         let iw = max(image.size.width, 1)
         let ih = max(image.size.height, 1)
-        let fill = max(bgBoxSize.width / iw, bgBoxSize.height / ih)
+        let fill = max(box.width / iw, box.height / ih)
         let scale = fill * CGFloat(max(bgZoom, 1))
-        return CGSize(width: max(0, iw * scale - bgBoxSize.width),
-                      height: max(0, ih * scale - bgBoxSize.height))
+        return CGSize(width: max(0, iw * scale - box.width),
+                      height: max(0, ih * scale - box.height))
     }
 
     private func pollLastFM(user: String, url: URL) async {
@@ -370,18 +342,37 @@ struct UserProfileView: View {
                     aroundTheWeb(links)
                 }
             }
+            .overlay {
+                if adjustingBg, let bg {
+                    PanPinchOverlay(
+                        onPan: { translation, box in
+                            if bgDragStart == nil { bgDragStart = (bgX, bgY) }
+                            guard let start = bgDragStart else { return }
+                            let slack = bgSlack(for: bg, in: CGSize(width: box.width + 80, height: box.height))
+                            if slack.width > 1 {
+                                bgX = min(max(start.0 - Double(translation.width / slack.width), 0), 1)
+                            }
+                            if slack.height > 1 {
+                                bgY = min(max(start.1 - Double(translation.height / slack.height), 0), 1)
+                            }
+                        },
+                        onPanEnd: { bgDragStart = nil },
+                        onPinch: { scale in
+                            if bgZoomStart == nil { bgZoomStart = bgZoom }
+                            guard let start = bgZoomStart else { return }
+                            bgZoom = min(max(start * Double(scale), 1), 4)
+                        },
+                        onPinchEnd: { bgZoomStart = nil },
+                        onDoubleTap: {
+                            withAnimation(.smooth) { bgX = 0.5; bgY = 0.5; bgZoom = 1 }
+                        }
+                    )
+                }
+            }
             .listRowBackground(
                 Group {
                     if let bg {
-                        FocusedFillImage(image: bg, focusX: bgX, focusY: bgY, zoom: bgZoom)
-                            .overlay {
-                                LinearGradient(stops: [.init(color: .black.opacity(0.05), location: 0),
-                                                       .init(color: .black.opacity(0.35), location: 0.45),
-                                                       .init(color: Color(.systemBackground), location: 1)],
-                                               startPoint: .top, endPoint: .bottom)
-                            }
-                            .clipped()
-                            .padding(.horizontal, -40)
+                        ProfileBackgroundLayer(image: bg)
                     } else { Color.clear }
                 }
             )
