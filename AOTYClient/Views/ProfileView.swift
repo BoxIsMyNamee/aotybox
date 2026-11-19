@@ -267,16 +267,18 @@ struct UserProfileView: View {
                     statsBar(stats)
                 }
                 if let about = profile?.about, !about.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .center, spacing: 6) {
                         Text("ABOUT")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                         Text(linkified(about))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     }
+                    .frame(maxWidth: .infinity)
                 }
                 if let links = profile?.links, !links.isEmpty {
                     aroundTheWeb(links)
@@ -345,10 +347,11 @@ struct UserProfileView: View {
     }
 
     private func aroundTheWeb(_ links: [ProfileLink]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .center, spacing: 8) {
             Text("AROUND THE WEB")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
             ChipLayout(spacing: 8, centered: true) {
                 ForEach(links) { link in
                     if let url = link.destination {
@@ -382,6 +385,7 @@ struct UserProfileView: View {
                 lastFMNowPlayingRow(now)
             }
         }
+        .frame(maxWidth: .infinity)
     }
 
     private func lastFMNowPlayingRow(_ now: LastFM.NowPlaying) -> some View {
