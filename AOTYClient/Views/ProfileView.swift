@@ -109,6 +109,11 @@ struct UserProfileView: View {
     @State private var error: String?
     @State private var showFullProfile = false
     @State private var showAvatar = false
+    @State private var adjustingBg = false
+    @State private var savedBgState: (Double, Double, Double)?
+    @State private var bgBoxSize: CGSize = .zero
+    @State private var bgDragStart: (Double, Double)?
+    @State private var bgZoomStart: Double?
 
     private var ownProfile: Bool {
         isMe || (!myUsername.isEmpty && username.lowercased() == myUsername.lowercased())
@@ -187,6 +192,15 @@ struct UserProfileView: View {
                 AOTYWebSheet(url: url, title: username).accentTint()
             }
         }
+        .scrollDisabled(adjustingBg)
+        .onReceive(NotificationCenter.default.publisher(for: .adjustProfileBackground)) { _ in
+            guard ownProfile, ProfileBackground.load() != nil else { return }
+            savedBgState = (bgX, bgY, bgZoom)
+            adjustingBg = true
+        }
+        .safeAreaInset(edge: .bottom) {
+            if adjustingBg { bgAdjustBar }
+        }
         .task { if profile == nil && ratings.isEmpty { await load(force: false) } }
         .task(id: "\(profile?.links?.map(\.url).joined() ?? "")-\(lastFMRev)") {
             guard let lfm = LastFM.username(from: profile?.links) else { return }
@@ -198,6 +212,75 @@ struct UserProfileView: View {
                 await pollLastFM(user: lfm.user, url: lfm.url)
             }
         }
+    }
+
+    private var bgAdjustBar: some View {
+        VStack(spacing: 8) {
+            Text("Drag to move · Pinch to zoom · Double-tap to reset")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 12) {
+                Button("Cancel") {
+                    if let s = savedBgState { bgX = s.0; bgY = s.1; bgZoom = s.2 }
+                    savedBgState = nil
+                    adjustingBg = false
+                }
+                .buttonStyle(.glass)
+
+                Button("Reset") {
+                    withAnimation(.smooth) { bgX = 0.5; bgY = 0.5; bgZoom = 1 }
+                }
+                .buttonStyle(.glass)
+                .disabled(bgX == 0.5 && bgY == 0.5 && bgZoom == 1)
+
+                Button("Save") {
+                    savedBgState = nil
+                    adjustingBg = false
+                }
+                .buttonStyle(.glassProminent)
+            }
+        }
+        .padding(.horizontal, 18).padding(.vertical, 12)
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 22))
+        .padding(.horizontal, 16).padding(.bottom, 8)
+    }
+
+    private func bgDragGesture(for image: UIImage) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                if bgDragStart == nil { bgDragStart = (bgX, bgY) }
+                guard let start = bgDragStart else { return }
+                let slack = bgSlack(for: image)
+                if slack.width > 1 {
+                    let nx = start.0 - Double(value.translation.width / slack.width)
+                    bgX = min(max(nx, 0), 1)
+                }
+                if slack.height > 1 {
+                    let ny = start.1 - Double(value.translation.height / slack.height)
+                    bgY = min(max(ny, 0), 1)
+                }
+            }
+            .onEnded { _ in bgDragStart = nil }
+    }
+
+    private var bgPinchGesture: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                if bgZoomStart == nil { bgZoomStart = bgZoom }
+                guard let start = bgZoomStart else { return }
+                bgZoom = min(max(start * value.magnification, 1), 4)
+            }
+            .onEnded { _ in bgZoomStart = nil }
+    }
+
+    private func bgSlack(for image: UIImage) -> CGSize {
+        guard bgBoxSize.width > 0, bgBoxSize.height > 0 else { return .zero }
+        let iw = max(image.size.width, 1)
+        let ih = max(image.size.height, 1)
+        let fill = max(bgBoxSize.width / iw, bgBoxSize.height / ih)
+        let scale = fill * CGFloat(max(bgZoom, 1))
+        return CGSize(width: max(0, iw * scale - bgBoxSize.width),
+                      height: max(0, ih * scale - bgBoxSize.height))
     }
 
     private func pollLastFM(user: String, url: URL) async {
