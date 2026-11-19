@@ -211,15 +211,21 @@ struct ArtistView: View {
     }
 
     private func hero(_ a: AOTYAPI.Artist) -> some View {
-        ZStack(alignment: .bottomLeading) {
-            CachedImage(url: a.image.flatMap(URL.init(string:))) { Rectangle().fill(.quaternary.opacity(0.5)) }
-                .frame(maxWidth: .infinity).frame(height: 300).clipped()
-            LinearGradient(colors: [.clear, .black.opacity(0.75)], startPoint: .center, endPoint: .bottom)
-            Text(a.name).font(.largeTitle.bold()).foregroundStyle(.white).lineLimit(2).minimumScaleFactor(0.6)
-                .padding(16)
-        }
-        .frame(height: 300)
-        .clipShape(RoundedRectangle(cornerRadius: 18))
+        // The photo goes in an overlay so a wide image can't widen the layout and push the name off-screen.
+        Color.clear
+            .frame(maxWidth: .infinity).frame(height: 300)
+            .overlay {
+                CachedImage(url: a.image.flatMap(URL.init(string:))) { Rectangle().fill(.quaternary.opacity(0.5)) }
+            }
+            .clipped()
+            .overlay {
+                LinearGradient(colors: [.clear, .black.opacity(0.75)], startPoint: .center, endPoint: .bottom)
+            }
+            .overlay(alignment: .bottomLeading) {
+                Text(a.name).font(.largeTitle.bold()).foregroundStyle(.white).lineLimit(2).minimumScaleFactor(0.6)
+                    .padding(16)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
     private func scoreCell(_ label: String, _ score: Double?, _ sub: String?) -> some View {

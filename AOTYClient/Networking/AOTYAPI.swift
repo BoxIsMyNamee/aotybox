@@ -100,12 +100,12 @@ actor AOTYAPI {
     struct ArtistHit: Decodable, Identifiable, Hashable { let path: String; let name: String; let image: String?; var id: String { path } }
 
     func searchAlbums(_ q: String) async throws -> [AlbumBlock] {
-        let e = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q
+        let e = q.queryEncoded
         return try await device("/search/albums/?q=\(e)", .blocks, AlbumListResponse.self).albums
     }
 
     func searchArtists(_ q: String) async throws -> [ArtistHit] {
-        let e = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q
+        let e = q.queryEncoded
         struct R: Decodable { let artists: [ArtistHit]? }
         return try await device("/search/artists/?q=\(e)", .artistSearch, R.self).artists ?? []
     }
@@ -349,7 +349,7 @@ actor AOTYAPI {
                 .replacingOccurrences(of: #"\s+-\s+(single|ep)$"#, with: "", options: .regularExpression)
                 .filter { $0.isLetter || $0.isNumber }
         }
-        let q = "\(artist) \(title)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let q = "\(artist) \(title)".queryEncoded
         struct R: Decodable { let albums: [AlbumBlock] }
         guard let list = try? await device("/search/albums/?q=\(q)", .blocks, R.self).albums, !list.isEmpty else { return nil }
         let t = norm(title), a = norm(artist)
@@ -361,7 +361,7 @@ actor AOTYAPI {
 
     /// Best guess at an artist's AOTY page from their name.
     func findArtistPath(name: String) async -> String? {
-        let q = name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? name
+        let q = name.queryEncoded
         struct R: Decodable { let paths: [String] }
         return (try? await device("/search/artists/?q=\(q)", .artistSearch, R.self))?.paths.first
     }

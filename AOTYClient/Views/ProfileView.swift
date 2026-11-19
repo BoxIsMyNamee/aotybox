@@ -91,6 +91,9 @@ struct UserProfileView: View {
     var fallbackColor: String? = nil
     var isMe: Bool = false
     @AppStorage(ProfileBackground.revKey) private var bgRev = 0
+    @AppStorage(ProfileBackground.xKey) private var bgX = 0.5
+    @AppStorage(ProfileBackground.yKey) private var bgY = 0.5
+    @AppStorage(ProfileBackground.zoomKey) private var bgZoom = 1.0
     @AppStorage(LastFM.revKey) private var lastFMRev = 0
     var onChangeUser: (() -> Void)? = nil
     var onAutoDetect: (() -> Void)? = nil
@@ -287,7 +290,7 @@ struct UserProfileView: View {
             .listRowBackground(
                 Group {
                     if let bg {
-                        Image(uiImage: bg).resizable().scaledToFill()
+                        FocusedFillImage(image: bg, focusX: bgX, focusY: bgY, zoom: bgZoom)
                             .overlay {
                                 LinearGradient(stops: [.init(color: .black.opacity(0.05), location: 0),
                                                        .init(color: .black.opacity(0.35), location: 0.45),

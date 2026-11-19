@@ -108,9 +108,46 @@ enum ProfileBackground {
     }
 }
 
-/// Settings row: pick, preview, or remove the background.
+/// Fills its frame with the image, cropped around a saved focus point and zoom.
+struct FocusedFillImage: View {
+    let image: UIImage
+    var focusX: Double = 0.5
+    var focusY: Double = 0.5
+    var zoom: Double = 1
+
+    var body: some View {
+        GeometryReader { geo in
+            let size = fittedSize(geo.size)
+            let dx: CGFloat = (geo.size.width - size.width) * CGFloat(focusX)
+            let dy: CGFloat = (geo.size.height - size.height) * CGFloat(focusY)
+            Image(uiImage: image).resizable()
+                .frame(width: size.width, height: size.height)
+                .offset(x: dx, y: dy)
+        }
+        .clipped()
+    }
+
+    private func fittedSize(_ box: CGSize) -> CGSize {
+        let iw: CGFloat = max(image.size.width, 1)
+        let ih: CGFloat = max(image.size.height, 1)
+        let fill: CGFloat = max(box.width / iw, box.height / ih)
+        let scale: CGFloat = fill * CGFloat(max(zoom, 1))
+        return CGSize(width: iw * scale, height: ih * scale)
+    }
+}
+
+extension ProfileBackground {
+    static let xKey = "profileBackgroundX"
+    static let yKey = "profileBackgroundY"
+    static let zoomKey = "profileBackgroundZoom"
+}
+
+/// Settings row: pick, preview, position, or remove the background.
 struct ProfileBackgroundSettings: View {
     @AppStorage(ProfileBackground.revKey) private var rev = 0
+    @AppStorage(ProfileBackground.xKey) private var focusX = 0.5
+    @AppStorage(ProfileBackground.yKey) private var focusY = 0.5
+    @AppStorage(ProfileBackground.zoomKey) private var zoom = 1.0
     @State private var item: PhotosPickerItem?
     @State private var image: UIImage?
     @State private var failed = false
@@ -118,17 +155,18 @@ struct ProfileBackgroundSettings: View {
     var body: some View {
         Section {
             if let image {
-                Image(uiImage: image).resizable().scaledToFill()
-                    .frame(height: 120).frame(maxWidth: .infinity)
+                FocusedFillImage(image: image, focusX: focusX, focusY: focusY, zoom: zoom)
+                    .frame(height: 200).frame(maxWidth: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                positionControls
             }
             PhotosPicker(selection: $item, matching: .images) {
                 Label(image == nil ? "Choose Image" : "Change Image", systemImage: "photo")
             }
             if image != nil {
                 Button("Remove Background", role: .destructive) {
-                    ProfileBackground.remove(); image = nil; rev += 1
+                    ProfileBackground.remove(); image = nil; resetPosition(); rev += 1
                 }
             }
         } header: {
@@ -142,10 +180,30 @@ struct ProfileBackgroundSettings: View {
             Task {
                 failed = false
                 if let data = try? await item.loadTransferable(type: Data.self), ProfileBackground.save(data) {
-                    image = ProfileBackground.load(); rev += 1
+                    image = ProfileBackground.load(); resetPosition(); rev += 1
                 } else { failed = true }
                 self.item = nil
             }
         }
+    }
+
+    @ViewBuilder private var positionControls: some View {
+        slider("Horizontal", value: $focusX, range: 0...1)
+        slider("Vertical", value: $focusY, range: 0...1)
+        slider("Zoom", value: $zoom, range: 1...3)
+        if focusX != 0.5 || focusY != 0.5 || zoom != 1 {
+            Button("Reset Position") { resetPosition() }
+        }
+    }
+
+    private func slider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
+        HStack {
+            Text(title).frame(width: 90, alignment: .leading)
+            Slider(value: value, in: range)
+        }
+    }
+
+    private func resetPosition() {
+        focusX = 0.5; focusY = 0.5; zoom = 1
     }
 }

@@ -88,8 +88,18 @@ enum GeniusClient {
 
     static func search(artist: String, title: String) async -> SongHit? {
         let cleanTitle = title.replacingOccurrences(of: #"\s*[\(\[].*?(feat|ft|with|prod)\.?[^\)\]]*[\)\]]"#, with: "", options: [.regularExpression, .caseInsensitive])
-        let q = "\(artist) \(cleanTitle)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        guard let resp = try? await json("/api/search/song?q=\(q)&per_page=5"),
+        if let hit = await searchOnce(query: "\(artist) \(cleanTitle)", artist: artist, title: cleanTitle) { return hit }
+        // "Aesop Rock & Blockhead", "A, B", "A x B", "A feat. B": try the lead artist alone.
+        let lead = artist.components(separatedBy: [",", "&", "×"]).first?
+            .replacingOccurrences(of: #"\s+(x|and|feat\.?|ft\.?|with)\s+.*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+            .trimmingCharacters(in: .whitespaces) ?? artist
+        if !lead.isEmpty, lead != artist,
+           let hit = await searchOnce(query: "\(lead) \(cleanTitle)", artist: lead, title: cleanTitle) { return hit }
+        return nil
+    }
+
+    private static func searchOnce(query: String, artist: String, title cleanTitle: String) async -> SongHit? {
+        guard let resp = try? await json("/api/search/song?q=\(query.queryEncoded)&per_page=5"),
               let sections = resp["sections"] as? [[String: Any]] else { return nil }
         let results = sections.flatMap { ($0["hits"] as? [[String: Any]]) ?? [] }.compactMap { $0["result"] as? [String: Any] }
         let norm = { (s: String) in s.lowercased().folding(options: .diacriticInsensitive, locale: nil).filter { $0.isLetter || $0.isNumber } }
@@ -98,7 +108,7 @@ enum GeniusClient {
         let pick = results.first { norm(artistName($0)).contains(a.prefix(6)) && norm(($0["title"] as? String) ?? "").hasPrefix(t.prefix(8)) }
             ?? results.first { norm(($0["title"] as? String) ?? "").hasPrefix(t.prefix(8)) }
         guard let r = pick, let id = r["id"] as? Int, let u = (r["url"] as? String).flatMap(URL.init(string:)) else { return nil }
-        return SongHit(id: id, url: u, title: (r["title"] as? String) ?? title, artist: artistName(r),
+        return SongHit(id: id, url: u, title: (r["title"] as? String) ?? cleanTitle, artist: artistName(r),
                        art: (r["song_art_image_url"] as? String).flatMap(URL.init(string:)))
     }
 
@@ -106,7 +116,7 @@ enum GeniusClient {
 
     /// Genius album id for an artist + title (search, then match names).
     static func findAlbumID(artist: String, album: String) async -> Int? {
-        let q = "\(artist) \(album)".addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let q = "\(artist) \(album)".queryEncoded
         guard let resp = try? await json("/api/search/album?q=\(q)&per_page=5"),
               let sections = resp["sections"] as? [[String: Any]] else { return nil }
         let results = sections.flatMap { ($0["hits"] as? [[String: Any]]) ?? [] }.compactMap { $0["result"] as? [String: Any] }

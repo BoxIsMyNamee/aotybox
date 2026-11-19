@@ -1,5 +1,15 @@
 import Foundation
 
+extension String {
+    /// Safe as one query value: unlike `.urlQueryAllowed`, also escapes `&`, `+`, `=`, `?`, `#`
+    /// (a raw "&" cut searches like "Aesop Rock & Blockhead" in half).
+    var queryEncoded: String {
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "&+=?#/")
+        return addingPercentEncoding(withAllowedCharacters: allowed) ?? self
+    }
+}
+
 // Shapes mirror src/types.ts in edideaur/AOTY-api.
 // Only the fields the app uses are declared; JSONDecoder ignores the rest.
 
