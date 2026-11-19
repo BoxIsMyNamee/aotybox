@@ -368,7 +368,7 @@ struct UserProfileView: View {
             push(SongRoute(artist: now.artist, title: now.title, album: now.album, cover: now.cover))
         } label: {
             HStack(spacing: 10) {
-                Cover(url: now.cover, size: 42, corner: 8)
+                Cover(url: now.cover, size: 42)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
                         EqualizerBars(playing: true)
