@@ -128,10 +128,60 @@ enum LastFM {
             }
         }
         if coverURL == nil {
+            coverURL = await fetchLastFMInfoCover(apiKey: apiKey, artist: artist, title: title, album: album)
+        }
+        if coverURL == nil {
             coverURL = await fallbackCover(artist: artist, title: title, album: album)
         }
 
         return .playing(NowPlaying(username: username, title: title, artist: artist, album: album, cover: coverURL, profileURL: profileURL))
+    }
+
+    private static func fetchLastFMInfoCover(apiKey: String, artist: String, title: String, album: String?) async -> URL? {
+        let key = "lfm|\(artist.lowercased())|\(album?.lowercased() ?? "")|\(title.lowercased())" as NSString
+        if let hit = coverCache.object(forKey: key) { return hit as URL }
+
+        var attempts: [[URLQueryItem]] = []
+        if let album, !album.isEmpty {
+            attempts.append([
+                URLQueryItem(name: "method", value: "album.getInfo"),
+                URLQueryItem(name: "artist", value: artist),
+                URLQueryItem(name: "album", value: album),
+                URLQueryItem(name: "api_key", value: apiKey),
+                URLQueryItem(name: "format", value: "json"),
+            ])
+        }
+        attempts.append([
+            URLQueryItem(name: "method", value: "track.getInfo"),
+            URLQueryItem(name: "artist", value: artist),
+            URLQueryItem(name: "track", value: title),
+            URLQueryItem(name: "api_key", value: apiKey),
+            URLQueryItem(name: "format", value: "json"),
+        ])
+
+        for items in attempts {
+            var c = URLComponents(string: "https://ws.audioscrobbler.com/2.0/")!
+            c.queryItems = items
+            guard let url = c.url else { continue }
+            var req = URLRequest(url: url)
+            req.timeoutInterval = 5
+            guard let (data, resp) = try? await URLSession.shared.data(for: req),
+                  (resp as? HTTPURLResponse)?.statusCode == 200,
+                  let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+            let images = (root["album"] as? [String: Any])?["image"] as? [[String: Any]]
+                ?? ((root["track"] as? [String: Any])?["album"] as? [String: Any])?["image"] as? [[String: Any]]
+            if let images {
+                for img in images.reversed() {
+                    if let s = (img["#text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !s.isEmpty, !s.contains(placeholderHash),
+                       let u = httpsURL(s) {
+                        coverCache.setObject(u as NSURL, forKey: key)
+                        return u
+                    }
+                }
+            }
+        }
+        return nil
     }
 
     /// Verifies an API key against Last.fm's API.
