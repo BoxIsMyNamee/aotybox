@@ -142,27 +142,43 @@ extension ProfileBackground {
     static let zoomKey = "profileBackgroundZoom"
 }
 
-/// Settings row: pick, preview, position, or remove the background.
+/// Settings row: pick, preview (tap to pan & pinch), or remove the background.
 struct ProfileBackgroundSettings: View {
     @AppStorage(ProfileBackground.revKey) private var rev = 0
     @AppStorage(ProfileBackground.xKey) private var focusX = 0.5
     @AppStorage(ProfileBackground.yKey) private var focusY = 0.5
     @AppStorage(ProfileBackground.zoomKey) private var zoom = 1.0
+    @AppStorage("profileUsername") private var myUsername = ""
     @State private var item: PhotosPickerItem?
     @State private var image: UIImage?
+    @State private var profile: Profile?
+    @State private var editing = false
     @State private var failed = false
 
     var body: some View {
         Section {
             if let image {
-                FocusedFillImage(image: image, focusX: focusX, focusY: focusY, zoom: zoom)
-                    .frame(height: 200).frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                positionControls
+                Button { editing = true } label: {
+                    ProfileHeaderMock(image: image, focusX: focusX, focusY: focusY, zoom: zoom,
+                                      username: myUsername, profile: profile)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(alignment: .topTrailing) {
+                            Label("Adjust", systemImage: "arrow.up.left.and.arrow.down.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 10).padding(.vertical, 5)
+                                .background(.black.opacity(0.55), in: Capsule())
+                                .padding(10)
+                        }
+                }
+                .buttonStyle(.plain)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
             }
             PhotosPicker(selection: $item, matching: .images) {
                 Label(image == nil ? "Choose Image" : "Change Image", systemImage: "photo")
+            }
+            if image != nil && (focusX != 0.5 || focusY != 0.5 || zoom != 1) {
+                Button("Reset Position") { resetPosition() }
             }
             if image != nil {
                 Button("Remove Background", role: .destructive) {
@@ -172,9 +188,15 @@ struct ProfileBackgroundSettings: View {
         } header: {
             Text("Profile Background")
         } footer: {
-            Text(failed ? "Couldn't use that image. Try another one." : "Shown behind the top of your profile. Only on this phone.")
+            Text(failed ? "Couldn't use that image. Try another one."
+                 : (image == nil ? "Shown behind the top of your profile. Only on this phone."
+                    : "Tap the preview to drag and pinch the image into place."))
         }
         .onAppear { image = ProfileBackground.load() }
+        .task(id: myUsername) {
+            guard !myUsername.isEmpty, profile == nil else { return }
+            profile = try? await AOTYAPI.shared.profile(username: myUsername)
+        }
         .onChange(of: item) {
             guard let item else { return }
             Task {
@@ -185,25 +207,183 @@ struct ProfileBackgroundSettings: View {
                 self.item = nil
             }
         }
-    }
-
-    @ViewBuilder private var positionControls: some View {
-        slider("Horizontal", value: $focusX, range: 0...1)
-        slider("Vertical", value: $focusY, range: 0...1)
-        slider("Zoom", value: $zoom, range: 1...3)
-        if focusX != 0.5 || focusY != 0.5 || zoom != 1 {
-            Button("Reset Position") { resetPosition() }
-        }
-    }
-
-    private func slider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
-        HStack {
-            Text(title).frame(width: 90, alignment: .leading)
-            Slider(value: value, in: range)
+        .sheet(isPresented: $editing) {
+            if let image {
+                ProfileBackgroundEditor(image: image, username: myUsername, profile: profile,
+                                        focusX: $focusX, focusY: $focusY, zoom: $zoom)
+            }
         }
     }
 
     private func resetPosition() {
         focusX = 0.5; focusY = 0.5; zoom = 1
+    }
+}
+
+/// Interactive drag + pinch editor showing the full-width profile header preview.
+private struct ProfileBackgroundEditor: View {
+    let image: UIImage
+    let username: String
+    let profile: Profile?
+    @Binding var focusX: Double
+    @Binding var focusY: Double
+    @Binding var zoom: Double
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var boxSize: CGSize = .zero
+    @State private var dragStart: (Double, Double)?
+    @State private var zoomStart: Double?
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                ProfileHeaderMock(image: image, focusX: focusX, focusY: focusY, zoom: zoom,
+                                  username: username, profile: profile)
+                    .background {
+                        GeometryReader { geo in
+                            Color.clear
+                                .onAppear { boxSize = geo.size }
+                                .onChange(of: geo.size) { _, s in boxSize = s }
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .gesture(dragGesture)
+                    .simultaneousGesture(pinchGesture)
+                    .onTapGesture(count: 2) {
+                        withAnimation(.smooth) { focusX = 0.5; focusY = 0.5; zoom = 1 }
+                    }
+
+                Spacer()
+
+                Text("Drag to move · Pinch to zoom · Double-tap to reset")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 24)
+            }
+            .background(Color(.systemBackground))
+            .navigationTitle("Position Background")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Reset") {
+                        withAnimation(.smooth) { focusX = 0.5; focusY = 0.5; zoom = 1 }
+                    }
+                    .disabled(focusX == 0.5 && focusY == 0.5 && zoom == 1)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }.fontWeight(.semibold)
+                }
+            }
+        }
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                if dragStart == nil { dragStart = (focusX, focusY) }
+                guard let start = dragStart else { return }
+                let slack = currentSlack()
+                if slack.width > 1 {
+                    let nx = start.0 - Double(value.translation.width / slack.width)
+                    focusX = min(max(nx, 0), 1)
+                }
+                if slack.height > 1 {
+                    let ny = start.1 - Double(value.translation.height / slack.height)
+                    focusY = min(max(ny, 0), 1)
+                }
+            }
+            .onEnded { _ in dragStart = nil }
+    }
+
+    private var pinchGesture: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                if zoomStart == nil { zoomStart = zoom }
+                guard let start = zoomStart else { return }
+                zoom = min(max(start * value.magnification, 1), 4)
+            }
+            .onEnded { _ in zoomStart = nil }
+    }
+
+    private func currentSlack() -> CGSize {
+        guard boxSize.width > 0, boxSize.height > 0 else { return .zero }
+        let iw = max(image.size.width, 1)
+        let ih = max(image.size.height, 1)
+        let fill = max(boxSize.width / iw, boxSize.height / ih)
+        let scale = fill * CGFloat(max(zoom, 1))
+        return CGSize(width: max(0, iw * scale - boxSize.width),
+                      height: max(0, ih * scale - boxSize.height))
+    }
+}
+
+/// Renders a realistic preview of the user's profile header over the chosen background.
+private struct ProfileHeaderMock: View {
+    let image: UIImage
+    let focusX: Double
+    let focusY: Double
+    let zoom: Double
+    let username: String
+    let profile: Profile?
+
+    private var displayName: String {
+        profile?.displayName ?? (username.isEmpty ? "Your Profile" : username)
+    }
+
+    var body: some View {
+        let parts = UserProfileView.splitName(displayName)
+        VStack(alignment: .leading, spacing: 14) {
+            Color.clear.frame(height: 120)
+            HStack(spacing: 16) {
+                Avatar(url: (profile?.avatar).flatMap(URL.init(string:)), name: displayName, size: 80)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(parts.name)
+                        .font(.system(.title, design: .default).weight(.bold))
+                        .lineLimit(2).minimumScaleFactor(0.7)
+                        .foregroundStyle((profile?.nameColor).map { Color(hex: $0) } ?? .primary)
+                        .shadow(color: .black.opacity(0.95), radius: 2, x: 0, y: 1)
+                        .shadow(color: .black.opacity(0.85), radius: 6, x: 0, y: 2)
+                    if let handle = parts.handle {
+                        Text(handle)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .shadow(color: .black.opacity(0.95), radius: 2, x: 0, y: 1)
+                            .shadow(color: .black.opacity(0.75), radius: 4, x: 0, y: 2)
+                    }
+                }
+            }
+            if let stats = profile?.stats, !stats.isEmpty {
+                HStack(spacing: 0) {
+                    ForEach(Array(stats.prefix(4).enumerated()), id: \.offset) { idx, s in
+                        if idx > 0 { Divider().frame(height: 32) }
+                        VStack(spacing: 3) {
+                            Text(s.value)
+                                .font(.system(.headline, design: .rounded).weight(.bold).monospacedDigit())
+                                .lineLimit(1).minimumScaleFactor(0.7)
+                            Text(s.label.uppercased())
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1).minimumScaleFactor(0.75)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.vertical, 10)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+            }
+        }
+        .padding(.top, 12).padding(.horizontal, 16).padding(.bottom, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .allowsHitTesting(false)
+        .background {
+            FocusedFillImage(image: image, focusX: focusX, focusY: focusY, zoom: zoom)
+                .overlay {
+                    LinearGradient(stops: [.init(color: .black.opacity(0.05), location: 0),
+                                           .init(color: .black.opacity(0.35), location: 0.45),
+                                           .init(color: Color(.systemBackground), location: 1)],
+                                   startPoint: .top, endPoint: .bottom)
+                }
+                .clipped()
+        }
     }
 }
