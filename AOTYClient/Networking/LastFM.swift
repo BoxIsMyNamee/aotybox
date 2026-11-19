@@ -121,11 +121,14 @@ enum LastFM {
             for img in images.reversed() {
                 if let s = (img["#text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
                    !s.isEmpty, !s.contains(placeholderHash),
-                   let u = URL(string: s) {
+                   let u = httpsURL(s) {
                     coverURL = u
                     break
                 }
             }
+        }
+        if coverURL == nil {
+            coverURL = await fallbackCover(artist: artist, title: title, album: album)
         }
 
         return .playing(NowPlaying(username: username, title: title, artist: artist, album: album, cover: coverURL, profileURL: profileURL))
@@ -187,11 +190,61 @@ enum LastFM {
                   let html = String(data: data, encoding: .utf8),
                   html.contains("chartlist-row") else { continue }
             if let np = parseNowPlaying(html: html, username: username, profileURL: profileURL) {
-                return .playing(np)
+                if np.cover != nil { return .playing(np) }
+                let cover = await fallbackCover(artist: np.artist, title: np.title, album: np.album)
+                return .playing(NowPlaying(username: np.username, title: np.title, artist: np.artist, album: np.album, cover: cover, profileURL: np.profileURL))
             }
             return .idle
         }
         return .failed
+    }
+
+    private static let coverCache = NSCache<NSString, NSURL>()
+
+    private static func httpsURL(_ raw: String) -> URL? {
+        let s = raw.hasPrefix("http://") ? "https://" + raw.dropFirst(7) : raw
+        return URL(string: s)
+    }
+
+    /// Last.fm often omits artwork or sends a generic star placeholder; iTunes fills it in cleanly.
+    private static func fallbackCover(artist: String, title: String, album: String?) async -> URL? {
+        let key = "\(artist.lowercased())|\(album?.lowercased() ?? "")|\(title.lowercased())" as NSString
+        if let hit = coverCache.object(forKey: key) { return hit as URL }
+
+        let queries: [(String, String)] = {
+            var q: [(String, String)] = []
+            if let album, !album.isEmpty {
+                q.append(("\(artist) \(album)", "album"))
+            }
+            q.append(("\(artist) \(title)", "song"))
+            return q
+        }()
+
+        for (term, entity) in queries {
+            var c = URLComponents(string: "https://itunes.apple.com/search")!
+            c.queryItems = [
+                URLQueryItem(name: "term", value: term),
+                URLQueryItem(name: "entity", value: entity),
+                URLQueryItem(name: "limit", value: "3"),
+            ]
+            guard let url = c.url else { continue }
+            var req = URLRequest(url: url)
+            req.timeoutInterval = 5
+            guard let (data, resp) = try? await URLSession.shared.data(for: req),
+                  (resp as? HTTPURLResponse)?.statusCode == 200,
+                  let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let results = root["results"] as? [[String: Any]] else { continue }
+            for item in results {
+                if let art = item["artworkUrl100"] as? String {
+                    let hi = art.replacingOccurrences(of: "100x100bb", with: "300x300bb")
+                    if let u = httpsURL(hi) {
+                        coverCache.setObject(u as NSURL, forKey: key)
+                        return u
+                    }
+                }
+            }
+        }
+        return nil
     }
 
     static func parseNowPlaying(html: String, username: String, profileURL: URL) -> NowPlaying? {
@@ -219,7 +272,7 @@ enum LastFM {
                 let hiRes = src
                     .replacingOccurrences(of: "/34s/", with: "/174s/")
                     .replacingOccurrences(of: "/64s/", with: "/174s/")
-                coverURL = URL(string: hiRes)
+                coverURL = httpsURL(hiRes)
             }
             if let alt = firstMatch(#"\balt="([^"]*)""#, in: imgTag) {
                 let decoded = decodeEntities(alt).trimmingCharacters(in: .whitespacesAndNewlines)
