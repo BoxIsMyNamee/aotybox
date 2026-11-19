@@ -540,6 +540,8 @@ struct FlowChips: View {
 
 struct ChipLayout: Layout {
     var spacing: CGFloat = 6
+    var centered: Bool = false
+
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? 320
         var x: CGFloat = 0, y: CGFloat = 0, rowH: CGFloat = 0
@@ -550,13 +552,44 @@ struct ChipLayout: Layout {
         }
         return CGSize(width: width, height: y + rowH)
     }
+
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, rowH: CGFloat = 0
+        guard !subviews.isEmpty else { return }
+        if !centered {
+            var x = bounds.minX, y = bounds.minY, rowH: CGFloat = 0
+            for v in subviews {
+                let s = v.sizeThatFits(.unspecified)
+                if x > bounds.minX && x + s.width > bounds.maxX { x = bounds.minX; y += rowH + spacing; rowH = 0 }
+                v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
+                x += s.width + spacing; rowH = max(rowH, s.height)
+            }
+            return
+        }
+        var rows: [[(LayoutSubview, CGSize)]] = []
+        var cur: [(LayoutSubview, CGSize)] = []
+        var rowW: CGFloat = 0
         for v in subviews {
             let s = v.sizeThatFits(.unspecified)
-            if x > bounds.minX && x + s.width > bounds.maxX { x = bounds.minX; y += rowH + spacing; rowH = 0 }
-            v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
-            x += s.width + spacing; rowH = max(rowH, s.height)
+            if !cur.isEmpty && rowW + spacing + s.width > bounds.width {
+                rows.append(cur)
+                cur = [(v, s)]
+                rowW = s.width
+            } else {
+                rowW += (cur.isEmpty ? 0 : spacing) + s.width
+                cur.append((v, s))
+            }
+        }
+        if !cur.isEmpty { rows.append(cur) }
+        var y = bounds.minY
+        for row in rows {
+            let totalW = row.reduce(CGFloat(0)) { $0 + $1.1.width } + CGFloat(max(0, row.count - 1)) * spacing
+            let rowH = row.reduce(CGFloat(0)) { max($0, $1.1.height) }
+            var x = bounds.minX + max(0, (bounds.width - totalW) / 2)
+            for (v, s) in row {
+                v.place(at: CGPoint(x: x, y: y + (rowH - s.height) / 2), proposal: ProposedViewSize(s))
+                x += s.width + spacing
+            }
+            y += rowH + spacing
         }
     }
 }

@@ -91,6 +91,7 @@ struct UserProfileView: View {
     var fallbackColor: String? = nil
     var isMe: Bool = false
     @AppStorage(ProfileBackground.revKey) private var bgRev = 0
+    @AppStorage(LastFM.revKey) private var lastFMRev = 0
     var onChangeUser: (() -> Void)? = nil
     var onAutoDetect: (() -> Void)? = nil
 
@@ -162,12 +163,12 @@ struct UserProfileView: View {
         .environment(\.swipeRowBackground, Color(.secondarySystemGroupedBackground))
         .listSectionSpacing(.compact)
         .contentMargins(.top, 4, for: .scrollContent)
-        .refreshable { await load(force: true) }
+        .refreshable { await refresh() }
         .toolbar {
             if isMe {
                 ToolbarItem(placement: .topBarLeading) { Menu {
                     Button { showFullProfile = true } label: { Label("Open full profile", systemImage: "safari") }
-                    Button { Task { await load(force: true) } } label: { Label("Refresh", systemImage: "arrow.clockwise") }
+                    Button { Task { await refresh() } } label: { Label("Refresh", systemImage: "arrow.clockwise") }
                     if let onChangeUser { Button(action: onChangeUser) { Label("Not you? Set username", systemImage: "person.crop.circle.badge.questionmark") } }
                     if let onAutoDetect { Button(action: onAutoDetect) { Label("Detect automatically", systemImage: "wand.and.stars") } }
                 } label: { Image(systemName: "ellipsis") } }
@@ -184,19 +185,38 @@ struct UserProfileView: View {
             }
         }
         .task { if profile == nil && ratings.isEmpty { await load(force: false) } }
-        .task(id: profile?.links) {
+        .task(id: "\(profile?.links?.map(\.url).joined() ?? "")-\(lastFMRev)") {
             guard let lfm = LastFM.username(from: profile?.links) else { return }
+            // Check right away when an API key is added/changed or links arrive.
+            await pollLastFM(user: lfm.user, url: lfm.url)
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(25))
+                try? await Task.sleep(for: .seconds(15))
                 if Task.isCancelled { break }
-                let now = await LastFM.nowPlaying(username: lfm.user, profileURL: lfm.url)
-                if let cover = now?.cover {
-                    await ImageCache.shared.warm([cover], timeout: 0.4)
-                }
-                if !Task.isCancelled {
-                    lastFMPlaying = now
-                }
+                await pollLastFM(user: lfm.user, url: lfm.url)
             }
+        }
+    }
+
+    private func pollLastFM(user: String, url: URL) async {
+        let res = await LastFM.fetchStatus(username: user, profileURL: url)
+        guard !Task.isCancelled else { return }
+        switch res {
+        case let .playing(now):
+            if let cover = now.cover {
+                await ImageCache.shared.warm([cover], timeout: 0.4)
+            }
+            if !Task.isCancelled, lastFMPlaying != now {
+                var t = Transaction(); t.disablesAnimations = true
+                withTransaction(t) { lastFMPlaying = now }
+            }
+        case .idle:
+            if !Task.isCancelled, lastFMPlaying != nil {
+                var t = Transaction(); t.disablesAnimations = true
+                withTransaction(t) { lastFMPlaying = nil }
+            }
+        case .failed:
+            // Keep existing state on a transient network hiccup so the card never flickers away.
+            break
         }
     }
 
@@ -329,10 +349,7 @@ struct UserProfileView: View {
             Text("AROUND THE WEB")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            if let now = lastFMPlaying {
-                lastFMNowPlayingRow(now)
-            }
-            ChipLayout(spacing: 8) {
+            ChipLayout(spacing: 8, centered: true) {
                 ForEach(links) { link in
                     if let url = link.destination {
                         Button {
@@ -359,6 +376,10 @@ struct UserProfileView: View {
                         }
                     }
                 }
+            }
+            .frame(maxWidth: .infinity)
+            if let now = lastFMPlaying {
+                lastFMNowPlayingRow(now)
             }
         }
     }
@@ -441,38 +462,56 @@ struct UserProfileView: View {
         list.filter { $0.username.lowercased() != username.lowercased() }
     }
 
+    /// Pull-to-refresh: runs in an unstructured task so SwiftUI's refreshable gesture cancellation
+    /// never strands the UIKit spinner or leaves `loading` stuck.
+    private func refresh() async {
+        await Task { @MainActor in
+            await AOTYScraper.shared.forget("/user/\(username)/")
+            AOTYScraper.shared.bypassCache()
+            await load(force: true)
+        }.value
+    }
+
     private func load(force: Bool) async {
-        loading = true; error = nil
+        let hadProfile = profile != nil
+        if !hadProfile { loading = true }
+        error = nil
         defer { loading = false }
         if force { await AOTYScraper.shared.forget("/user/\(username)/") }
         do {
             let p = try await AOTYAPI.shared.profile(username: username)
-            async let lfmTask: LastFM.NowPlaying? = {
-                guard let lfm = LastFM.username(from: p.links) else { return nil }
-                return await LastFM.nowPlaying(username: lfm.user, profileURL: lfm.url)
+            async let lfmTask: LastFM.FetchResult = {
+                guard let lfm = LastFM.username(from: p.links) else { return .idle }
+                return await LastFM.fetchStatus(username: lfm.user, profileURL: lfm.url)
             }()
             await ImageCache.shared.warm([p.avatar.flatMap(URL.init(string:))]
                 + (p.reviews ?? []).prefix(5).map(\.coverURL)
                 + (p.recent ?? []).prefix(3).map(\.coverURL)
-                + (p.following ?? []).prefix(8).map { $0.avatar.flatMap(URL.init(string:)) })
+                + (p.following ?? []).prefix(8).map { $0.avatar.flatMap(URL.init(string:)) },
+                timeout: hadProfile ? 0.35 : 0.6)
             // Gather everything first, then show it all at once (no sections popping in).
             var newRatings = p.recent ?? []          // AOTY's own mixed order
             if newRatings.isEmpty { newRatings = (try? await AOTYAPI.shared.userRatings(username: username, page: 1)) ?? [] }
             var newFriends = excludeSelf(p.following ?? [])
             if newFriends.isEmpty { newFriends = excludeSelf((try? await AOTYAPI.shared.following(username: username)) ?? []) }
-            let newLastFM = await lfmTask
-            if let cover = newLastFM?.cover {
-                await ImageCache.shared.warm([cover], timeout: 0.4)
+            let lfmRes = await lfmTask
+            if case let .playing(np) = lfmRes, let cover = np.cover {
+                await ImageCache.shared.warm([cover], timeout: 0.35)
             }
             var t = Transaction(); t.disablesAnimations = true
             withTransaction(t) {
                 profile = p
                 ratings = newRatings
                 friends = newFriends
-                lastFMPlaying = newLastFM
+                switch lfmRes {
+                case let .playing(np): lastFMPlaying = np
+                case .idle: lastFMPlaying = nil
+                case .failed: break
+                }
             }
+        } catch is CancellationError {
         } catch {
-            self.error = error.localizedDescription
+            if !hadProfile { self.error = error.localizedDescription }
         }
     }
 

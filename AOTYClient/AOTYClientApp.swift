@@ -125,10 +125,12 @@ struct SettingsView: View {
     @AppStorage(Appearance.key) private var appearance = Appearance.dark.rawValue
     @AppStorage("notesAlbumCheck") private var albumCheckOn = false
     @AppStorage("colorBlindScores") private var colorBlind = false
+    @AppStorage(LastFM.revKey) private var lastFMRev = 0
     @State private var clearing = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
+        let _ = lastFMRev
         NavigationStack {
             Form {
                 Section("Accent Color") {
@@ -172,6 +174,9 @@ struct SettingsView: View {
                 Section("Music App") {
                     NavigationLink { MusicAppSettingsView() } label: {
                         LabeledContent("Long-press opens", value: MusicAppLink.name)
+                    }
+                    NavigationLink { LastFMSettingsView() } label: {
+                        LabeledContent("Last.fm API key", value: LastFM.apiKey != nil ? "Added" : "Optional")
                     }
                 }
 
