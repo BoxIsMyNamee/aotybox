@@ -100,10 +100,15 @@ struct UserProfileView: View {
     @State private var profile: Profile?
     @State private var ratings: [AlbumBlock] = []
     @State private var friends: [FollowUser] = []
+    @State private var lastFMPlaying: LastFM.NowPlaying?
     @State private var loading = false
     @State private var error: String?
     @State private var showFullProfile = false
     @State private var showAvatar = false
+
+    private var ownProfile: Bool {
+        isMe || (!myUsername.isEmpty && username.lowercased() == myUsername.lowercased())
+    }
 
     var body: some View {
         List {
@@ -119,7 +124,7 @@ struct UserProfileView: View {
             if let reviews = profile?.reviews, !reviews.isEmpty {
                 Section("Reviews") {
                     ForEach(reviews.prefix(5)) { r in
-                        ProfileReviewRow(review: r, own: isMe)
+                        ProfileReviewRow(review: r, own: ownProfile)
                             .environment(\.shareAuthor, ShareAuthor(name: profile?.displayName ?? fallbackName ?? username,
                                                                     color: profile?.nameColor ?? fallbackColor,
                                                                     avatar: profile?.avatar.flatMap(URL.init(string:))))
@@ -133,16 +138,16 @@ struct UserProfileView: View {
             Section("Recently Rated") {
                 if ratings.isEmpty && loading { ProgressView().frame(maxWidth: .infinity) }
                 else if ratings.isEmpty { Text(error ?? "No ratings yet.").foregroundStyle(.secondary) }
-                ForEach(ratings.prefix(3)) { a in RatingRow(album: a, isMe: isMe) }
+                ForEach(ratings.prefix(3)) { a in RatingRow(album: a, isMe: ownProfile) }
                 if !ratings.isEmpty {
-                    Button { push(ProfileRatingsRoute(username: username, path: profile?.ratingsPath, isMe: isMe)) } label: {
+                    Button { push(ProfileRatingsRoute(username: username, path: profile?.ratingsPath, isMe: ownProfile)) } label: {
                         Label("View All Ratings", systemImage: "list.number").foregroundStyle(.tint)
                     }
                 }
             }
 
             if !friends.isEmpty {
-                Section(isMe ? "Friends" : "Following") {
+                Section(ownProfile ? "Friends" : "Following") {
                     FriendsRow(friends: friends)
                         .listRowInsets(EdgeInsets(top: 10, leading: 0, bottom: 10, trailing: 0))
                 }
@@ -179,6 +184,20 @@ struct UserProfileView: View {
             }
         }
         .task { if profile == nil && ratings.isEmpty { await load(force: false) } }
+        .task(id: profile?.links) {
+            guard let lfm = LastFM.username(from: profile?.links) else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(25))
+                if Task.isCancelled { break }
+                let now = await LastFM.nowPlaying(username: lfm.user, profileURL: lfm.url)
+                if let cover = now?.cover {
+                    await ImageCache.shared.warm([cover], timeout: 0.4)
+                }
+                if !Task.isCancelled {
+                    lastFMPlaying = now
+                }
+            }
+        }
     }
 
     /// AOTY serves small "thumbs"; ask for the full-size picture for the viewer.
@@ -196,8 +215,8 @@ struct UserProfileView: View {
     }
 
     @ViewBuilder private var header: some View {
-        let bg = isMe ? ProfileBackground.load() : nil
         let _ = bgRev
+        let bg = ownProfile ? ProfileBackground.load() : nil
         Section {
             VStack(alignment: .leading, spacing: 14) {
                 if bg != nil { Color.clear.frame(height: 120) }     // let the picture show above you
@@ -212,8 +231,15 @@ struct UserProfileView: View {
                             .font(.system(.title, design: .default).weight(.bold))
                             .lineLimit(2).minimumScaleFactor(0.7)
                             .foregroundStyle((profile?.nameColor ?? fallbackColor).map { Color(hex: $0) } ?? .primary)
+                            .shadow(color: .black.opacity(0.95), radius: 2, x: 0, y: 1)
+                            .shadow(color: .black.opacity(0.85), radius: 6, x: 0, y: 2)
                         if let handle = parts.handle {
-                            Text(handle).font(.subheadline.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+                            Text(handle)
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .shadow(color: .black.opacity(0.95), radius: 2, x: 0, y: 1)
+                                .shadow(color: .black.opacity(0.75), radius: 4, x: 0, y: 2)
                         }
                     }
                 }
@@ -288,7 +314,7 @@ struct UserProfileView: View {
 
         switch s.label.lowercased() {
         case "ratings":
-            Button { push(ProfileRatingsRoute(username: username, path: profile?.ratingsPath, isMe: isMe)) } label: { cell }
+            Button { push(ProfileRatingsRoute(username: username, path: profile?.ratingsPath, isMe: ownProfile)) } label: { cell }
                 .buttonStyle(.plain)
         case "reviews":
             Button { push(ProfileReviewsRoute(username: username)) } label: { cell }
@@ -303,6 +329,9 @@ struct UserProfileView: View {
             Text("AROUND THE WEB")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+            if let now = lastFMPlaying {
+                lastFMNowPlayingRow(now)
+            }
             ChipLayout(spacing: 8) {
                 ForEach(links) { link in
                     if let url = link.destination {
@@ -330,6 +359,62 @@ struct UserProfileView: View {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    private func lastFMNowPlayingRow(_ now: LastFM.NowPlaying) -> some View {
+        Button {
+            push(SongRoute(artist: now.artist, title: now.title, album: now.album, cover: now.cover))
+        } label: {
+            HStack(spacing: 10) {
+                Cover(url: now.cover, size: 42, corner: 8)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 5) {
+                        EqualizerBars(playing: true)
+                        Text("Listening on Last.fm")
+                    }
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tint)
+                    Text(now.title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(now.artist)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(10)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+            .contentShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                push(SongRoute(artist: now.artist, title: now.title, album: now.album, cover: now.cover))
+            } label: {
+                Label("Open in Learn", systemImage: "text.book.closed")
+            }
+            Button {
+                Task {
+                    let q = (now.album ?? now.title).replacingOccurrences(of: #"\s+-\s+(Single|EP)$"#, with: "", options: .regularExpression)
+                    if let slug = await AOTYAPI.shared.findAlbumSlug(artist: now.artist, title: q) {
+                        push(AlbumRoute(slug: slug, title: q))
+                    }
+                }
+            } label: {
+                Label("Find Release on AOTY", systemImage: "square.stack")
+            }
+            Button {
+                openURL(now.profileURL)
+            } label: {
+                Label("Open Last.fm Profile", systemImage: "safari")
             }
         }
     }
@@ -362,6 +447,10 @@ struct UserProfileView: View {
         if force { await AOTYScraper.shared.forget("/user/\(username)/") }
         do {
             let p = try await AOTYAPI.shared.profile(username: username)
+            async let lfmTask: LastFM.NowPlaying? = {
+                guard let lfm = LastFM.username(from: p.links) else { return nil }
+                return await LastFM.nowPlaying(username: lfm.user, profileURL: lfm.url)
+            }()
             await ImageCache.shared.warm([p.avatar.flatMap(URL.init(string:))]
                 + (p.reviews ?? []).prefix(5).map(\.coverURL)
                 + (p.recent ?? []).prefix(3).map(\.coverURL)
@@ -371,11 +460,16 @@ struct UserProfileView: View {
             if newRatings.isEmpty { newRatings = (try? await AOTYAPI.shared.userRatings(username: username, page: 1)) ?? [] }
             var newFriends = excludeSelf(p.following ?? [])
             if newFriends.isEmpty { newFriends = excludeSelf((try? await AOTYAPI.shared.following(username: username)) ?? []) }
+            let newLastFM = await lfmTask
+            if let cover = newLastFM?.cover {
+                await ImageCache.shared.warm([cover], timeout: 0.4)
+            }
             var t = Transaction(); t.disablesAnimations = true
             withTransaction(t) {
                 profile = p
                 ratings = newRatings
                 friends = newFriends
+                lastFMPlaying = newLastFM
             }
         } catch {
             self.error = error.localizedDescription
