@@ -625,11 +625,21 @@ function aotyMe(doc) {
 function aotyProfile(doc, html, pageURL) {
   var text = (doc.body ? doc.body.textContent : "").replace(/\s+/g, " ");
   var stats = [];
-  var labels = ["Ratings", "Reviews", "Lists", "Followers", "Following"];
-  for (var i = 0; i < labels.length; i++) {
-    var re = new RegExp("([\\d,.]+[KkMm]?)\\s*" + labels[i] + "\\b", "i");
-    var m = text.match(re);
-    if (m) stats.push({ label: labels[i], value: m[1] });
+  var statVals = doc.querySelectorAll(".profileStat");
+  var statNames = doc.querySelectorAll(".profileStatName");
+  if (statVals.length && statVals.length === statNames.length) {
+    for (var s = 0; s < statVals.length; s++) {
+      var sv = aotyTxt(statVals[s]), sn = aotyTxt(statNames[s]);
+      if (sv !== "" && sn) stats.push({ label: sn, value: sv });
+    }
+  }
+  if (!stats.length) {
+    var labels = ["Ratings", "Reviews", "Lists", "Following", "Followers"];
+    for (var i = 0; i < labels.length; i++) {
+      var re = new RegExp("([\\d,.]+[KkMm]?)\\s*" + labels[i] + "\\b", "i");
+      var m = text.match(re);
+      if (m) stats.push({ label: labels[i], value: m[1] });
+    }
   }
   var userPath = (pageURL || "").replace(/^https?:\/\/[^/]+/, "");
   var um = userPath.match(/\/user\/([^\/?#]+)/);
@@ -646,6 +656,43 @@ function aotyProfile(doc, html, pageURL) {
   var albums = aotyAlbumBlocks(doc);
   if (!albums.length) albums = aotyGenericBlocks(doc);
   var about = aotyTxt(doc.querySelector(".aboutUser, .profileAbout, .userAbout"));
+
+  // "Around the Web" links (.profileLink elements, or fallback under the Around the Web heading)
+  var links = [], seenLinks = {};
+  function addProfileLink(a) {
+    var raw = (a.getAttribute("href") || "").trim();
+    if (!raw || raw === "#" || /^javascript:/i.test(raw)) return;
+    if (/^\/(account|settings|user|album|artist|list)\b/i.test(raw)) return;
+    var name = aotyTxt(a) || (a.getAttribute("title") || "").trim();
+    if (/^edit$/i.test(name)) return;
+    var url = raw;
+    if (url.indexOf("//") === 0) url = "https:" + url;
+    else if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) {
+      url = url.charAt(0) === "/" ? aotyAbs(url) : "https://" + url;
+    }
+    if (!name) {
+      try { name = new URL(url).hostname.replace(/^www\./, ""); } catch (e) { name = url; }
+    }
+    var key = url.toLowerCase();
+    if (seenLinks[key]) return;
+    seenLinks[key] = 1;
+    var iconEl = a.querySelector("i[class]") || (a.parentElement && a.parentElement.querySelector("i[class]"));
+    var icon = iconEl ? (iconEl.getAttribute("class") || "") : null;
+    links.push({ name: name, url: url, icon: icon });
+  }
+  var linkEls = doc.querySelectorAll(".profileLink a[href], .profileLinks a[href]");
+  for (var l = 0; l < linkEls.length; l++) addProfileLink(linkEls[l]);
+  if (!links.length) {
+    var aw = html.search(/Around the Web/i);
+    if (aw >= 0) {
+      var awRest = html.slice(aw + 14, aw + 2500);
+      var awEnd = awRest.search(/<h2\b|<div[^>]+class="[^"]*(?:sectionHeading|rightBox|profileSection)/i);
+      var awChunk = awEnd >= 0 ? awRest.slice(0, awEnd) : awRest;
+      var awDoc = new DOMParser().parseFromString(awChunk, "text/html");
+      var awLinks = awDoc.querySelectorAll("a[href]");
+      for (var al = 0; al < awLinks.length; al++) addProfileLink(awLinks[al]);
+    }
+  }
 
   // Sections, sliced by heading like AOTY-api does: Recently Rated (mixed albums + singles,
   // in AOTY's own order), Recent Reviews, and the Following preview box.
@@ -676,7 +723,7 @@ function aotyProfile(doc, html, pageURL) {
 
   var nameColor = nameEl ? aotyNameColor(nameEl) : null;
   return { username: username, nameColor: nameColor, displayName: aotyTxt(nameEl) || username, avatar: avatar, stats: stats, about: about || null,
-           albums: albums.slice(0, 30), recent: recent, ratingsPath: viewAll, reviews: reviews, following: following };
+           links: links, albums: albums.slice(0, 30), recent: recent, ratingsPath: viewAll, reviews: reviews, following: following };
 }
 
 function aotySlice(html, headings) {

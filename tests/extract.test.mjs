@@ -168,6 +168,15 @@ for (const [kind, path] of pages) {
 // Profile sections (synthetic, mirroring AOTY's headings)
 {
   const page = '<html><body><h1>harbor</h1>' +
+    '<div class="profileStat">942</div><div class="profileStatName">Ratings</div>' +
+    '<div class="profileStat">699</div><div class="profileStatName">Reviews</div>' +
+    '<div class="profileStat">0</div><div class="profileStatName">Lists</div>' +
+    '<div class="profileStat">4</div><div class="profileStatName">Following</div>' +
+    '<div class="profileStat">33</div><div class="profileStatName">Followers</div>' +
+    '<div class="aboutUser">just logging my thoughts</div>' +
+    '<div class="sectionHeading">Around the Web <a href="/account/">Edit</a></div>' +
+    '<div class="profileLink"><i class="fas fa-link"></i><a href="https://harperedits.video">harperedits.video</a></div>' +
+    '<div class="profileLink"><i class="fab fa-lastfm"></i><a href="https://www.last.fm/user/harper">last.fm</a></div>' +
     '<h2 class="sectionHeading">Recently Rated <a href="/user/harperseemscool/ratings/">View All</a></h2>' +
     '<div class="albumBlock" data-type="single"><div class="image"><a href="/album/2-ee-poison-pop.php"><img src="https://cdn2.albumoftheyear.org/album/a.jpg"></a></div><div class="artistTitle">Everything Everything</div><div class="albumTitle">Poison Pop</div><div class="ratingRowContainer"><div class="ratingBlock"><div class="rating">90</div></div><div class="ratingText">16h ago</div></div></div>' +
     '<div class="albumBlock" data-type="lp"><div class="image"><a href="/album/1-nick-lutsko-ends.php"><img src="https://cdn2.albumoftheyear.org/album/b.jpg"></a></div><div class="artistTitle">Nick Lutsko</div><div class="albumTitle">Ends</div><div class="ratingRowContainer"><div class="ratingBlock"><div class="rating">80</div></div><div class="ratingText">Nov 2</div></div></div>' +
@@ -177,7 +186,9 @@ for (const [kind, path] of pages) {
     '<div class="rightBox"><div class="sectionHeading">Following (3)</div><a href="/user/lilyp/"><img alt="LilyP" src="https://cdn.albumoftheyear.org/user/thumbs/lilyp_1.jpg"></a><a href="/user/wojack/"><img alt="Wojack" src="https://cdn.albumoftheyear.org/user/thumbs/wojack_1.jpg"></a><a href="/user/harperseemscool/"><img alt="me" src="x.jpg"></a></div><div class="rightBox">x</div>' +
     '</body></html>';
   const pr = aotyExtract("profile", page, "https://www.albumoftheyear.org/user/harperseemscool/");
-  console.log("\n=== profile sections:", JSON.stringify({ recent: pr.recent.map(a => a.title), ratingsPath: pr.ratingsPath, reviews: pr.reviews.map(r => [r.album, r.rating, r.text, r.isTruncated, r.url]), following: pr.following.map(f => f.username) }));
+  console.log("\n=== profile sections:", JSON.stringify({ stats: pr.stats, links: pr.links, recent: pr.recent.map(a => a.title), ratingsPath: pr.ratingsPath, reviews: pr.reviews.map(r => [r.album, r.rating, r.text, r.isTruncated, r.url]), following: pr.following.map(f => f.username) }));
+  check(pr.stats.length === 5 && pr.stats[0].label === "Ratings" && pr.stats[0].value === "942" && pr.stats[3].label === "Following" && pr.stats[4].label === "Followers", "profile stats row");
+  check(pr.links && pr.links.length === 2 && pr.links[0].name === "harperedits.video" && pr.links[0].url === "https://harperedits.video" && pr.links[1].name === "last.fm", "profile around the web links");
   check(pr.recent.length === 2 && pr.recent[0].title === "Poison Pop", "recently rated in page order");
   check(pr.ratingsPath === "/user/harperseemscool/ratings/", "view-all path");
   check(pr.reviews.length === 1 && pr.reviews[0].album === "Ends" && pr.reviews[0].isTruncated && pr.reviews[0].text === "Great record.", "recent reviews");

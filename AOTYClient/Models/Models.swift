@@ -114,6 +114,20 @@ struct ProfileStat: Decodable, Hashable {
     let value: String
 }
 
+struct ProfileLink: Decodable, Hashable, Identifiable {
+    let name: String
+    let url: String
+    var icon: String? = nil
+    var id: String { url }
+    var destination: URL? {
+        var s = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return nil }
+        if s.hasPrefix("//") { s = "https:" + s }
+        else if !s.contains("://") { s = "https://" + s }
+        return URL(string: s) ?? s.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed).flatMap(URL.init(string:))
+    }
+}
+
 struct Profile: Decodable {
     let username: String
     let displayName: String?
@@ -121,6 +135,7 @@ struct Profile: Decodable {
     let avatar: String?
     let stats: [ProfileStat]
     let about: String?
+    var links: [ProfileLink]? = nil
     let albums: [AlbumBlock]
     let recent: [AlbumBlock]?
     let ratingsPath: String?

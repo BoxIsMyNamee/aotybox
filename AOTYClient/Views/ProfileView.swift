@@ -96,6 +96,7 @@ struct UserProfileView: View {
 
     @AppStorage("profileUsername") private var myUsername = ""
     @Environment(\.push) private var push
+    @Environment(\.openURL) private var openURL
     @State private var profile: Profile?
     @State private var ratings: [AlbumBlock] = []
     @State private var friends: [FollowUser] = []
@@ -198,7 +199,7 @@ struct UserProfileView: View {
         let bg = isMe ? ProfileBackground.load() : nil
         let _ = bgRev
         Section {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 14) {
                 if bg != nil { Color.clear.frame(height: 120) }     // let the picture show above you
                 HStack(spacing: 16) {
                     Avatar(url: (profile?.avatar ?? fallbackAvatar).flatMap(URL.init(string:)), name: username, size: 80)
@@ -214,20 +215,25 @@ struct UserProfileView: View {
                         if let handle = parts.handle {
                             Text(handle).font(.subheadline.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
                         }
-                        if let stats = profile?.stats, !stats.isEmpty {
-                            // "100 followers · 520 ratings" — small, under the name (no separate card).
-                            Text(stats.map { "\($0.value) \($0.label.lowercased())" }.joined(separator: " · "))
-                                .font(.caption.weight(.medium)).foregroundStyle(.tertiary).lineLimit(2)
-                                .padding(.top, 2)
-                        }
                     }
                 }
+                if let stats = profile?.stats, !stats.isEmpty {
+                    statsBar(stats)
+                }
                 if let about = profile?.about, !about.isEmpty {
-                    Text(linkified(about))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("ABOUT")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Text(linkified(about))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                if let links = profile?.links, !links.isEmpty {
+                    aroundTheWeb(links)
                 }
             }
             .listRowBackground(
@@ -248,6 +254,98 @@ struct UserProfileView: View {
             .listRowInsets(EdgeInsets(top: bg == nil ? 0 : 12, leading: bg == nil ? 4 : 16, bottom: 8, trailing: bg == nil ? 4 : 16))
 
         }
+    }
+
+    private func statsBar(_ stats: [ProfileStat]) -> some View {
+        HStack(spacing: 0) {
+            ForEach(Array(stats.enumerated()), id: \.offset) { idx, s in
+                if idx > 0 {
+                    Divider().frame(height: 32)
+                }
+                statCell(s)
+            }
+        }
+        .padding(.vertical, 10)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder private func statCell(_ s: ProfileStat) -> some View {
+        let cell = VStack(spacing: 3) {
+            Text(s.value)
+                .font(.system(.headline, design: .rounded).weight(.bold).monospacedDigit())
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(s.label.uppercased())
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 2)
+        .contentShape(Rectangle())
+
+        switch s.label.lowercased() {
+        case "ratings":
+            Button { push(ProfileRatingsRoute(username: username, path: profile?.ratingsPath, isMe: isMe)) } label: { cell }
+                .buttonStyle(.plain)
+        case "reviews":
+            Button { push(ProfileReviewsRoute(username: username)) } label: { cell }
+                .buttonStyle(.plain)
+        default:
+            cell
+        }
+    }
+
+    private func aroundTheWeb(_ links: [ProfileLink]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("AROUND THE WEB")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ChipLayout(spacing: 8) {
+                ForEach(links) { link in
+                    if let url = link.destination {
+                        Button {
+                            openURL(url)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: Self.linkIcon(link))
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                Text(link.name)
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(.tint)
+                                    .lineLimit(1)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .background(Color(.secondarySystemGroupedBackground), in: Capsule())
+                            .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button { openURL(url) } label: { Label("Open in Browser", systemImage: "safari") }
+                            Button { UIPasteboard.general.string = url.absoluteString } label: { Label("Copy Link", systemImage: "doc.on.doc") }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    static func linkIcon(_ link: ProfileLink) -> String {
+        let icon = (link.icon ?? "").lowercased()
+        if icon.contains("fa-link") { return "link" }
+        let s = (icon + " " + link.name + " " + link.url).lowercased()
+        if s.contains("last.fm") || s.contains("lastfm") { return "waveform" }
+        if s.contains("spotify") || s.contains("apple") || s.contains("bandcamp") || s.contains("soundcloud") { return "music.note" }
+        if s.contains("youtube") || s.contains("youtu.be") { return "play.rectangle" }
+        if s.contains("instagram") { return "camera" }
+        if s.contains("twitter") || s.contains("x.com") || s.contains("bsky") || s.contains("bluesky") || s.contains("mastodon") || s.contains("threads") { return "at" }
+        if s.contains("discord") { return "bubble.left.and.bubble.right" }
+        if s.contains("letterboxd") || s.contains("imdb") { return "film" }
+        return "link"
     }
 
     // MARK: Loading
