@@ -191,7 +191,7 @@ struct KindToggle: View {
     }
     private var icon: String { singles ? "square.stack" : "music.note" }
     private func toggle() {
-        UISelectionFeedbackGenerator().selectionChanged()
+        Haptic.selection()
         withAnimation { singles.toggle() }
     }
 }
@@ -219,8 +219,8 @@ extension View {
 struct AOTYLogo: View {
     var body: some View {
         Group {
-            if let img = UIImage(named: "aoty-logo") {
-                Image(uiImage: img).renderingMode(.template).resizable().scaledToFit()
+            if let img = PlatformImage(named: "aoty-logo") {
+                Image(platformImage: img).renderingMode(.template).resizable().scaledToFit()
             } else {
                 Text("AOTY").font(.largeTitle.bold())
             }
@@ -303,9 +303,9 @@ struct NotificationsSheet: View {
                 }
             }
             .navigationTitle("Notifications")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavTitle()
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .platformTopBarLeading) {
                     Button { open = URL(string: href, relativeTo: URL(string: "https://www.albumoftheyear.org"))?.absoluteURL } label: {
                         Image(systemName: "safari")
                     }

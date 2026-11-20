@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// Remembers hearts you tapped this session, so every screen agrees even when a page is cached.
 @MainActor
@@ -16,11 +15,11 @@ final class LikeStore: ObservableObject {
     func toggle(id: Int, liked: Bool, count: Int) async -> AOTYAPI.LikeResult {
         let new = (liked: !liked, count: max(0, count + (liked ? -1 : 1)))
         state[id] = new
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Haptic.impact(.light)
         let r = await AOTYAPI.shared.setReviewLike(id, liked: new.liked)
         if r != .ok {
             state[id] = (liked, count)
-            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            Haptic.error()
             switch r {
             case .limited: notice = "AOTY's hourly like limit reached. Try again in a bit."
             case .failed(let why): notice = "AOTY didn't take that like. " + why
@@ -199,7 +198,7 @@ struct LikersSheet: View {
                                     if p.followsYou {
                                         Text("Follows you").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
                                             .padding(.horizontal, 6).padding(.vertical, 2)
-                                            .background(Color(.tertiarySystemFill), in: Capsule())
+                                            .background(Color.platformTertiaryFill, in: Capsule())
                                     }
                                 }
                                 Spacer(minLength: 0)
@@ -218,7 +217,7 @@ struct LikersSheet: View {
                 }
             }
             .navigationTitle("Liked By")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavTitle()
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
         .presentationDetents(count > 6 ? [.medium, .large] : [.medium])

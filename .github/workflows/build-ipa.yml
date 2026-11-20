@@ -58,18 +58,46 @@ jobs:
           cp -R build/Build/Products/Release-iphoneos/AOTYClient.app Payload/
           zip -qry AOTYClient.ipa Payload
 
+      - name: Build macOS (Apple Silicon)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project AOTYClient.xcodeproj \
+            -scheme AOTYMac \
+            -configuration Release \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath build-mac \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            MARKETING_VERSION=0.1.${{ github.run_number }} \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            build | tee build-mac.log | grep -E "error:|warning:|BUILD" || true
+          grep -q "\*\* BUILD SUCCEEDED \*\*" build-mac.log
+          test -f build-mac/Build/Products/Release/AOTY.app/Contents/MacOS/AOTY
+          codesign --force --deep --sign - build-mac/Build/Products/Release/AOTY.app
+          ditto -c -k --sequesterRsrc --keepParent build-mac/Build/Products/Release/AOTY.app AOTY-macOS-arm64.zip
+
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: AOTYClient-ipa
           path: AOTYClient.ipa
 
-      - name: Upload build log
+      - name: Upload macOS zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: AOTY-macOS-arm64
+          path: AOTY-macOS-arm64.zip
+
+      - name: Upload build logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: build.log
+          path: |
+            build.log
+            build-mac.log
 
       - name: Write LiveContainer / AltStore source
         if: github.ref == 'refs/heads/main'
@@ -112,7 +140,7 @@ jobs:
           MSG: ${{ github.event.head_commit.message }}
         run: |
           printf '%s\n' "$MSG" > notes.txt
-          gh release create "build-$N" AOTYClient.ipa source.json \
+          gh release create "build-$N" AOTYClient.ipa AOTY-macOS-arm64.zip source.json \
             --repo "${{ github.repository }}" --target "${{ github.sha }}" \
             --title "Build $N" --notes-file notes.txt --latest
           # Keep the 10 newest releases.
@@ -125,7 +153,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         run: |
           # The app download comes from here too: GitHub's release links keep timing out (HTTP 504).
-          mkdir mirror && cp AOTYClient.ipa mirror/
+          mkdir mirror && cp AOTYClient.ipa AOTY-macOS-arm64.zip mirror/
           python3 - <<'PY'
           import json
           s = json.load(open("source.json"))

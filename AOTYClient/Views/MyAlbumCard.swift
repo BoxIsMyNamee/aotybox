@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// Your box on an album page. Rated/reviewed: your score with its bar and your review.
 /// Not yet: a score field with Rate, and an "Add a review" box with Post. Listen / Like / Save on top.
@@ -81,7 +80,7 @@ struct MyAlbumCard: View {
             UserDefaults.standard.set("\(album.artist) \(album.title)", forKey: "notesAlbum")
             UserDefaults.standard.set(true, forKey: "notesAlbumCheck")
         }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Haptic.impact(.light)
         NotificationCenter.default.post(name: .notesImported, object: nil)
         NotificationCenter.default.post(name: .openNotes, object: nil)
     }
@@ -228,19 +227,19 @@ struct MyAlbumCard: View {
         } else {
             HStack(spacing: 8) {
                 TextField("0–100", text: $scoreText)
-                    .keyboardType(.numberPad)
+                    .numberKeyboard()
                     .focused($focus, equals: .score)
                     .multilineTextAlignment(.center)
                     .font(.subheadline.monospacedDigit())
                     .frame(width: 64, height: 32)
-                    .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
+                    .background(Color.platformTertiaryFill, in: RoundedRectangle(cornerRadius: 8))
                 Button { Task { await rate() } } label: {
                     Group {
                         if busy == "rate" { ProgressView().controlSize(.mini) } else { Text("Rate") }
                     }
                     .font(.subheadline.weight(.semibold))
                     .frame(width: 54, height: 32)
-                    .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
+                    .background(Color.platformTertiaryFill, in: RoundedRectangle(cornerRadius: 8))
                 }
                 .buttonStyle(.plain)
                 .disabled(busy != nil || Int(scoreText).map { !(0...100).contains($0) } ?? true)
@@ -253,7 +252,7 @@ struct MyAlbumCard: View {
         focus = nil; error = nil; busy = "rate"
         defer { busy = nil }
         if await AOTYAPI.shared.albumAction("insertRatingLarge.php", ["albumID": id, "value": String(v)]) != nil {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            Haptic.impact(.medium)
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { box.rating = Double(v) }
             forgetPage()
         } else {
@@ -278,7 +277,7 @@ struct MyAlbumCard: View {
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 90, maxHeight: 180)
-            .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
+            .background(Color.platformTertiaryFill, in: RoundedRectangle(cornerRadius: 12))
 
             HStack {
                 Button { proofIt() } label: {
@@ -328,7 +327,7 @@ struct MyAlbumCard: View {
         defer { busy = nil }
         let reply = await AOTYAPI.shared.albumAction("insertReview.php", ["albumID": id, "text": text])
         if let reply, !reply.contains("type=\"password\"") {   // a login form back means the session lapsed
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            Haptic.impact(.medium)
             clearDrafts()
             instantly { box.review = text; reviewText = "" }
             forgetPage()
@@ -356,7 +355,7 @@ struct MyAlbumCard: View {
                 error = "AOTY didn't accept the edit. Your text is still here — try again."; return
             }
         }
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Haptic.impact(.medium)
         clearDrafts()
         instantly { box.review = text; reviewText = ""; editing = false }
         forgetPage()
@@ -370,7 +369,7 @@ struct MyAlbumCard: View {
             Task {
                 let new = !flag
                 set(new)                                   // optimistic
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                Haptic.impact(.light)
                 if await AOTYAPI.shared.albumAction(new ? add : remove, ["albumID": id]) == nil {
                     set(flag)
                     error = "Couldn't update \(title.lowercased()). Try again."

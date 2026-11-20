@@ -14,14 +14,20 @@ enum AOTYSession {
     static func makeConfiguration() -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = dataStore
+        #if os(iOS)
         config.allowsInlineMediaPlayback = true
         config.allowsPictureInPictureMediaPlayback = false
         config.allowsAirPlayForMediaPlayback = false
+        #endif
         config.mediaTypesRequiringUserActionForPlayback = .all
         // Look like Safari (the default in-app user agent has no "Safari" token, which Cloudflare's
         // check is pickier about). Same for every web view, so the clearance cookie fits all of them.
         let v = ProcessInfo.processInfo.operatingSystemVersion
+        #if os(iOS)
         config.applicationNameForUserAgent = "Version/\(v.majorVersion).\(v.minorVersion) Mobile/15E148 Safari/604.1"
+        #else
+        config.applicationNameForUserAgent = "Version/\(v.majorVersion).\(v.minorVersion) Safari/605.1.15"
+        #endif
         return config
     }
 
@@ -33,7 +39,13 @@ enum AOTYSession {
     }
 }
 
-struct AOTYWebView: UIViewRepresentable {
+#if os(iOS)
+private typealias PlatformWebViewRepresentable = UIViewRepresentable
+#else
+private typealias PlatformWebViewRepresentable = NSViewRepresentable
+#endif
+
+struct AOTYWebView: PlatformWebViewRepresentable {
     let url: URL
     @Binding var isLoading: Bool
     /// If set, taps on AOTY album links open the native album page instead.
@@ -43,7 +55,7 @@ struct AOTYWebView: UIViewRepresentable {
     /// Called after each page finishes loading (to check sign-in / Cloudflare state).
     var onFinish: ((WKWebView) -> Void)? = nil
 
-    func makeUIView(context: Context) -> WKWebView {
+    private func makeWebView(context: Context) -> WKWebView {
         let web = WKWebView(frame: .zero, configuration: AOTYSession.makeConfiguration())
         web.navigationDelegate = context.coordinator
         web.allowsBackForwardNavigationGestures = true
@@ -52,13 +64,21 @@ struct AOTYWebView: UIViewRepresentable {
         return web
     }
 
-    func updateUIView(_ web: WKWebView, context: Context) {
+    private func updateWebView(_ web: WKWebView, context: Context) {
         context.coordinator.parent = self
         if context.coordinator.loadedURL != url {
             context.coordinator.loadedURL = url
             web.load(URLRequest(url: url))
         }
     }
+
+    #if os(iOS)
+    func makeUIView(context: Context) -> WKWebView { makeWebView(context: context) }
+    func updateUIView(_ web: WKWebView, context: Context) { updateWebView(web, context: context) }
+    #else
+    func makeNSView(context: Context) -> WKWebView { makeWebView(context: context) }
+    func updateNSView(_ web: WKWebView, context: Context) { updateWebView(web, context: context) }
+    #endif
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -112,11 +132,14 @@ struct AOTYWebSheet: View {
             AOTYWebView(url: url, isLoading: $loading)
                 .ignoresSafeArea(edges: .bottom)
                 .navigationTitle(title)
-                .navigationBarTitleDisplayMode(.inline)
+                .inlineNavTitle()
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-                    if loading { ToolbarItem(placement: .topBarLeading) { ProgressView() } }
+                    if loading { ToolbarItem(placement: .platformTopBarLeading) { ProgressView() } }
                 }
         }
+        #if os(macOS)
+        .frame(minWidth: 700, minHeight: 540)
+        #endif
     }
 }

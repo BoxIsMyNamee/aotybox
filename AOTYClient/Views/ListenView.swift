@@ -58,7 +58,7 @@ struct ListenSheet: View {
                 Image(systemName: "mic.slash").font(.system(size: 48)).foregroundStyle(.secondary)
                 Text("Microphone access is off").font(.title3.weight(.semibold))
                 Button("Open Settings") {
-                    if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
+                    PlatformApp.openAppSettings()
                 }
                 .buttonStyle(.borderedProminent)
             case .failed(let msg):

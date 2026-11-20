@@ -1,6 +1,5 @@
 import SwiftUI
 import PhotosUI
-import UIKit
 import Security
 
 /// Your own picture behind the top of your profile. Kept on this device only (backed up in Keychain
@@ -9,7 +8,7 @@ enum ProfileBackground {
     static let revKey = "profileBackgroundRev"
     private static let kcService = "com.harper.aotyclient.profilebg"
     private static let kcAccount = "background.jpg"
-    private static var cached: UIImage?
+    private static var cached: PlatformImage?
 
     private static var url: URL {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -22,9 +21,9 @@ enum ProfileBackground {
         return dir.appendingPathComponent("profileBackground.jpg")
     }
 
-    static func load() -> UIImage? {
+    static func load() -> PlatformImage? {
         if let cached { return cached }
-        if let img = UIImage(contentsOfFile: url.path) {
+        if let img = PlatformImage(contentsOfFile: url.path) {
             cached = img
             // Backfill Keychain/Documents for backgrounds saved before this update.
             if loadKeychain() == nil, let d = try? Data(contentsOf: url) {
@@ -33,7 +32,7 @@ enum ProfileBackground {
             }
             return img
         }
-        if let img = UIImage(contentsOfFile: docURL.path) {
+        if let img = PlatformImage(contentsOfFile: docURL.path) {
             cached = img
             if let d = try? Data(contentsOf: docURL) {
                 try? d.write(to: url, options: .atomic)
@@ -41,7 +40,7 @@ enum ProfileBackground {
             }
             return img
         }
-        if let d = loadKeychain(), let img = UIImage(data: d) {
+        if let d = loadKeychain(), let img = PlatformImage(data: d) {
             cached = img
             try? d.write(to: url, options: .atomic)
             try? d.write(to: docURL, options: .atomic)
@@ -51,17 +50,14 @@ enum ProfileBackground {
     }
 
     static func save(_ data: Data) -> Bool {
-        guard let img = UIImage(data: data) else { return false }
+        guard let img = PlatformImage(data: data) else { return false }
         // Keep it a sensible size (a banner, not a 48 MP photo).
-        let maxW: CGFloat = 1600
-        let scale = min(1, maxW / max(img.size.width, 1))
-        let size = CGSize(width: img.size.width * scale, height: img.size.height * scale)
-        let resized = UIGraphicsImageRenderer(size: size).image { _ in img.draw(in: CGRect(origin: .zero, size: size)) }
-        guard let jpg = resized.jpegData(compressionQuality: 0.82) else { return false }
+        let resized = PlatformImage.resized(img, maxWidth: 1600)
+        guard let jpg = resized.jpegDataValue(compressionQuality: 0.82) else { return false }
         let wrote = (try? jpg.write(to: url, options: .atomic)) != nil
         try? jpg.write(to: docURL, options: .atomic)
         saveKeychain(jpg)
-        cached = UIImage(data: jpg) ?? resized
+        cached = PlatformImage(data: jpg) ?? resized
         return wrote || cached != nil
     }
 
@@ -110,7 +106,7 @@ enum ProfileBackground {
 
 /// Fills its frame with the image, cropped around a saved focus point and zoom.
 struct FocusedFillImage: View {
-    let image: UIImage
+    let image: PlatformImage
     var focusX: Double = 0.5
     var focusY: Double = 0.5
     var zoom: Double = 1
@@ -120,7 +116,7 @@ struct FocusedFillImage: View {
             let size = fittedSize(geo.size)
             let dx: CGFloat = (geo.size.width - size.width) * CGFloat(focusX)
             let dy: CGFloat = (geo.size.height - size.height) * CGFloat(focusY)
-            Image(uiImage: image).resizable()
+            Image(platformImage: image).resizable()
                 .frame(width: size.width, height: size.height)
                 .offset(x: dx, y: dy)
         }
@@ -144,7 +140,7 @@ extension ProfileBackground {
 
 /// Reads the saved focus/zoom directly so List's listRowBackground updates live while dragging/pinching.
 struct ProfileBackgroundLayer: View {
-    let image: UIImage
+    let image: PlatformImage
     @AppStorage(ProfileBackground.xKey) private var focusX = 0.5
     @AppStorage(ProfileBackground.yKey) private var focusY = 0.5
     @AppStorage(ProfileBackground.zoomKey) private var zoom = 1.0
@@ -154,7 +150,7 @@ struct ProfileBackgroundLayer: View {
             .overlay {
                 LinearGradient(stops: [.init(color: .black.opacity(0.05), location: 0),
                                        .init(color: .black.opacity(0.35), location: 0.45),
-                                       .init(color: Color(.systemBackground), location: 1)],
+                                       .init(color: Color.platformBackground, location: 1)],
                                startPoint: .top, endPoint: .bottom)
             }
             .clipped()
@@ -174,7 +170,7 @@ struct ProfileBackgroundSettings: View {
     @AppStorage(ProfileBackground.zoomKey) private var zoom = 1.0
     @Environment(\.dismiss) private var dismiss
     @State private var item: PhotosPickerItem?
-    @State private var image: UIImage?
+    @State private var image: PlatformImage?
     @State private var failed = false
 
     var body: some View {
@@ -222,6 +218,7 @@ struct ProfileBackgroundSettings: View {
     }
 }
 
+#if os(iOS)
 /// UIKit gesture overlay so List/UICollectionView never swallows pan, pinch, or double-tap.
 struct PanPinchOverlay: UIViewRepresentable {
     var onPan: (CGSize, CGSize) -> Void
@@ -290,3 +287,30 @@ struct PanPinchOverlay: UIViewRepresentable {
         }
     }
 }
+#else
+struct PanPinchOverlay: View {
+    var onPan: (CGSize, CGSize) -> Void
+    var onPanEnd: () -> Void
+    var onPinch: (CGFloat) -> Void
+    var onPinchEnd: () -> Void
+    var onDoubleTap: () -> Void
+
+    var body: some View {
+        GeometryReader { geo in
+            Color.clear
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture()
+                        .onChanged { v in onPan(v.translation, geo.size) }
+                        .onEnded { _ in onPanEnd() }
+                )
+                .simultaneousGesture(
+                    MagnifyGesture()
+                        .onChanged { v in onPinch(v.magnification) }
+                        .onEnded { _ in onPinchEnd() }
+                )
+                .onTapGesture(count: 2) { onDoubleTap() }
+        }
+    }
+}
+#endif

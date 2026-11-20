@@ -476,6 +476,7 @@ final class AOTYScraper: NSObject, ObservableObject, WKNavigationDelegate {
 
 /// Keeps the hidden fetcher web view inside the window hierarchy (WebKit throttles
 /// web views that aren't on screen). It's 2×2 points and fully transparent.
+#if os(iOS)
 struct HiddenScraperHost: UIViewRepresentable {
     func makeUIView(context: Context) -> UIView {
         let host = UIView(frame: CGRect(x: 0, y: 0, width: 2, height: 2))
@@ -488,6 +489,19 @@ struct HiddenScraperHost: UIViewRepresentable {
     }
     func updateUIView(_ uiView: UIView, context: Context) {}
 }
+#else
+struct HiddenScraperHost: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let host = NSView(frame: CGRect(x: 0, y: 0, width: 2, height: 2))
+        host.alphaValue = 0.01
+        let web = AOTYScraper.shared.webView
+        web.frame = host.bounds
+        host.addSubview(web)
+        return host
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+#endif
 
 /// Shown when Cloudflare wants a human check. The user passes it on AOTY's real page;
 /// the clearance cookie lands in the shared WebKit store and everything reloads.
@@ -511,7 +525,7 @@ struct ChallengeSheet: View {
                 AOTYWebView(url: url, isLoading: $loading, onFinish: { web in ref.web = web; check(web) })
             }
             .navigationTitle("Checking…")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button { ref.web?.load(URLRequest(url: url)) } label: { Image(systemName: "arrow.clockwise") }
@@ -522,6 +536,9 @@ struct ChallengeSheet: View {
                 }
             }
         }
+        #if os(macOS)
+        .frame(minWidth: 700, minHeight: 540)
+        #endif
         .interactiveDismissDisabled()
     }
 
@@ -573,10 +590,10 @@ struct WelcomeSignInSheet: View {
                     .overlay(alignment: .top) { if loading { ProgressView().padding(10) } }
             }
             .navigationTitle("Welcome")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Skip") { done() } }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .platformTopBarTrailing) {
                     Button { ref.web?.reload() } label: { Image(systemName: "arrow.clockwise") }
                         .accessibilityLabel("Reload")
                 }
@@ -585,6 +602,9 @@ struct WelcomeSignInSheet: View {
                 }
             }
         }
+        #if os(macOS)
+        .frame(minWidth: 720, minHeight: 560)
+        #endif
         .interactiveDismissDisabled()
     }
 

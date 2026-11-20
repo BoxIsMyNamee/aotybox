@@ -31,7 +31,7 @@ struct AlbumDetailView: View {
             else { ProgressView() }
         }
         .navigationTitle(album?.title ?? fallbackTitle)
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavTitle()
         .toolbar {
             if let album, let url = URL(string: album.url) {
                 ShareLink(item: url)
@@ -39,7 +39,7 @@ struct AlbumDetailView: View {
             }
         }
         .task { await load() }
-        .fullScreenCover(isPresented: $showCover) {
+        .platformFullScreenCover(isPresented: $showCover) {
             if let album, let url = album.coverURL { CoverViewer(url: url, title: album.title).accentTint() }
         }
         .sheet(isPresented: $showChat) {
@@ -256,7 +256,7 @@ struct AlbumDetailView: View {
 
         }
         .listStyle(.insetGrouped)
-        .environment(\.swipeRowBackground, Color(.secondarySystemGroupedBackground))
+        .environment(\.swipeRowBackground, Color.platformSecondaryGroupedBackground)
     }
 }
 
@@ -301,7 +301,7 @@ struct AlbumChatSheet: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Ask AI")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavTitle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
                 if !thread.messages.isEmpty {

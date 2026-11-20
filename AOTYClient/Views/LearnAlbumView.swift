@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// "Learn" for an album or EP: the Genius write-up and tracklist, plus Ask AI.
 struct LearnAlbumView: View {
@@ -72,10 +71,9 @@ struct LearnAlbumView: View {
                     .padding(.bottom, 8)
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
+        .trackKeyboard($keyboardUp)
         .navigationTitle(album)
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavTitle()
         .toolbar {
             if let u = info?.url { Button { openURL(u) } label: { Image(systemName: "arrow.up.right.square") } }
         }

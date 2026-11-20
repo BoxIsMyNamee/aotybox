@@ -6,10 +6,10 @@ extension View {
     func tabTitle(_ title: String) -> some View {
         self
             .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavTitle()
             .toolbar(removing: .title)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .platformTopBarLeading) {
                     Text(title)
                         .font(.largeTitle.bold())
                         .lineLimit(1)
@@ -24,13 +24,13 @@ extension View {
     func tabLogo(backTitle: String) -> some View {
         self
             .navigationTitle(backTitle)
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavTitle()
             .toolbar(removing: .title)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .platformTopBarLeading) {
                     Group {
-                        if let img = UIImage(named: "aoty-logo") {
-                            Image(uiImage: img).renderingMode(.template).resizable().scaledToFit()
+                        if let img = PlatformImage(named: "aoty-logo") {
+                            Image(platformImage: img).renderingMode(.template).resizable().scaledToFit()
                         } else {
                             Text("AOTY").font(.largeTitle.bold())
                         }

@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// Notes: paste a review you wrote elsewhere and get proofreading notes. Never rewrites it.
 /// Repeated words are counted on-device; typos, punctuation, run-ons, commas and unquoted
@@ -82,11 +81,11 @@ struct ProofView: View {
                 }
             }
             .frame(height: 200)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+            .background(Color.platformSecondaryBackground, in: RoundedRectangle(cornerRadius: 14))
 
             HStack(spacing: 10) {
                 Button {
-                    if let s = UIPasteboard.general.string, !s.isEmpty { text = s; resetResults() }
+                    if let s = PlatformPasteboard.string, !s.isEmpty { text = s; resetResults() }
                 } label: {
                     iconLabel("doc.on.clipboard")
                 }
@@ -121,7 +120,7 @@ struct ProofView: View {
                 .layoutPriority(1)
 
                 Button {
-                    UIPasteboard.general.string = text
+                    PlatformPasteboard.copy(text)
                     copied = true
                     Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
                 } label: {
@@ -152,10 +151,10 @@ struct ProofView: View {
             Text("Album (optional)").font(.caption).foregroundStyle(.secondary)
             TextField("e.g. the weeknd after hours", text: $albumQuery)
                 .focused($focus, equals: .album)
-                .textInputAutocapitalization(.never)
+                .noAutocap()
                 .autocorrectionDisabled()
                 .padding(12)
-                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                .background(Color.platformSecondaryBackground, in: RoundedRectangle(cornerRadius: 12))
                 .onChange(of: albumQuery) { matchedAlbum = nil }
             Text(matchedAlbum ?? "With an album, Proof checks that every track name you mention is in quotes, like 'blinding lights'.")
                 .font(.caption).foregroundStyle(.secondary)
@@ -193,7 +192,7 @@ struct ProofView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.platformSecondaryBackground, in: RoundedRectangle(cornerRadius: 14))
     }
 
     @ViewBuilder

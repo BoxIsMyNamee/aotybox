@@ -21,9 +21,15 @@ extension Color {
     }
 
     var hexString: String {
-        let c = UIColor(self).resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
         var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        #if os(iOS)
+        let c = UIColor(self).resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
         c.getRed(&r, green: &g, blue: &b, alpha: &a)
+        #else
+        if let c = NSColor(self).usingColorSpace(.sRGB) {
+            c.getRed(&r, green: &g, blue: &b, alpha: &a)
+        }
+        #endif
         return String(format: "#%02X%02X%02X", Int(round(max(0, min(1, r)) * 255)), Int(round(max(0, min(1, g)) * 255)), Int(round(max(0, min(1, b)) * 255)))
     }
 }

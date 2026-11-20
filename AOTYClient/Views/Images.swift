@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 import ImageIO
 
 /// Two-level image cache: decoded images in memory (NSCache) plus raw bytes on disk
@@ -12,8 +11,8 @@ final class ImageCache: @unchecked Sendable {
     static let shared = ImageCache()
 
     // NSCache is thread-safe; in-flight de-duplication lives in an actor.
-    private let memory: NSCache<NSString, UIImage> = {
-        let c = NSCache<NSString, UIImage>()
+    private let memory: NSCache<NSString, PlatformImage> = {
+        let c = NSCache<NSString, PlatformImage>()
         c.totalCostLimit = 120 * 1024 * 1024
         return c
     }()
@@ -50,7 +49,7 @@ final class ImageCache: @unchecked Sendable {
     }
 
     /// Decodes at most `bucket` pixels on the long side, ready to draw.
-    private static func decode(_ data: Data, _ bucket: Int?) -> UIImage? {
+    private static func decode(_ data: Data, _ bucket: Int?) -> PlatformImage? {
         if let bucket,
            let src = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
            let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, [
@@ -59,27 +58,27 @@ final class ImageCache: @unchecked Sendable {
                kCGImageSourceShouldCacheImmediately: true,
                kCGImageSourceThumbnailMaxPixelSize: bucket,
            ] as CFDictionary) {
-            return UIImage(cgImage: cg)
+            return PlatformImage.fromCGImage(cg)
         }
-        guard let image = UIImage(data: data) else { return nil }
-        return image.preparingForDisplay() ?? image
+        guard let image = PlatformImage(data: data) else { return nil }
+        return image.preparedForDisplay()
     }
 
-    private static func cost(_ image: UIImage) -> Int {
-        guard let cg = image.cgImage else { return 1 }
+    private static func cost(_ image: PlatformImage) -> Int {
+        guard let cg = image.cgImageValue else { return 1 }
         return cg.bytesPerRow * cg.height
     }
 
-    private func remember(_ image: UIImage, _ url: URL, _ bucket: Int?) {
+    private func remember(_ image: PlatformImage, _ url: URL, _ bucket: Int?) {
         memory.setObject(image, forKey: Self.key(url, bucket), cost: Self.cost(image))
     }
 
-    func cached(_ url: URL, maxPixel: CGFloat? = nil) -> UIImage? {
+    func cached(_ url: URL, maxPixel: CGFloat? = nil) -> PlatformImage? {
         memory.object(forKey: Self.key(url, Self.bucket(maxPixel)))
     }
 
     /// Memory, then the on-disk cache (decoded once, then kept in memory). No network.
-    func cachedIncludingDisk(_ url: URL, maxPixel: CGFloat? = nil) -> UIImage? {
+    func cachedIncludingDisk(_ url: URL, maxPixel: CGFloat? = nil) -> PlatformImage? {
         let b = Self.bucket(maxPixel)
         if let hit = memory.object(forKey: Self.key(url, b)) { return hit }
         guard let data = session.configuration.urlCache?.cachedResponse(for: URLRequest(url: url))?.data,
@@ -124,7 +123,7 @@ final class ImageCache: @unchecked Sendable {
         return result
     }
 
-    func image(for url: URL, maxPixel: CGFloat? = nil) async -> UIImage? {
+    func image(for url: URL, maxPixel: CGFloat? = nil) async -> PlatformImage? {
         let b = Self.bucket(maxPixel)
         if let hit = memory.object(forKey: Self.key(url, b)) { return hit }
         guard let data = await data(for: url), let image = Self.decode(data, b) else { return nil }
@@ -145,12 +144,12 @@ struct CachedImage<Placeholder: View>: View {
     /// Longest side in pixels it's shown at; nil decodes the full image.
     var maxPixel: CGFloat? = nil
     @ViewBuilder var placeholder: () -> Placeholder
-    @State private var image: UIImage?
+    @State private var image: PlatformImage?
 
     var body: some View {
         Group {
             if let image {
-                Image(uiImage: image).resizable().aspectRatio(contentMode: contentMode)
+                Image(platformImage: image).resizable().aspectRatio(contentMode: contentMode)
             } else {
                 placeholder()
             }
@@ -195,7 +194,7 @@ struct CoverViewer: View {
     /// Tried if `url` can't be loaded (e.g. no full-size version).
     var fallback: URL? = nil
     @Environment(\.dismiss) private var dismiss
-    @State private var image: UIImage?
+    @State private var image: PlatformImage?
     @State private var dragOffset: CGFloat = 0
     @State private var zoomed = false
 
@@ -223,6 +222,9 @@ struct CoverViewer: View {
                 ProgressView().tint(.white)
             }
         }
+        #if os(macOS)
+        .frame(minWidth: 520, minHeight: 520)
+        #endif
         .overlay(alignment: .top) {
             HStack {
                 Button { dismiss() } label: {
@@ -230,7 +232,7 @@ struct CoverViewer: View {
                 }
                 Spacer()
                 if let image {
-                    ShareLink(item: Image(uiImage: image), preview: SharePreview(title, image: Image(uiImage: image))) {
+                    ShareLink(item: Image(platformImage: image), preview: SharePreview(title, image: Image(platformImage: image))) {
                         Image(systemName: "square.and.arrow.up").font(.headline).padding(10).background(.ultraThinMaterial, in: Circle())
                     }
                 }
@@ -239,7 +241,7 @@ struct CoverViewer: View {
             .padding()
             .opacity(abs(dragOffset) > 10 ? 0 : 1)
         }
-        .statusBarHidden()
+        .hideStatusBar()
         .task {
             image = await ImageCache.shared.image(for: url)
             if image == nil, let fallback { image = await ImageCache.shared.image(for: fallback) }
@@ -247,6 +249,7 @@ struct CoverViewer: View {
     }
 }
 
+#if os(iOS)
 /// UIScrollView-backed pinch / double-tap zoom.
 struct ZoomableImage: UIViewRepresentable {
     let image: UIImage
@@ -305,3 +308,36 @@ struct ZoomableImage: UIViewRepresentable {
         }
     }
 }
+#else
+struct ZoomableImage: View {
+    let image: PlatformImage
+    @Binding var isZoomed: Bool
+    @State private var scale: CGFloat = 1
+    @State private var baseScale: CGFloat = 1
+
+    var body: some View {
+        Image(platformImage: image)
+            .resizable()
+            .scaledToFit()
+            .scaleEffect(scale)
+            .gesture(
+                MagnifyGesture()
+                    .onChanged { v in
+                        scale = max(1, min(6, baseScale * v.magnification))
+                        isZoomed = scale > 1.01
+                    }
+                    .onEnded { _ in
+                        baseScale = scale
+                        isZoomed = scale > 1.01
+                    }
+            )
+            .onTapGesture(count: 2) {
+                withAnimation(.spring) {
+                    scale = scale > 1.01 ? 1 : 2.5
+                    baseScale = scale
+                    isZoomed = scale > 1.01
+                }
+            }
+    }
+}
+#endif

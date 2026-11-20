@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.harper
   deploymentTarget:
     iOS: "26.0"
+    macOS: "26.0"
 settings:
   base:
     SWIFT_VERSION: "5.0"
@@ -91,3 +92,36 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_STYLE: Automatic
         APPLICATION_EXTENSION_API_ONLY: YES
+
+  AOTYMac:
+    type: application
+    platform: macOS
+    sources:
+      - path: AOTYClient
+        excludes: ["Scripts/**", "Art/**"]
+      - path: AOTYClient/Scripts/extract.js
+        buildPhase: resources
+      - path: AOTYClient/Scripts/genius.js
+        buildPhase: resources
+      - path: AOTYClient/Art/aoty-logo@3x.png
+        buildPhase: resources
+      - path: Shared
+    info:
+      path: Support/MacInfo.plist
+      properties:
+        CFBundleURLTypes:
+          - CFBundleURLName: com.harper.aotyclient
+            CFBundleURLSchemes: [aotybox]
+        LSApplicationCategoryType: public.app-category.music
+    settings:
+      base:
+        PRODUCT_NAME: AOTY
+        PRODUCT_BUNDLE_IDENTIFIER: com.harper.aotyclient
+        GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_CFBundleDisplayName: AOTY
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "Listens to the music playing around you to find the song."
+        ARCHS: arm64
+        ONLY_ACTIVE_ARCH: NO
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_APP_SANDBOX: NO

@@ -18,13 +18,13 @@ struct AISettingsView: View {
                     ForEach(AIProvider.allCases) { Text($0.name).tag($0.rawValue) }
                 }
                 SecureField("API key", text: $key)
-                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .noAutocap().autocorrectionDisabled()
                     .onSubmit { AISettings.setAPIKey(key, provider) }
                 TextField(provider == .gemini ? "Model (leave empty = automatic)" : (provider.defaultModel.isEmpty ? "Model (required)" : "Model (default \(provider.defaultModel))"), text: $model)
-                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    .noAutocap().autocorrectionDisabled()
                 if provider == .openai {
                     TextField("Base URL (default https://api.openai.com/v1)", text: $baseURL)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
+                        .noAutocap().autocorrectionDisabled().urlKeyboard()
                 }
             } footer: {
                 Text(provider.keyHelp + " Your key is stored in the iPhone Keychain and only sent to the provider you choose.")

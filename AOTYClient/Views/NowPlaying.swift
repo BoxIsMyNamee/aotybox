@@ -1,11 +1,12 @@
 import SwiftUI
+#if os(iOS)
 import MediaPlayer
 
 /// What's playing in Apple Music's system player (Marvis plays through it too), for one-tap Learn.
 @MainActor
 final class NowPlaying: ObservableObject {
     static let shared = NowPlaying()
-    struct Song: Equatable { let title: String; let artist: String; let album: String?; let art: UIImage? }
+    struct Song: Equatable { let title: String; let artist: String; let album: String?; let art: PlatformImage? }
 
     @Published private(set) var song: Song?
     @Published private(set) var isPlaying = false
@@ -29,7 +30,7 @@ final class NowPlaying: ObservableObject {
     func requestAgain() {
         status = MPMediaLibrary.authorizationStatus()
         if status == .denied || status == .restricted {
-            if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
+            PlatformApp.openAppSettings()
             return
         }
         MPMediaLibrary.requestAuthorization { st in
@@ -62,6 +63,19 @@ final class NowPlaying: ObservableObject {
                     art: item.artwork?.image(at: CGSize(width: 120, height: 120)))
     }
 }
+#else
+@MainActor
+final class NowPlaying: ObservableObject {
+    static let shared = NowPlaying()
+    struct Song: Equatable { let title: String; let artist: String; let album: String?; let art: PlatformImage? }
+    @Published private(set) var song: Song?
+    @Published private(set) var isPlaying = false
+    var authorized: Bool { false }
+    func start() {}
+    func requestAgain() {}
+    func refresh() {}
+}
+#endif
 
 /// Card shown on Search: the current song with a Learn button.
 struct NowPlayingCard: View {
@@ -83,12 +97,13 @@ struct NowPlayingCard: View {
     }
 
     var body: some View {
+        #if os(iOS)
         Group {
             if let s = np.song {
                 VStack(spacing: 0) {
                     HStack(spacing: 12) {
                         Group {
-                            if let art = s.art { Image(uiImage: art).resizable().scaledToFill() }
+                            if let art = s.art { Image(platformImage: art).resizable().scaledToFill() }
                             else { Rectangle().fill(.quaternary) }
                         }
                         .frame(width: 52, height: 52)
@@ -138,7 +153,7 @@ struct NowPlayingCard: View {
                         Text("The app isn't allowed to see what's playing. Inside LiveContainer this can't be turned on; with a normal install (SideStore or TestFlight), allow Apple Music access in Settings.")
                             .font(.caption).foregroundStyle(.secondary)
                         Button("Open Settings") {
-                            if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
+                            PlatformApp.openAppSettings()
                         }
                         .font(.caption.weight(.semibold))
                     }
@@ -155,6 +170,9 @@ struct NowPlayingCard: View {
             }
         }
         .onAppear { np.start() }
+        #else
+        EmptyView()
+        #endif
     }
 
     private func note(_ title: String, _ text: String, button: (String, () -> Void)?) -> some View {

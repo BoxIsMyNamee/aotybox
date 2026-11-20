@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// Long-press → open the exact album or song in Marvis Pro (or Apple Music).
 ///
@@ -204,7 +203,7 @@ enum MusicAppLink {
         }
         if url == nil { url = searchLink(artist: artist, title: song ?? album ?? "") }
         guard let url else { return }
-        UIApplication.shared.open(url) { ok in
+        PlatformApp.open(url) { ok in
             if !ok { NotificationCenter.default.post(name: .musicAppOpenFailed, object: nil) }
         }
     }

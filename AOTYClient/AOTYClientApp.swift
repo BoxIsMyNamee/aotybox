@@ -115,7 +115,13 @@ struct AOTYClientApp: App {
             } message: {
                 Text("Make sure \(MusicAppLink.name) is installed, or pick another app in Settings → Music App.")
             }
+            #if os(macOS)
+            .frame(minWidth: 720, minHeight: 540)
+            #endif
         }
+        #if os(macOS)
+        .defaultSize(width: 1000, height: 740)
+        #endif
     }
 }
 
@@ -133,6 +139,10 @@ struct SettingsView: View {
         let _ = lastFMRev
         NavigationStack {
             Form {
+                #if os(macOS)
+                MacUpdateSettingsSection()
+                #endif
+
                 Section("Accent Color") {
                     AccentColorPicker()
                 }
@@ -247,7 +257,12 @@ enum Appearance: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var name: String {
         switch self {
-        case .system: "Match iPhone"
+        case .system:
+            #if os(iOS)
+            "Match iPhone"
+            #else
+            "Match Mac"
+            #endif
         case .light: "Light"
         case .dark: "Black"
         case .dim: "Dim"
@@ -259,11 +274,19 @@ enum Appearance: String, CaseIterable, Identifiable {
 
     @MainActor static func apply(_ raw: String) {
         let a = Appearance(rawValue: raw) ?? .dark
+        #if os(iOS)
         for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
             for window in scene.windows {
                 window.traitOverrides.userInterfaceLevel = a == .dim ? .elevated : .base
             }
         }
+        #else
+        switch a {
+        case .system: NSApp?.appearance = nil
+        case .light: NSApp?.appearance = NSAppearance(named: .aqua)
+        case .dark, .dim: NSApp?.appearance = NSAppearance(named: .darkAqua)
+        }
+        #endif
     }
 }
 
@@ -294,7 +317,7 @@ struct LaunchSplash: View {
 
     var body: some View {
         ZStack {
-            Color(.systemBackground).ignoresSafeArea()
+            Color.platformBackground.ignoresSafeArea()
             VStack(spacing: 34) {
                 ZStack {
                     ForEach((0..<3).reversed(), id: \.self) { i in card(i) }

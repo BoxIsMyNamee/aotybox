@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// Apollo-style row swipe: the row slides with your finger over a full-width color. It stays muted
 /// until you pass the trigger point, then lights up with a light haptic tick; let go past it to fire.
@@ -32,7 +31,7 @@ struct SwipeRow: ViewModifier {
     private var active: SwipeAction? { side > 0 ? leading : (side < 0 ? trailing : nil) }
 
     func body(content: Content) -> some View {
-        content
+        let base = content
             .padding(.horizontal, 20)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -43,37 +42,50 @@ struct SwipeRow: ViewModifier {
             // withAnimation from the UIKit pan callback was being dropped, so the row snapped back.)
             .animation(dragging ? nil : .smooth(duration: 0.32), value: offset)
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-            .gesture(HorizontalPan(
-                onChange: { raw in
-                    var t = raw
-                    if t > 0 && leading == nil { t = 0 }
-                    if t < 0 && trailing == nil { t = 0 }
-                    let nowArmed = t != 0 && abs(t) >= threshold
-                    if nowArmed != armed {
-                        armed = nowArmed
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    }
-                    if t != 0 { side = t > 0 ? 1 : -1; firedLit = false }
-                    dragging = true
-                    offset = t
-                },
-                onEnd: { _ in
-                    // Only once per swipe: a second end/cancel callback used to fire the action again,
-                    // which un-liked what you'd just liked.
-                    guard dragging else { return }
-                    dragging = false
-                    let fire = armed ? active : nil
-                    armed = false
-                    firedLit = fire != nil          // keep the color lit while it slides back
-                    offset = 0
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.34) {
-                        if offset == 0 && !dragging { side = 0; firedLit = false }
-                    }
-                    // Let the row settle before the action re-renders it.
-                    if let fire { DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { fire.perform() } }
-                }
-            ))
             .listRowInsets(EdgeInsets())
+
+        #if os(iOS)
+        return base.gesture(HorizontalPan(onChange: handleChange, onEnd: { _ in handleEnd() }))
+        #else
+        return base.gesture(
+            DragGesture(minimumDistance: 20)
+                .onChanged { v in
+                    if !dragging && abs(v.translation.width) <= abs(v.translation.height) * 1.3 { return }
+                    handleChange(v.translation.width)
+                }
+                .onEnded { _ in handleEnd() }
+        )
+        #endif
+    }
+
+    private func handleChange(_ raw: CGFloat) {
+        var t = raw
+        if t > 0 && leading == nil { t = 0 }
+        if t < 0 && trailing == nil { t = 0 }
+        let nowArmed = t != 0 && abs(t) >= threshold
+        if nowArmed != armed {
+            armed = nowArmed
+            Haptic.impact(.light)
+        }
+        if t != 0 { side = t > 0 ? 1 : -1; firedLit = false }
+        dragging = true
+        offset = t
+    }
+
+    private func handleEnd() {
+        // Only once per swipe: a second end/cancel callback used to fire the action again,
+        // which un-liked what you'd just liked.
+        guard dragging else { return }
+        dragging = false
+        let fire = armed ? active : nil
+        armed = false
+        firedLit = fire != nil          // keep the color lit while it slides back
+        offset = 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.34) {
+            if offset == 0 && !dragging { side = 0; firedLit = false }
+        }
+        // Let the row settle before the action re-renders it.
+        if let fire { DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { fire.perform() } }
     }
 
     /// Only the strip the row has uncovered gets colored, so it can never fill the whole review.
@@ -116,7 +128,7 @@ extension View {
 }
 
 /// Background the row shows while it slides (match the list's cell color).
-private struct SwipeRowBackgroundKey: EnvironmentKey { static let defaultValue = Color(.systemBackground) }
+private struct SwipeRowBackgroundKey: EnvironmentKey { static let defaultValue = Color.platformBackground }
 extension EnvironmentValues {
     var swipeRowBackground: Color {
         get { self[SwipeRowBackgroundKey.self] }
@@ -124,6 +136,7 @@ extension EnvironmentValues {
     }
 }
 
+#if os(iOS)
 /// A pan that only starts for mostly-horizontal drags, so vertical scrolling stays untouched.
 struct HorizontalPan: UIGestureRecognizerRepresentable {
     var onChange: (CGFloat) -> Void
@@ -154,3 +167,4 @@ struct HorizontalPan: UIGestureRecognizerRepresentable {
         }
     }
 }
+#endif

@@ -35,9 +35,9 @@ struct ProfileView: View {
                 }
             }
             .navigationTitle("Profile")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavTitle()
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .platformTopBarTrailing) {
                     Button { showSettings = true } label: { Image(systemName: "gearshape") }
                         .accessibilityLabel("Settings")
                 }
@@ -47,7 +47,7 @@ struct ProfileView: View {
                 AOTYWebSheet(url: AOTYSession.home, title: "Sign in").accentTint()
             }
             .alert("Your AOTY username", isPresented: $showChange) {
-                TextField("username", text: $typedName).textInputAutocapitalization(.never).autocorrectionDisabled()
+                TextField("username", text: $typedName).noAutocap().autocorrectionDisabled()
                 Button("Save") {
                     let u = typedName.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "@/"))
                     guard !u.isEmpty else { return }
@@ -225,13 +225,13 @@ struct UserProfileView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .environment(\.swipeRowBackground, Color(.secondarySystemGroupedBackground))
+        .environment(\.swipeRowBackground, Color.platformSecondaryGroupedBackground)
         .listSectionSpacing(.compact)
         .contentMargins(.top, 4, for: .scrollContent)
         .refreshable { await refresh() }
         .toolbar {
             if isMe {
-                ToolbarItem(placement: .topBarLeading) { Menu {
+                ToolbarItem(placement: .platformTopBarLeading) { Menu {
                     Button { showFullProfile = true } label: { Label("Open full profile", systemImage: "safari") }
                     Button { Task { await refresh() } } label: { Label("Refresh", systemImage: "arrow.clockwise") }
                     if let onChangeUser { Button(action: onChangeUser) { Label("Not you? Set username", systemImage: "person.crop.circle.badge.questionmark") } }
@@ -239,7 +239,7 @@ struct UserProfileView: View {
                 } label: { Image(systemName: "ellipsis") } }
             }
         }
-        .fullScreenCover(isPresented: $showAvatar) {
+        .platformFullScreenCover(isPresented: $showAvatar) {
             if let s = profile?.avatar ?? fallbackAvatar, let u = URL(string: Self.largeAvatar(s)) {
                 CoverViewer(url: u, title: profile?.displayName ?? username, fallback: URL(string: s)).accentTint()
             }
@@ -306,7 +306,7 @@ struct UserProfileView: View {
         .padding(.horizontal, 16).padding(.bottom, 8)
     }
 
-    private func bgSlack(for image: UIImage, in box: CGSize) -> CGSize {
+    private func bgSlack(for image: PlatformImage, in box: CGSize) -> CGSize {
         guard box.width > 0, box.height > 0 else { return .zero }
         let iw = max(image.size.width, 1)
         let ih = max(image.size.height, 1)
@@ -452,7 +452,7 @@ struct UserProfileView: View {
             }
         }
         .padding(.vertical, 10)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color.platformSecondaryGroupedBackground, in: RoundedRectangle(cornerRadius: 12))
     }
 
     @ViewBuilder private func statCell(_ s: ProfileStat) -> some View {
@@ -507,13 +507,13 @@ struct UserProfileView: View {
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
-                            .background(Color(.secondarySystemGroupedBackground), in: Capsule())
+                            .background(Color.platformSecondaryGroupedBackground, in: Capsule())
                             .contentShape(Capsule())
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
                             Button { openURL(url) } label: { Label("Open in Browser", systemImage: "safari") }
-                            Button { UIPasteboard.general.string = url.absoluteString } label: { Label("Copy Link", systemImage: "doc.on.doc") }
+                            Button { PlatformPasteboard.copy(url.absoluteString) } label: { Label("Copy Link", systemImage: "doc.on.doc") }
                         }
                     }
                 }
@@ -554,7 +554,7 @@ struct UserProfileView: View {
                     .foregroundStyle(.tertiary)
             }
             .padding(10)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+            .background(Color.platformSecondaryGroupedBackground, in: RoundedRectangle(cornerRadius: 12))
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
@@ -702,7 +702,7 @@ struct ProfileRatingsView: View {
         }
         .listStyle(.plain)
         .navigationTitle("Ratings")
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavTitle()
         .refreshable { await reload() }
         .task { if ratings.isEmpty { await reload() } }
     }
@@ -857,16 +857,16 @@ struct ProfileReviewsView: View {
             if loading { ProgressView().frame(maxWidth: .infinity) }
         }
         .listStyle(.insetGrouped)
-        .environment(\.swipeRowBackground, Color(.secondarySystemGroupedBackground))
+        .environment(\.swipeRowBackground, Color.platformSecondaryGroupedBackground)
         .task {
             if author == nil, let p = try? await AOTYAPI.shared.profile(username: username) {
                 author = ShareAuthor(name: p.displayName ?? username, color: p.nameColor, avatar: p.avatar.flatMap(URL.init(string:)))
             }
         }
         .navigationTitle("Reviews")
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavTitle()
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .platformTopBarTrailing) {
                 Menu {
                     Picker("Sort", selection: $sort) {
                         ForEach(ReviewSort.allCases) { Label($0.rawValue, systemImage: $0.icon).tag($0) }

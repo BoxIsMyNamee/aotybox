@@ -1,6 +1,5 @@
 import SwiftUI
 import CryptoKit
-import UIKit
 
 /// Song page: Genius bio, lyrics with tappable annotations, comments, and an AI chat.
 /// Falls back to the chat when Genius has nothing for the song.
@@ -59,10 +58,9 @@ struct SongView: View {
                     .padding(.bottom, 8)
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardUp = true }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardUp = false }
+        .trackKeyboard($keyboardUp)
         .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavTitle()
         .toolbar {
             if let url = song?.url ?? hit?.url {
                 Button { openURL(url) } label: { Image(systemName: "arrow.up.right.square") }
@@ -321,7 +319,7 @@ struct AnnotationSheet: View {
                 .padding()
             }
             .navigationTitle("Genius Annotation")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavTitle()
         }
     }
 }
@@ -607,7 +605,7 @@ struct GeniusRichText: View {
                 }
             }
         }
-        .fullScreenCover(item: $viewing) { CoverViewer(url: $0.id, title: "").accentTint() }
+        .platformFullScreenCover(item: $viewing) { CoverViewer(url: $0.id, title: "").accentTint() }
     }
 }
 

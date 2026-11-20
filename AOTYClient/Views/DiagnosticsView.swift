@@ -25,7 +25,7 @@ struct DiagnosticsView: View {
                 Button(running ? "Running…" : "Run diagnostics") { Task { await run() } }
                     .disabled(running)
                 Button("Copy results") {
-                    UIPasteboard.general.string = probes.map { "## \($0.0) \($0.1)\n\(results[$0.1] ?? "-")" }.joined(separator: "\n\n")
+                    PlatformPasteboard.copy(probes.map { "## \($0.0) \($0.1)\n\(results[$0.1] ?? "-")" }.joined(separator: "\n\n"))
                 }
                 .disabled(results.isEmpty || running)
             } footer: {
@@ -98,7 +98,7 @@ struct DiagnosticsView: View {
         do {
             let r = try await AOTYScraper.shared.runJS(js.replacingOccurrences(of: "__ME__", with: "\"\(myUsername)\""), args: [:], timeout: 50)
             heartInfo = r
-            UIPasteboard.general.string = r
+            PlatformPasteboard.copy(r)
         } catch {
             heartInfo = "Failed: \(error.localizedDescription)"
         }

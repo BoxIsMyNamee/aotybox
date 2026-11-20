@@ -73,9 +73,9 @@ struct UserReviewsView: View {
                     .padding(.bottom, 8)
             }
         }
-        .environment(\.swipeRowBackground, Color(.secondarySystemGroupedBackground))
+        .environment(\.swipeRowBackground, Color.platformSecondaryGroupedBackground)
         .navigationTitle(rangeLabel.map { "Rated \($0)" } ?? "User Reviews")
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavTitle()
         .refreshable { await reload() }
         .task(id: sort) { await reload() }
     }

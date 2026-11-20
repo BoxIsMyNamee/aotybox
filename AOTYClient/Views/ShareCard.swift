@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// Everything a review share card shows.
 struct ShareCardData: Hashable, Identifiable {
@@ -42,8 +41,8 @@ extension EnvironmentValues {
 /// and who wrote it. Drawn with images already in hand so it can be rendered to a picture.
 struct ShareCardView: View {
     let data: ShareCardData
-    let cover: UIImage?
-    let avatar: UIImage?
+    let cover: PlatformImage?
+    let avatar: PlatformImage?
 
     private var bodyFont: Font {
         switch data.text.count {
@@ -59,7 +58,7 @@ struct ShareCardView: View {
             // Cover, title, artist and score centered on top; the review below.
             VStack(spacing: 10) {
                 Group {
-                    if let cover { Image(uiImage: cover).resizable().scaledToFill() }
+                    if let cover { Image(platformImage: cover).resizable().scaledToFill() }
                     else { Rectangle().fill(.white.opacity(0.12)) }
                 }
                 .frame(width: 150, height: 150)
@@ -94,7 +93,7 @@ struct ShareCardView: View {
 
             HStack(spacing: 10) {
                 Group {
-                    if let avatar { Image(uiImage: avatar).resizable().scaledToFill() }
+                    if let avatar { Image(platformImage: avatar).resizable().scaledToFill() }
                     else { Circle().fill(.white.opacity(0.15)) }
                 }
                 .frame(width: 30, height: 30)
@@ -103,8 +102,8 @@ struct ShareCardView: View {
                     .foregroundStyle(data.authorColor.map { Color(hex: $0) } ?? .white)
                     .lineLimit(1)
                 Spacer(minLength: 8)
-                if let logo = UIImage(named: "aoty-logo") {
-                    Image(uiImage: logo).renderingMode(.template).resizable().scaledToFit()
+                if let logo = PlatformImage(named: "aoty-logo") {
+                    Image(platformImage: logo).renderingMode(.template).resizable().scaledToFit()
                         .frame(height: 16).opacity(0.7)
                 }
             }
@@ -116,7 +115,7 @@ struct ShareCardView: View {
             ZStack {
                 Color(white: 0.08)
                 if let cover {
-                    Image(uiImage: cover).resizable().scaledToFill()
+                    Image(platformImage: cover).resizable().scaledToFill()
                         .blur(radius: 40).opacity(0.55)
                 }
                 LinearGradient(colors: [.black.opacity(0.15), .black.opacity(0.55)], startPoint: .top, endPoint: .bottom)
@@ -129,7 +128,7 @@ struct ShareCardView: View {
 /// Hold a review → this sheet: the card as a picture, with Share (Messages, Instagram, Save Image…).
 struct ShareCardSheet: View {
     let data: ShareCardData
-    @State private var image: UIImage?
+    @State private var image: PlatformImage?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -137,7 +136,7 @@ struct ShareCardSheet: View {
             ScrollView {
                 Group {
                     if let image {
-                        Image(uiImage: image).resizable().scaledToFit()
+                        Image(platformImage: image).resizable().scaledToFit()
                             .shadow(color: .black.opacity(0.35), radius: 18, y: 8)
                     } else {
                         ProgressView().frame(height: 300)
@@ -146,21 +145,31 @@ struct ShareCardSheet: View {
                 .padding(20)
             }
             .navigationTitle("Share Review")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavTitle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     if let image {
+                        #if os(iOS)
                         // Just the picture: no caption text tags along into Messages etc.
                         Button { shareImage(image) } label: { Image(systemName: "square.and.arrow.up") }
+                        #else
+                        ShareLink(item: Image(platformImage: image), preview: SharePreview(data.title, image: Image(platformImage: image))) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                        #endif
                     }
                 }
             }
         }
+        #if os(macOS)
+        .frame(minWidth: 460, minHeight: 560)
+        #endif
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .task { await render() }
     }
 
+    #if os(iOS)
     private func shareImage(_ img: UIImage) {
         let vc = UIActivityViewController(activityItems: [img], applicationActivities: nil)
         guard let top = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene })
@@ -170,17 +179,22 @@ struct ShareCardSheet: View {
         vc.popoverPresentationController?.sourceView = presenter.view
         presenter.present(vc, animated: true)
     }
+    #endif
 
     private func render() async {
         var data = self.data
         if let u = data.fullURL, let full = try? await AOTYAPI.shared.fullReview(url: u, preview: data.text) { data.text = full }
         data.text = data.text.replacingOccurrences(of: #"\s*(\.\.\.|…)?\s*read more\s*$"#, with: "…", options: [.regularExpression, .caseInsensitive])
-        let cover: UIImage? = if let u = data.cover { await ImageCache.shared.image(for: u) } else { nil }
-        let avatar: UIImage? = if let u = data.avatar { await ImageCache.shared.image(for: u) } else { nil }
+        let cover: PlatformImage? = if let u = data.cover { await ImageCache.shared.image(for: u) } else { nil }
+        let avatar: PlatformImage? = if let u = data.avatar { await ImageCache.shared.image(for: u) } else { nil }
         let r = ImageRenderer(content: ShareCardView(data: data, cover: cover, avatar: avatar))
         r.scale = 3
         r.isOpaque = false
+        #if os(iOS)
         image = r.uiImage
+        #else
+        image = r.nsImage
+        #endif
     }
 }
 
@@ -200,8 +214,8 @@ private struct ReviewShareMenu: ViewModifier {
             .contextMenu {
                 Button { sharing = data } label: { Label("Share as Image", systemImage: "photo.on.rectangle") }
                 if let u = data.pageURL {
-                    Button { UIApplication.shared.open(u) } label: { Label("Open in Safari", systemImage: "safari") }
-                    Button { UIPasteboard.general.url = u } label: { Label("Copy Link", systemImage: "link") }
+                    Button { PlatformApp.open(u) } label: { Label("Open in Safari", systemImage: "safari") }
+                    Button { PlatformPasteboard.copy(u) } label: { Label("Copy Link", systemImage: "link") }
                 }
             } preview: {
                 // Long reviews make a tall card; show it from the top (cover first) and fade out

@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// Floating glass segmented switcher for the bottom of a screen. Tap a segment, or drag across
 /// it and the bubble follows your finger (light haptic each time it lands on a new segment).
@@ -43,7 +42,7 @@ struct GlassSegmented<T: Hashable>: View {
 
     private func pick(_ v: T) {
         guard v != selection else { return }
-        UISelectionFeedbackGenerator().selectionChanged()
+        Haptic.selection()
         withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { selection = v }
     }
 }

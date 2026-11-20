@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// Native artist page: wide photo, scores + details, then Albums / EPs / Singles (switch at the
 /// bottom). The filter button adds AOTY's other release types (reissues, live, …) into Albums.
@@ -64,7 +63,7 @@ struct ArtistView: View {
             else { ProgressView() }
         }
         .navigationTitle(artist?.name ?? fallbackName)
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavTitle()
         .safeAreaInset(edge: .bottom) {
             if artist != nil {
                 HStack(spacing: 12) {
@@ -126,7 +125,7 @@ struct ArtistView: View {
                 followBusy = true; defer { followBusy = false }
                 let want = !on
                 following = want                                  // optimistic
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                Haptic.impact(.light)
                 if await AOTYAPI.shared.setArtistFollow(id, follow: want) {
                     if let base { await AOTYScraper.shared.forget(base) }
                 } else {
@@ -139,7 +138,7 @@ struct ArtistView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(on ? Color.primary : Color.white)
                 .padding(.horizontal, 16).frame(height: 32)
-                .background(on ? AnyShapeStyle(Color(.tertiarySystemFill)) : AnyShapeStyle(Color.accentColor), in: Capsule())
+                .background(on ? AnyShapeStyle(Color.platformTertiaryFill) : AnyShapeStyle(Color.accentColor), in: Capsule())
                 .contentTransition(.interpolate)
         }
         .buttonStyle(.plain)
@@ -207,7 +206,7 @@ struct ArtistView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .environment(\.swipeRowBackground, Color(.secondarySystemGroupedBackground))
+        .environment(\.swipeRowBackground, Color.platformSecondaryGroupedBackground)
     }
 
     private func hero(_ a: AOTYAPI.Artist) -> some View {
@@ -324,7 +323,7 @@ struct ArtistFilterSheet: View {
                     ForEach(options, id: \.0) { t in
                         Button {
                             if picked.contains(t.0) { picked.remove(t.0) } else { picked.insert(t.0) }
-                            UISelectionFeedbackGenerator().selectionChanged()
+                            Haptic.selection()
                         } label: {
                             HStack {
                                 Text(t.1).foregroundStyle(.primary)
@@ -343,9 +342,9 @@ struct ArtistFilterSheet: View {
                 }
             }
             .navigationTitle("Filters")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavTitle()
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .platformTopBarLeading) {
                     Button(picked.count == options.count ? "None" : "All") {
                         picked = picked.count == options.count ? [] : Set(options.map(\.0))
                     }

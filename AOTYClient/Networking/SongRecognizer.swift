@@ -232,9 +232,11 @@ final class MicRecorder: @unchecked Sendable {
     var collected: [Int16] { lock.lock(); defer { lock.unlock() }; return samples }
 
     func start() throws {
+        #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .defaultToSpeaker, .allowBluetoothA2DP])
         try session.setActive(true)
+        #endif
         let input = engine.inputNode
         let inFormat = input.outputFormat(forBus: 0)
         guard let target = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true),
@@ -260,6 +262,8 @@ final class MicRecorder: @unchecked Sendable {
     func stop() {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        #if os(iOS)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        #endif
     }
 }

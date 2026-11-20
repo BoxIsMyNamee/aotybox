@@ -410,7 +410,7 @@ struct LastFMSettingsView: View {
 
             Section {
                 SecureField("Last.fm API key", text: $key)
-                    .textInputAutocapitalization(.never)
+                    .noAutocap()
                     .autocorrectionDisabled()
                     .onSubmit { save() }
             } header: {

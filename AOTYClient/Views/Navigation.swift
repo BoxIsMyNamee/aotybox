@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 // One navigation style everywhere: each tab owns a NavigationPath and screens push typed
 // values onto it. (Mixing destination-based NavigationLinks with value-based ones in the same
@@ -42,13 +41,13 @@ extension View {
             .navigationDestination(for: LearnAlbumRoute.self) { LearnAlbumView(artist: $0.artist, album: $0.album, cover: $0.cover) }
             .navigationDestination(for: UserRoute.self) { u in
                 UserProfileView(username: u.username, fallbackAvatar: u.avatar, fallbackName: u.name, fallbackColor: u.nameColor, isMe: false)
-                    .navigationTitle(u.name).navigationBarTitleDisplayMode(.inline)
+                    .navigationTitle(u.name).inlineNavTitle()
             }
             .navigationDestination(for: ProfileReviewsRoute.self) { ProfileReviewsView(username: $0.username) }
             .navigationDestination(for: ProfileRatingsRoute.self) { ProfileRatingsView(username: $0.username, path: $0.path, isMe: $0.isMe) }
             .navigationDestination(for: FollowUser.self) { u in
                 UserProfileView(username: u.username, fallbackAvatar: u.avatar, fallbackName: u.name, fallbackColor: u.nameColor, isMe: false)
-                    .navigationTitle(u.name).navigationBarTitleDisplayMode(.inline)
+                    .navigationTitle(u.name).inlineNavTitle()
             }
     }
 }
@@ -95,7 +94,7 @@ struct TapAndHold: ViewModifier {
                         try? await Task.sleep(for: .milliseconds(420))
                         guard !Task.isCancelled, pressing else { return }
                         fired = true
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        Haptic.impact(.medium)
                         withAnimation(.spring(response: 0.25, dampingFraction: 0.5)) { pressing = false }
                         hold()
                     }
