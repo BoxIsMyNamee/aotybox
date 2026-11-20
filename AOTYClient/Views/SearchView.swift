@@ -35,7 +35,7 @@ private struct SearchContent: View {
             else { idle }
         }
         .tabTitle("Search")
-        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Albums, artists, songs")
+        .platformSearchable(text: $query, prompt: "Albums, artists, songs")
         .onSubmit(of: .search) { run(query) }
         // A shared Apple Music / song.link / Spotify link: open that album here.
         .onReceive(NotificationCenter.default.publisher(for: .openMusicLink)) { n in

@@ -51,7 +51,7 @@ struct ReleasesView: View {
                 .padding(.bottom, 8)
             }
             .navigationTitle(singles ? "Singles" : "Releases")
-            .toolbar(.hidden, for: .navigationBar)
+            .hideNavBar()
             .onChange(of: singles) { if singles && feed == .upcoming { feed = .new } }
         }
     }

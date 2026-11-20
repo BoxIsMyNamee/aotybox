@@ -284,4 +284,40 @@ extension View {
         self
         #endif
     }
+
+    @ViewBuilder
+    func insetGroupedListStyle() -> some View {
+        #if os(iOS)
+        listStyle(.insetGrouped)
+        #else
+        listStyle(.inset)
+        #endif
+    }
+
+    @ViewBuilder
+    func compactListSectionSpacing() -> some View {
+        #if os(iOS)
+        listSectionSpacing(.compact)
+        #else
+        self
+        #endif
+    }
+
+    @ViewBuilder
+    func hideNavBar() -> some View {
+        #if os(iOS)
+        toolbar(.hidden, for: .navigationBar)
+        #else
+        self
+        #endif
+    }
+
+    @ViewBuilder
+    func platformSearchable(text: Binding<String>, prompt: String) -> some View {
+        #if os(iOS)
+        searchable(text: text, placement: .navigationBarDrawer(displayMode: .always), prompt: prompt)
+        #else
+        searchable(text: text, placement: .toolbar, prompt: prompt)
+        #endif
+    }
 }

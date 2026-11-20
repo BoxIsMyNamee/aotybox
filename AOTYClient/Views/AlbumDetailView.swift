@@ -255,7 +255,7 @@ struct AlbumDetailView: View {
             }
 
         }
-        .listStyle(.insetGrouped)
+        .insetGroupedListStyle()
         .environment(\.swipeRowBackground, Color.platformSecondaryGroupedBackground)
     }
 }

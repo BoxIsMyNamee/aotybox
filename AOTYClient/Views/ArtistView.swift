@@ -205,7 +205,7 @@ struct ArtistView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .insetGroupedListStyle()
         .environment(\.swipeRowBackground, Color.platformSecondaryGroupedBackground)
     }
 

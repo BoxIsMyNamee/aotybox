@@ -224,9 +224,9 @@ struct UserProfileView: View {
             }
             }
         }
-        .listStyle(.insetGrouped)
+        .insetGroupedListStyle()
         .environment(\.swipeRowBackground, Color.platformSecondaryGroupedBackground)
-        .listSectionSpacing(.compact)
+        .compactListSectionSpacing()
         .contentMargins(.top, 4, for: .scrollContent)
         .refreshable { await refresh() }
         .toolbar {
@@ -856,7 +856,7 @@ struct ProfileReviewsView: View {
             }
             if loading { ProgressView().frame(maxWidth: .infinity) }
         }
-        .listStyle(.insetGrouped)
+        .insetGroupedListStyle()
         .environment(\.swipeRowBackground, Color.platformSecondaryGroupedBackground)
         .task {
             if author == nil, let p = try? await AOTYAPI.shared.profile(username: username) {
