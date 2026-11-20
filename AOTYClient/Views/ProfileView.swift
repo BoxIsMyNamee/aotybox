@@ -13,14 +13,21 @@ struct ProfileView: View {
     @State private var typedName = ""
     @State private var showSettings = false
 
+    private var activeUsername: String? {
+        if !overrideUsername.isEmpty { return overrideUsername }
+        if let username, !username.isEmpty { return username }
+        if !savedUsername.isEmpty { return savedUsername }
+        return nil
+    }
+
     var body: some View {
         AppStack {
             Group {
-                if let username {
-                    UserProfileView(username: username, fallbackAvatar: meAvatar, isMe: true,
-                                    onChangeUser: { typedName = username; showChange = true },
+                if let u = activeUsername {
+                    UserProfileView(username: u, fallbackAvatar: meAvatar, isMe: true,
+                                    onChangeUser: { typedName = u; showChange = true },
                                     onAutoDetect: overrideUsername.isEmpty ? nil : { overrideUsername = ""; Task { await detect() } })
-                        .id(username)
+                        .id(u)
                 } else if detecting {
                     ProgressView("Finding your profile…")
                 } else {
@@ -51,7 +58,10 @@ struct ProfileView: View {
             } message: {
                 Text("As it appears in your profile link: albumoftheyear.org/user/username")
             }
-            .task { if username == nil { await detect() } }
+            .task {
+                if activeUsername == nil { await detect() }
+                else { await detect(silent: true) }
+            }
         }
     }
 
@@ -67,18 +77,46 @@ struct ProfileView: View {
         }
     }
 
-    private func detect() async {
+    private func detect(silent: Bool = false) async {
         if !overrideUsername.isEmpty { username = overrideUsername; savedUsername = overrideUsername; return }
-        detecting = true; error = nil
-        defer { detecting = false }
+        if !silent { detecting = true; error = nil }
+        defer { if !silent { detecting = false } }
         do {
             let me = try await AOTYAPI.shared.me(refresh: true)
             if let u = me.username { username = u; meAvatar = me.avatar; savedUsername = u }
-            else { username = nil }
+            else if !silent { username = nil; savedUsername = "" }
         } catch {
-            self.error = error.localizedDescription
-            if !savedUsername.isEmpty { username = savedUsername }
+            if !silent {
+                self.error = error.localizedDescription
+                if !savedUsername.isEmpty { username = savedUsername }
+            }
         }
+    }
+}
+
+/// Persists the signed-in user's last profile snapshot so cold launches open straight to their real profile.
+private struct ProfileSnapshot: Codable {
+    let username: String
+    let profile: Profile
+    let ratings: [AlbumBlock]
+    let friends: [FollowUser]
+
+    private static var url: URL {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("myProfileSnapshot.json")
+    }
+
+    static func load(for username: String) -> ProfileSnapshot? {
+        guard let data = try? Data(contentsOf: url),
+              let snap = try? JSONDecoder().decode(ProfileSnapshot.self, from: data),
+              snap.username.lowercased() == username.lowercased() else { return nil }
+        return snap
+    }
+
+    static func save(_ snap: ProfileSnapshot) {
+        guard let data = try? JSONEncoder().encode(snap) else { return }
+        try? data.write(to: url, options: .atomic)
     }
 }
 
@@ -95,6 +133,7 @@ struct UserProfileView: View {
     @AppStorage(ProfileBackground.yKey) private var bgY = 0.5
     @AppStorage(ProfileBackground.zoomKey) private var bgZoom = 1.0
     @AppStorage(LastFM.revKey) private var lastFMRev = 0
+    @AppStorage(LastFM.liveEnabledKey) private var lastFMLiveEnabled = false
     var onChangeUser: (() -> Void)? = nil
     var onAutoDetect: (() -> Void)? = nil
 
@@ -114,6 +153,24 @@ struct UserProfileView: View {
     @State private var bgBoxSize: CGSize = .zero
     @State private var bgDragStart: (Double, Double)?
     @State private var bgZoomStart: Double?
+
+    init(username: String, fallbackAvatar: String? = nil, fallbackName: String? = nil, fallbackColor: String? = nil,
+         isMe: Bool = false, onChangeUser: (() -> Void)? = nil, onAutoDetect: (() -> Void)? = nil) {
+        self.username = username
+        self.fallbackAvatar = fallbackAvatar
+        self.fallbackName = fallbackName
+        self.fallbackColor = fallbackColor
+        self.isMe = isMe
+        self.onChangeUser = onChangeUser
+        self.onAutoDetect = onAutoDetect
+        let savedMe = UserDefaults.standard.string(forKey: "profileUsername") ?? ""
+        let isOwn = isMe || (!savedMe.isEmpty && username.lowercased() == savedMe.lowercased())
+        if isOwn, let snap = ProfileSnapshot.load(for: username) {
+            _profile = State(initialValue: snap.profile)
+            _ratings = State(initialValue: snap.ratings)
+            _friends = State(initialValue: snap.friends)
+        }
+    }
 
     private var ownProfile: Bool {
         isMe || (!myUsername.isEmpty && username.lowercased() == myUsername.lowercased())
@@ -201,8 +258,12 @@ struct UserProfileView: View {
         .safeAreaInset(edge: .bottom) {
             if adjustingBg { bgAdjustBar }
         }
-        .task { if profile == nil && ratings.isEmpty { await load(force: false) } }
-        .task(id: "\(profile?.links?.map(\.url).joined() ?? "")-\(lastFMRev)") {
+        .task { await load(force: false) }
+        .task(id: "\(profile?.links?.map(\.url).joined() ?? "")-\(lastFMRev)-\(lastFMLiveEnabled)") {
+            guard lastFMLiveEnabled else {
+                if lastFMPlaying != nil { lastFMPlaying = nil }
+                return
+            }
             guard let lfm = LastFM.username(from: profile?.links) else { return }
             // Check right away when an API key is added/changed or links arrive.
             await pollLastFM(user: lfm.user, url: lfm.url)
@@ -562,7 +623,7 @@ struct UserProfileView: View {
         do {
             let p = try await AOTYAPI.shared.profile(username: username)
             async let lfmTask: LastFM.FetchResult = {
-                guard let lfm = LastFM.username(from: p.links) else { return .idle }
+                guard LastFM.isLiveEnabled, let lfm = LastFM.username(from: p.links) else { return .idle }
                 return await LastFM.fetchStatus(username: lfm.user, profileURL: lfm.url)
             }()
             await ImageCache.shared.warm([p.avatar.flatMap(URL.init(string:))]
@@ -578,6 +639,9 @@ struct UserProfileView: View {
             let lfmRes = await lfmTask
             if case let .playing(np) = lfmRes, let cover = np.cover {
                 await ImageCache.shared.warm([cover], timeout: 0.35)
+            }
+            if ownProfile {
+                ProfileSnapshot.save(ProfileSnapshot(username: username, profile: p, ratings: newRatings, friends: newFriends))
             }
             var t = Transaction(); t.disablesAnimations = true
             withTransaction(t) {

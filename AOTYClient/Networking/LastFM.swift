@@ -3,6 +3,8 @@ import SwiftUI
 /// Reads a user's live "Scrobbling now" status from Last.fm (uses the official API when an API key is set in Settings, with an HTML fallback).
 enum LastFM {
     static let revKey = "lastFMConfigRev"
+    static let liveEnabledKey = "lastFMLiveEnabled"
+    static var isLiveEnabled: Bool { UserDefaults.standard.bool(forKey: liveEnabledKey) }
     private static let kcAccount = "lastfm_api_key"
     private static let placeholderHash = "2a96cbd8b46e442fc41c2b86b821562f"
 
@@ -393,12 +395,19 @@ enum LastFM {
 /// Settings screen to save a Last.fm API key in the iPhone Keychain.
 struct LastFMSettingsView: View {
     @AppStorage(LastFM.revKey) private var rev = 0
+    @AppStorage(LastFM.liveEnabledKey) private var liveEnabled = false
     @State private var key = ""
     @State private var testing = false
     @State private var status: String?
 
     var body: some View {
         Form {
+            Section {
+                Toggle("Live Now Playing on Profile", isOn: $liveEnabled)
+            } footer: {
+                Text("Shows what you're currently scrobbling in your profile's Around the Web section.")
+            }
+
             Section {
                 SecureField("Last.fm API key", text: $key)
                     .textInputAutocapitalization(.never)

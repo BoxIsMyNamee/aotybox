@@ -14,7 +14,7 @@ extension String {
 // Only the fields the app uses are declared; JSONDecoder ignores the rest.
 
 /// A compact album card — used by releases, upcoming, discover and search.
-struct AlbumBlock: Decodable, Identifiable, Hashable {
+struct AlbumBlock: Codable, Identifiable, Hashable {
     let url: String
     let artist: String
     let title: String
@@ -62,7 +62,7 @@ struct AlbumBlock: Decodable, Identifiable, Hashable {
     }
 }
 
-struct FollowUser: Decodable, Identifiable, Hashable {
+struct FollowUser: Codable, Identifiable, Hashable {
     let username: String
     let name: String
     let avatar: String?
@@ -119,12 +119,12 @@ struct Me: Decodable {
     var notifications: Notifications? = nil
 }
 
-struct ProfileStat: Decodable, Hashable {
+struct ProfileStat: Codable, Hashable {
     let label: String
     let value: String
 }
 
-struct ProfileLink: Decodable, Hashable, Identifiable {
+struct ProfileLink: Codable, Hashable, Identifiable {
     let name: String
     let url: String
     var icon: String? = nil
@@ -138,7 +138,7 @@ struct ProfileLink: Decodable, Hashable, Identifiable {
     }
 }
 
-struct Profile: Decodable {
+struct Profile: Codable {
     let username: String
     let displayName: String?
     var nameColor: String? = nil
@@ -154,7 +154,7 @@ struct Profile: Decodable {
 }
 
 /// A review on a user's profile: album info + their score and text.
-struct ProfileReview: Decodable, Identifiable, Hashable {
+struct ProfileReview: Codable, Identifiable, Hashable {
     let id: String
     let albumUrl: String?
     let artist: String
