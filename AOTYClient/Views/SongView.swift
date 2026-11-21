@@ -50,6 +50,7 @@ struct SongView: View {
             .padding()
         }
         .scrollDismissesKeyboard(.interactively)
+        .macPagePadding()
         // Section switcher floats at the bottom like the other pages; it steps aside while typing.
         .safeAreaInset(edge: .bottom) {
             if !keyboardUp {

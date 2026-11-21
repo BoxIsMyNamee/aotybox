@@ -48,13 +48,21 @@ struct AlbumRow: View {
     /// Keep the date and genre lines' space even before they arrive, so rows never shift.
     var reserveLines: Bool = false
 
+    private var effectiveCoverSize: CGFloat {
+        #if os(macOS)
+        max(coverSize, 78)
+        #else
+        coverSize
+        #endif
+    }
+
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 14) {
             if let rank {
                 Text("\(rank)").font(.subheadline.monospacedDigit()).foregroundStyle(.secondary).frame(width: 28)
             }
-            Cover(url: cover, size: coverSize)
-            VStack(alignment: .leading, spacing: 2) {
+            Cover(url: cover, size: effectiveCoverSize)
+            VStack(alignment: .leading, spacing: 3) {
                 Text(artist).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
                 HStack(spacing: 4) {
                     Text(title).font(.body.weight(.semibold)).lineLimit(2)
@@ -75,7 +83,11 @@ struct AlbumRow: View {
                 .frame(width: 72, alignment: .leading)
             }
         }
+        #if os(macOS)
+        .padding(.vertical, 6)
+        #else
         .padding(.vertical, 2)
+        #endif
     }
 }
 
@@ -85,6 +97,118 @@ extension AlbumRow {
                   critic: a.criticScore, user: a.userScore, mustHear: a.mustHear ?? false, coverSize: coverSize, genres: genres)
     }
 }
+
+#if os(macOS)
+/// Responsive desktop album grid: 4–5 large cards per row on a typical Mac window.
+let macAlbumGridColumns: [GridItem] = [
+    GridItem(.adaptive(minimum: 185, maximum: 235), spacing: 24, alignment: .top)
+]
+
+/// Desktop AOTY-style album card for Releases, Charts, Artist, and Search grids on macOS.
+struct MacAlbumCard<Value: Hashable>: View {
+    let value: Value
+    let artist: String
+    let title: String
+    let cover: URL?
+    var subtitle: String? = nil
+    var accentSubtitle: Bool = false
+    var rank: Int? = nil
+    var critic: Double? = nil
+    var user: Double? = nil
+    var mustHear: Bool = false
+    var genres: String? = nil
+    var isSingle: Bool = false
+    @Environment(\.push) private var push
+    @State private var hovered = false
+
+    var body: some View {
+        Button { push(value) } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                CachedImage(url: cover, maxPixel: 512) {
+                    Rectangle().fill(.quaternary.opacity(0.5))
+                }
+                .aspectRatio(1, contentMode: .fill)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(hovered ? 0.22 : 0.08), lineWidth: 1))
+                .overlay(alignment: .topLeading) {
+                    if let rank {
+                        Text("#\(rank)")
+                            .font(.caption.weight(.bold).monospacedDigit())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(.black.opacity(0.75), in: Capsule())
+                            .padding(8)
+                    }
+                }
+                .shadow(color: .black.opacity(hovered ? 0.35 : 0.18), radius: hovered ? 10 : 5, y: 3)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(artist)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(title)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                        if mustHear {
+                            Image(systemName: "star.fill").font(.caption2).foregroundStyle(.tint)
+                        }
+                    }
+                    if let subtitle, !subtitle.isEmpty {
+                        Text(subtitle)
+                            .font(.caption.weight(accentSubtitle ? .semibold : .regular))
+                            .foregroundStyle(accentSubtitle ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+                            .lineLimit(1)
+                    }
+                    if let genres, !genres.isEmpty {
+                        Text(genres)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                if critic != nil || user != nil {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if let critic { SiteScore(score: critic, label: "critic score") }
+                        if let user { SiteScore(score: user, label: "user score") }
+                    }
+                    .padding(.top, 2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 }
+        .contextMenu {
+            Button {
+                if isSingle {
+                    push(SongRoute(artist: artist, title: title, album: nil, cover: cover))
+                } else {
+                    push(LearnAlbumRoute(artist: artist, album: title, cover: cover))
+                }
+            } label: {
+                Label("Learn", systemImage: "book.pages")
+            }
+            Button {
+                Task {
+                    await MusicAppLink.open(
+                        artist: artist,
+                        album: isSingle ? nil : title,
+                        song: isSingle ? title : nil,
+                        appleMusicURL: nil
+                    )
+                }
+            } label: {
+                Label("Open in \(MusicAppLink.name)", systemImage: "music.note")
+            }
+        }
+    }
+}
+#endif
 
 /// AOTY-style score: the number with a thin colored bar under it and a small label.
 struct SiteScore: View {

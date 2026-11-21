@@ -256,6 +256,7 @@ struct AlbumDetailView: View {
 
         }
         .insetGroupedListStyle()
+        .macPagePadding()
         .environment(\.swipeRowBackground, Color.platformSecondaryGroupedBackground)
     }
 }

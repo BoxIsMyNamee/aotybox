@@ -43,6 +43,7 @@ struct ProofView: View {
                 .padding(.bottom, 24)
             }
             .scrollDismissesKeyboard(.interactively)
+            .macPagePadding()
             .tabTitle("Notes")
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {

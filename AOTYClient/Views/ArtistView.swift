@@ -189,6 +189,27 @@ struct ArtistView: View {
                 } else if shown.isEmpty {
                     Text("No \(category.rawValue.lowercased()) on AOTY.").foregroundStyle(.secondary)
                 }
+                #if os(macOS)
+                if !shown.isEmpty {
+                    LazyVGrid(columns: macAlbumGridColumns, spacing: 24) {
+                        ForEach(shown) { album in
+                            MacAlbumCard(
+                                value: album,
+                                artist: album.artist,
+                                title: album.title,
+                                cover: album.coverURL,
+                                subtitle: album.releaseDate,
+                                critic: album.criticScore,
+                                user: album.userScore,
+                                mustHear: album.mustHear ?? false,
+                                isSingle: category == .singles
+                            )
+                        }
+                    }
+                    .padding(.vertical, 8)
+                    .listRowSeparator(.hidden)
+                }
+                #else
                 ForEach(shown) { album in
                     NavRow(value: album, artist: album.artist, album: album.title,
                            isSingle: category == .singles, cover: album.coverURL) {
@@ -196,6 +217,7 @@ struct ArtistView: View {
                                  critic: album.criticScore, user: album.userScore, mustHear: album.mustHear ?? false, coverSize: 64)
                     }
                 }
+                #endif
             } header: {
                 HStack {
                     Text(category.rawValue)
@@ -206,6 +228,7 @@ struct ArtistView: View {
             }
         }
         .insetGroupedListStyle()
+        .macPagePadding()
         .environment(\.swipeRowBackground, Color.platformSecondaryGroupedBackground)
     }
 

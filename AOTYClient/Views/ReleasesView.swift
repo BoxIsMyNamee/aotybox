@@ -8,8 +8,14 @@ struct ReleasesView: View {
     }
 
     /// Singles have no upcoming list on AOTY.
-    /// Upcoming lives on the Search tab now.
-    private var feeds: [Feed] { [.thisWeek, .new] }
+    /// On iOS, Upcoming lives on the Search tab; on macOS it's right here on Releases.
+    private var feeds: [Feed] {
+        #if os(macOS)
+        singles ? [.thisWeek, .new] : [.thisWeek, .new, .upcoming]
+        #else
+        [.thisWeek, .new]
+        #endif
+    }
 
     @State private var feed: Feed = .thisWeek
     @State private var singles = false     // always opens on Albums
@@ -27,9 +33,15 @@ struct ReleasesView: View {
                     .padding(.horizontal, 8)
                     .glassEffect(.regular, in: Capsule())
                 }
+                #if os(macOS)
+                .padding(.horizontal, 64)
+                .padding(.top, 12)
+                .padding(.bottom, 16)
+                #else
                 .padding(.horizontal)
                 .padding(.top, 4)
                 .padding(.bottom, 12)
+                #endif
 
                 // Every feed stays alive (instant switching); only the selected one shows.
                 ZStack {
@@ -47,8 +59,13 @@ struct ReleasesView: View {
                     GlassSegmented(selection: $feed, items: feeds.map { ($0, $0.rawValue) })
                     KindToggle(singles: $singles, iconOnly: true)
                 }
+                #if os(macOS)
+                .frame(maxWidth: 420)
+                .padding(.bottom, 14)
+                #else
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
+                #endif
             }
             .navigationTitle(singles ? "Singles" : "Releases")
             .hideNavBar()
@@ -70,6 +87,53 @@ private struct FeedList: View {
     @State private var loaded = false
 
     var body: some View {
+        #if os(macOS)
+        ScrollView {
+            if let error, albums.isEmpty {
+                ErrorView(message: error) { await reload() }
+                    .padding(.top, 40)
+            } else if albums.isEmpty && !loading && loaded {
+                ContentUnavailableView("Nothing here yet", systemImage: "square.stack", description: Text("Try refreshing in a moment."))
+                    .padding(.top, 40)
+            } else {
+                LazyVGrid(columns: macAlbumGridColumns, spacing: 28) {
+                    ForEach(albums) { album in
+                        let date = album.releaseDate ?? genreStore.date(for: album.slug)
+                        let isSingle = singles || (album.mediaType?.lowercased().contains("single") ?? false)
+                        MacAlbumCard(
+                            value: album,
+                            artist: album.artist,
+                            title: album.title,
+                            cover: album.coverURL,
+                            subtitle: date,
+                            accentSubtitle: feed == .upcoming,
+                            critic: feed == .upcoming ? nil : album.criticScore,
+                            user: feed == .upcoming ? nil : album.userScore,
+                            mustHear: feed == .upcoming ? false : (album.mustHear ?? false),
+                            genres: genreStore.label(for: album.slug),
+                            isSingle: isSingle
+                        )
+                        .onAppear {
+                            genreStore.appeared(album.slug)
+                            if album == albums.last { Task { await loadMore() } }
+                        }
+                        .onDisappear { genreStore.disappeared(album.slug) }
+                    }
+                }
+                .padding(.top, 8)
+                .padding(.bottom, 24)
+            }
+            if loading {
+                ProgressView().frame(maxWidth: .infinity).padding(.vertical, 24)
+            }
+        }
+        .macPagePadding()
+        .refreshable { await refresh() }
+        .task { if !loaded { await reload() } }
+        .onReceive(NotificationCenter.default.publisher(for: .aotyReady)) { _ in
+            if albums.isEmpty || error != nil { Task { await reload() } }
+        }
+        #else
         List {
             if let error, albums.isEmpty {
                 ErrorView(message: error) { await reload() }
@@ -105,6 +169,7 @@ private struct FeedList: View {
         .onReceive(NotificationCenter.default.publisher(for: .aotyReady)) { _ in
             if albums.isEmpty || error != nil { Task { await reload() } }
         }
+        #endif
     }
 
     private func fetch(_ page: Int) async throws -> [AlbumBlock] {

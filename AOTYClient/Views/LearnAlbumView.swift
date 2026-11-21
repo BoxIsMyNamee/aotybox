@@ -64,6 +64,7 @@ struct LearnAlbumView: View {
             .padding()
         }
         .scrollDismissesKeyboard(.interactively)
+        .macPagePadding()
         .safeAreaInset(edge: .bottom) {
             if !keyboardUp {
                 GlassSegmented(selection: $tab, items: Tab.allCases.map { ($0, $0.rawValue) })

@@ -11,10 +11,49 @@ struct AOTYClientApp: App {
     @State private var showSplash = true
     @AppStorage("didOnboard") private var didOnboard = false
     @State private var showWelcome = false
+    #if os(macOS)
+    @State private var macSearchQuery = ""
+    @State private var macSearchSubmitted = ""
+    @State private var macSearchForceOpen = false
+
+    private var macSearchActive: Bool {
+        !macSearchQuery.trimmingCharacters(in: .whitespaces).isEmpty || !macSearchSubmitted.isEmpty || macSearchForceOpen
+    }
+    #endif
 
     var body: some Scene {
         WindowGroup {
             ZStack {
+            #if os(macOS)
+            TabView(selection: Binding(get: { tab == 2 ? 0 : tab }, set: { new in
+                tab = new
+                macSearchQuery = ""
+                macSearchSubmitted = ""
+                macSearchForceOpen = false
+            })) {
+                ReleasesView().tabItem { Label("Releases", systemImage: "square.stack") }.tag(0)
+                ChartsView().tabItem { Label("Charts", systemImage: "chart.bar") }.tag(1)
+                ProfileView().tabItem { Label("Profile", systemImage: "person.crop.circle") }.tag(3)
+                ProofView().tabItem { Label("Notes", systemImage: "text.badge.checkmark") }.tag(4)
+            }
+            .searchable(text: $macSearchQuery, placement: .toolbar, prompt: "Albums, artists, songs")
+            .onSubmit(of: .search) {
+                let q = macSearchQuery.trimmingCharacters(in: .whitespaces)
+                if !q.isEmpty { macSearchSubmitted = q }
+            }
+            if macSearchActive {
+                MacSearchOverlay(
+                    query: $macSearchQuery,
+                    submitted: $macSearchSubmitted,
+                    forceOpen: $macSearchForceOpen
+                ) {
+                    macSearchQuery = ""
+                    macSearchSubmitted = ""
+                    macSearchForceOpen = false
+                }
+                .zIndex(1)
+            }
+            #else
             TabView(selection: Binding(get: { tab }, set: { new in
                 if new == tab && new == 2 { NotificationCenter.default.post(name: .resetSearch, object: nil) }
                 tab = new
@@ -25,10 +64,11 @@ struct AOTYClientApp: App {
                 ProfileView().tabItem { Label("Profile", systemImage: "person.crop.circle") }.tag(3)
                 ProofView().tabItem { Label("Notes", systemImage: "text.badge.checkmark") }.tag(4)
             }
-            LikeNoticeToast().zIndex(2)
+            #endif
+            LikeNoticeToast().zIndex(3)
             if showSplash {
                 LaunchSplash { showSplash = false }
-                    .zIndex(1)
+                    .zIndex(2)
             }
             }
             .tint(Color(hex: accentHex))
@@ -77,7 +117,11 @@ struct AOTYClientApp: App {
                         .flatMap { Data(base64Encoded: $0.replacingOccurrences(of: " ", with: "+")) }
                         .flatMap { String(data: $0, encoding: .utf8) } ?? items.first(where: { $0.name == "url" })?.value
                     if let raw, let link = URL(string: raw) {
+                        #if os(macOS)
+                        macSearchForceOpen = true
+                        #else
                         tab = 2
+                        #endif
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             NotificationCenter.default.post(name: .openMusicLink, object: link)
                         }
@@ -105,7 +149,11 @@ struct AOTYClientApp: App {
                       let title = items.first(where: { $0.name == "title" })?.value, !title.isEmpty else { return }
                 let artist = items.first(where: { $0.name == "artist" })?.value ?? ""
                 let album = items.first(where: { $0.name == "album" })?.value
+                #if os(macOS)
+                macSearchForceOpen = true
+                #else
                 tab = 2
+                #endif
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     NotificationCenter.default.post(name: .openLearn, object: SongRoute(artist: artist, title: title, album: album, cover: nil))
                 }
@@ -116,11 +164,11 @@ struct AOTYClientApp: App {
                 Text("Make sure \(MusicAppLink.name) is installed, or pick another app in Settings → Music App.")
             }
             #if os(macOS)
-            .frame(minWidth: 720, minHeight: 540)
+            .frame(minWidth: 780, minHeight: 560)
             #endif
         }
         #if os(macOS)
-        .defaultSize(width: 1000, height: 740)
+        .defaultSize(width: 1160, height: 780)
         #endif
     }
 }

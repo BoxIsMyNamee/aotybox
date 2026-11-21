@@ -285,3 +285,249 @@ private struct SearchContent: View {
         if let d = try? JSONEncoder().encode(list), let s = String(data: d, encoding: .utf8) { recentJSON = s }
     }
 }
+
+#if os(macOS)
+/// Full-window search overlay driven by the permanent macOS toolbar search bar.
+struct MacSearchOverlay: View {
+    @Binding var query: String
+    @Binding var submitted: String
+    @Binding var forceOpen: Bool
+    var onClose: () -> Void
+
+    var body: some View {
+        AppStack {
+            MacSearchBody(query: $query, submitted: $submitted, forceOpen: $forceOpen, onClose: onClose)
+        }
+        .background(Color.platformBackground)
+    }
+}
+
+private struct MacSearchBody: View {
+    @Binding var query: String
+    @Binding var submitted: String
+    @Binding var forceOpen: Bool
+    var onClose: () -> Void
+
+    @AppStorage("recentSearches") private var recentJSON = "[]"
+    @Environment(\.push) private var push
+    @State private var loading = false
+    @State private var suggestions: [AOTYAPI.Suggestion] = []
+    @State private var albums: [AlbumBlock] = []
+    @State private var artists: [AOTYAPI.ArtistHit] = []
+    @State private var searchError: String?
+    @State private var resolvingLink = false
+
+    private var recents: [String] {
+        (try? JSONDecoder().decode([String].self, from: Data(recentJSON.utf8))) ?? []
+    }
+
+    var body: some View {
+        Group {
+            if !submitted.isEmpty {
+                resultsView
+            } else if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                suggestionsView
+            } else {
+                Color.platformBackground
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openMusicLink)) { n in
+            guard let link = n.object as? URL else { return }
+            forceOpen = true
+            Task { await openMusicLink(link) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .openLearn)) { n in
+            guard let r = n.object as? SongRoute else { return }
+            forceOpen = true
+            push(r)
+        }
+        .overlay(alignment: .top) {
+            if resolvingLink {
+                Label("Finding that album on AOTY…", systemImage: "music.note")
+                    .font(.subheadline.weight(.medium))
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .glassEffect(.regular, in: Capsule())
+                    .padding(.top, 12)
+            }
+        }
+        .onChange(of: query) {
+            if query.isEmpty { submitted = "" }
+            else if query != submitted { submitted = "" }
+        }
+        .task(id: query) {
+            let q = query.trimmingCharacters(in: .whitespaces)
+            guard q.count >= 2, submitted.isEmpty else { suggestions = []; return }
+            try? await Task.sleep(for: .milliseconds(280))
+            guard !Task.isCancelled else { return }
+            let s = await AOTYAPI.shared.suggestions(q)
+            if !Task.isCancelled, query.trimmingCharacters(in: .whitespaces) == q { suggestions = s }
+        }
+        .task(id: submitted) { await loadResults() }
+    }
+
+    private var suggestionsView: some View {
+        List {
+            let rec = recents.filter { $0.localizedCaseInsensitiveContains(query) && $0 != query }.prefix(3)
+            ForEach(Array(rec), id: \.self) { r in
+                Button { query = r; run(r) } label: {
+                    Label(r, systemImage: "clock.arrow.circlepath").foregroundStyle(.primary)
+                }
+            }
+            ForEach(suggestions) { sg in
+                Button { pick(sg) } label: {
+                    HStack(spacing: 14) {
+                        if sg.kind == "artist" {
+                            Avatar(url: sg.image.flatMap(URL.init(string:)), name: sg.label, size: 46)
+                        } else if let i = sg.image, let u = URL(string: i) {
+                            Cover(url: u, size: 46)
+                        } else {
+                            Image(systemName: icon(sg.kind)).font(.body).foregroundStyle(.secondary).frame(width: 46, height: 46)
+                        }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(sg.label).font(.headline).foregroundStyle(.primary).lineLimit(1)
+                            if let sub = sg.sub { Text(sub).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "arrow.up.left").font(.caption).foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            Button { run(query) } label: {
+                Label("Search for \u{201C}\(query.trimmingCharacters(in: .whitespaces))\u{201D}", systemImage: "magnifyingglass")
+                    .font(.headline)
+                    .padding(.vertical, 6)
+            }
+        }
+        .listStyle(.plain)
+        .macPagePadding()
+    }
+
+    private var resultsView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                HStack {
+                    Text("Results for \u{201C}\(submitted)\u{201D}")
+                        .font(.title2.bold())
+                    Spacer()
+                    Button("Done") { onClose() }
+                }
+
+                if loading && albums.isEmpty && artists.isEmpty {
+                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 40)
+                } else if albums.isEmpty && artists.isEmpty {
+                    ContentUnavailableView.search(text: submitted).padding(.vertical, 40)
+                }
+
+                if !artists.isEmpty {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Artists").font(.title3.bold())
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(alignment: .top, spacing: 22) {
+                                ForEach(artists.prefix(12)) { a in
+                                    Button { push(ArtistRoute(path: a.path, name: a.name)) } label: {
+                                        VStack(spacing: 8) {
+                                            Avatar(url: a.image.flatMap(URL.init(string:)), name: a.name, size: 96)
+                                            Text(a.name).font(.subheadline.weight(.medium)).foregroundStyle(.primary).lineLimit(2)
+                                                .multilineTextAlignment(.center).frame(width: 108)
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+
+                if !albums.isEmpty {
+                    VStack(alignment: .leading, spacing: 14) {
+                        Text("Albums").font(.title3.bold())
+                        LazyVGrid(columns: macAlbumGridColumns, spacing: 28) {
+                            ForEach(albums) { a in
+                                MacAlbumCard(
+                                    value: a,
+                                    artist: a.artist,
+                                    title: a.title,
+                                    cover: a.coverURL,
+                                    subtitle: a.releaseDate,
+                                    critic: a.criticScore,
+                                    user: a.userScore,
+                                    mustHear: a.mustHear ?? false
+                                )
+                            }
+                        }
+                    }
+                }
+
+                if let searchError { Text(searchError).font(.callout).foregroundStyle(.secondary) }
+            }
+            .padding(.vertical, 20)
+        }
+        .macPagePadding()
+    }
+
+    private func icon(_ kind: String?) -> String {
+        switch kind?.lowercased() { case "artist": "person"; case "song", "track": "music.note"; case "user": "person.circle"; default: "opticaldisc" }
+    }
+
+    private func pick(_ sg: AOTYAPI.Suggestion) {
+        let path = sg.url.flatMap { URL(string: $0)?.path } ?? ""
+        if path.contains("/album/") {
+            remember(sg.label)
+            push(AlbumRoute(slug: AlbumSlug.from(sg.url ?? ""), title: sg.label))
+        } else if path.contains("/artist/") {
+            remember(sg.label)
+            push(ArtistRoute(path: path, name: sg.label))
+        } else {
+            query = sg.label; run(sg.label)
+        }
+    }
+
+    private func loadResults() async {
+        let q = submitted
+        guard !q.isEmpty else { return }
+        loading = true; defer { loading = false }
+        albums = []; artists = []; searchError = nil
+        async let al = try? AOTYAPI.shared.searchAlbums(q)
+        async let ar = try? AOTYAPI.shared.searchArtists(q)
+        let (a1, a2) = await (al, ar)
+        guard q == submitted else { return }
+        albums = a1 ?? []
+        let all = a2 ?? []
+        let pictured = Set(all.filter { $0.image != nil }.map { $0.name.lowercased() })
+        artists = all.filter { $0.image != nil || !pictured.contains($0.name.lowercased()) }
+        if a1 == nil && a2 == nil { searchError = "Couldn't reach AOTY. Try again." }
+    }
+
+    private func openMusicLink(_ link: URL) async {
+        resolvingLink = true; defer { resolvingLink = false }
+        guard let a = await MusicLinkResolver.resolve(link) else {
+            searchError = "Couldn't tell which album that link is."
+            return
+        }
+        if let slug = await AOTYAPI.shared.findAlbumSlug(artist: a.artist, title: a.title) {
+            push(AlbumRoute(slug: slug, title: a.title))
+        } else {
+            query = "\(a.artist) \(a.title)"
+            run(query)
+        }
+    }
+
+    private func run(_ text: String) {
+        let q = text.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return }
+        submitted = q
+        suggestions = []
+        remember(q)
+    }
+
+    private func remember(_ q: String) {
+        var list = recents.filter { $0.caseInsensitiveCompare(q) != .orderedSame }
+        list.insert(q, at: 0)
+        if let d = try? JSONEncoder().encode(Array(list.prefix(12))), let s = String(data: d, encoding: .utf8) { recentJSON = s }
+    }
+}
+#endif

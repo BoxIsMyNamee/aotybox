@@ -225,6 +225,7 @@ struct UserProfileView: View {
             }
         }
         .insetGroupedListStyle()
+        .macPagePadding()
         .environment(\.swipeRowBackground, Color.platformSecondaryGroupedBackground)
         .compactListSectionSpacing()
         .contentMargins(.top, 4, for: .scrollContent)
@@ -438,6 +439,7 @@ struct UserProfileView: View {
                 }
             )
             .listRowInsets(EdgeInsets(top: bg == nil ? 0 : 12, leading: bg == nil ? 4 : 16, bottom: 8, trailing: bg == nil ? 4 : 16))
+            .listRowSeparator(.hidden)
 
         }
     }
@@ -701,6 +703,7 @@ struct ProfileRatingsView: View {
             if loading { ProgressView().frame(maxWidth: .infinity) }
         }
         .listStyle(.plain)
+        .macPagePadding()
         .navigationTitle("Ratings")
         .inlineNavTitle()
         .refreshable { await reload() }
@@ -857,6 +860,7 @@ struct ProfileReviewsView: View {
             if loading { ProgressView().frame(maxWidth: .infinity) }
         }
         .insetGroupedListStyle()
+        .macPagePadding()
         .environment(\.swipeRowBackground, Color.platformSecondaryGroupedBackground)
         .task {
             if author == nil, let p = try? await AOTYAPI.shared.profile(username: username) {

@@ -54,6 +54,38 @@ private struct ChartList: View {
     @State private var error: String?
 
     var body: some View {
+        #if os(macOS)
+        ScrollView {
+            if let error, items.isEmpty {
+                ErrorView(message: error) { await reload() }
+                    .padding(.top, 40)
+            } else {
+                LazyVGrid(columns: macAlbumGridColumns, spacing: 28) {
+                    ForEach(items) { item in
+                        MacAlbumCard(
+                            value: item,
+                            artist: item.artist,
+                            title: item.album,
+                            cover: item.coverURL,
+                            subtitle: item.date,
+                            rank: item.rank,
+                            critic: source == .critics ? item.score : nil,
+                            user: source == .users ? item.score : nil,
+                            mustHear: item.mustHear ?? false,
+                            genres: item.genres.map { $0.prefix(2).joined(separator: ", ") }
+                        )
+                        .onAppear { if item == items.last { Task { await loadMore() } } }
+                    }
+                }
+                .padding(.top, 12)
+                .padding(.bottom, 24)
+            }
+            if loading { ProgressView().frame(maxWidth: .infinity).padding(.vertical, 24) }
+        }
+        .macPagePadding()
+        .refreshable { await refresh() }
+        .task { if items.isEmpty { await reload() } }
+        #else
         List {
             if let error, items.isEmpty { ErrorView(message: error) { await reload() } }
             ForEach(items) { item in
@@ -74,6 +106,7 @@ private struct ChartList: View {
         .listStyle(.plain)
         .refreshable { await refresh() }
         .task { if items.isEmpty { await reload() } }
+        #endif
     }
 
     private func refresh() async {

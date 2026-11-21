@@ -320,4 +320,14 @@ extension View {
         searchable(text: text, placement: .toolbar, prompt: prompt)
         #endif
     }
+
+    /// Generous horizontal breathing room on macOS across lists and scroll views.
+    @ViewBuilder
+    func macPagePadding(_ amount: CGFloat = 64) -> some View {
+        #if os(macOS)
+        contentMargins(.horizontal, amount, for: .scrollContent)
+        #else
+        self
+        #endif
+    }
 }

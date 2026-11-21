@@ -65,6 +65,7 @@ struct UserReviewsView: View {
             }
         }
         .insetGroupedListStyle()
+        .macPagePadding()
         .safeAreaInset(edge: .bottom) {
             // Sort switcher floating at the bottom, like Releases and Charts.
             if range == nil {
