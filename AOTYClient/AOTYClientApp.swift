@@ -222,13 +222,22 @@ struct SettingsView: View {
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }
+            .formStyle(.grouped)
             .navigationTitle("Settings")
             .task { cacheBytes = await CacheSize.total() }
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
+                }
+            }
             .sheet(isPresented: $showLogin) {
                 AOTYWebSheet(url: AOTYSession.home, title: "AOTY").accentTint()
             }
         }
+        #if os(macOS)
+        .frame(minWidth: 520, idealWidth: 560, minHeight: 520, idealHeight: 640)
+        #endif
     }
 }
 
@@ -237,12 +246,22 @@ enum CacheSize {
     static func total() async -> Int64 {
         await Task.detached(priority: .utility) {
             let fm = FileManager.default
-            guard let dir = fm.urls(for: .cachesDirectory, in: .userDomainMask).first,
-                  let e = fm.enumerator(at: dir, includingPropertiesForKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey]) else { return 0 }
+            guard let base = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return 0 }
+            #if os(macOS)
+            var dirs = [base.appendingPathComponent("aoty-v2", isDirectory: true)]
+            if let bid = Bundle.main.bundleIdentifier {
+                dirs.append(base.appendingPathComponent(bid, isDirectory: true))
+            }
+            #else
+            let dirs = [base]
+            #endif
             var sum: Int64 = 0
-            for case let url as URL in e {
-                guard let v = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey]), v.isRegularFile == true else { continue }
-                sum += Int64(v.totalFileAllocatedSize ?? 0)
+            for dir in dirs {
+                guard let e = fm.enumerator(at: dir, includingPropertiesForKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey]) else { continue }
+                for case let url as URL in e {
+                    guard let v = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey, .isRegularFileKey]), v.isRegularFile == true else { continue }
+                    sum += Int64(v.totalFileAllocatedSize ?? 0)
+                }
             }
             return sum
         }.value

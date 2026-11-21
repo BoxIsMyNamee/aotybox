@@ -438,6 +438,7 @@ struct LastFMSettingsView: View {
                 }
             }
         }
+        .formStyle(.grouped)
         .navigationTitle("Last.fm")
         .onAppear { key = LastFM.apiKey ?? "" }
         .onDisappear { save() }

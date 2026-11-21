@@ -295,6 +295,7 @@ struct MusicAppSettingsView: View {
                 }
             }
         }
+        .formStyle(.grouped)
         .navigationTitle("Music App")
     }
 }

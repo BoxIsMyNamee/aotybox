@@ -46,6 +46,7 @@ struct AISettingsView: View {
                 Text("When you open Learn for a song or album, Ask AI starts on \"What is this about?\" in the background, so the answer is ready when you switch to it.")
             }
         }
+        .formStyle(.grouped)
         .navigationTitle("AI Assistant")
         .onAppear { key = AISettings.apiKey(provider) ?? "" }
         .onChange(of: providerRaw) { key = AISettings.apiKey(provider) ?? ""; model = ""; testResult = nil }
