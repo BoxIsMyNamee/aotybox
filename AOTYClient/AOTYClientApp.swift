@@ -212,6 +212,7 @@ struct SettingsView: View {
                         HStack { Text("Clear cache"); if clearing { Spacer(); ProgressView().controlSize(.small) } }
                     }
                     .disabled(clearing)
+                    NavigationLink("Backup & Restore") { BackupSettingsView() }
                     NavigationLink("Diagnostics") { DiagnosticsView() }
                 } footer: {
                     Text("Album art, pages and lyrics saved on this phone so things load fast. Safe to clear; they'll download again.")

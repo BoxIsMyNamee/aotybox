@@ -49,6 +49,13 @@ enum ProfileBackground {
         return nil
     }
 
+    static func rawData() -> Data? {
+        if let d = try? Data(contentsOf: url) { return d }
+        if let d = try? Data(contentsOf: docURL) { return d }
+        if let d = loadKeychain() { return d }
+        return cached?.jpegDataValue(compressionQuality: 0.82)
+    }
+
     static func save(_ data: Data) -> Bool {
         guard let img = PlatformImage(data: data) else { return false }
         // Keep it a sensible size (a banner, not a 48 MP photo).
