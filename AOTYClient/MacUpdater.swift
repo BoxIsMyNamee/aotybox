@@ -40,29 +40,44 @@ final class MacUpdater: ObservableObject {
         return URL(fileURLWithPath: "/Applications/AOTY.app")
     }
 
-    func prepareUpdate(from zipURL: URL) async {
+    func prepareUpdate(from sourceURL: URL) async {
         busy = true
         errorMessage = nil
         defer { busy = false }
 
-        let scoped = zipURL.startAccessingSecurityScopedResource()
-        defer { if scoped { zipURL.stopAccessingSecurityScopedResource() } }
+        let scoped = sourceURL.startAccessingSecurityScopedResource()
+        defer { if scoped { sourceURL.stopAccessingSecurityScopedResource() } }
 
         let staging = FileManager.default.temporaryDirectory
             .appendingPathComponent("aoty-update-\(UUID().uuidString)", isDirectory: true)
-        let localZip = staging.appendingPathComponent("update.zip")
-        let extractDir = staging.appendingPathComponent("extracted", isDirectory: true)
 
         do {
-            try FileManager.default.createDirectory(at: extractDir, withIntermediateDirectories: true)
-            try FileManager.default.copyItem(at: zipURL, to: localZip)
+            try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
 
-            try await runProcess("/usr/bin/ditto", ["-xk", localZip.path, extractDir.path])
+            let appURL: URL
+            if sourceURL.pathExtension.lowercased() == "app" {
+                guard Self.isValidAppBundle(sourceURL) else {
+                    try? FileManager.default.removeItem(at: staging)
+                    errorMessage = "That doesn't look like a valid macOS .app bundle."
+                    return
+                }
+                let stagedApp = staging.appendingPathComponent("AOTY.app", isDirectory: true)
+                try await runProcess("/usr/bin/ditto", [sourceURL.path, stagedApp.path])
+                appURL = stagedApp
+            } else {
+                let localZip = staging.appendingPathComponent("update.zip")
+                let extractDir = staging.appendingPathComponent("extracted", isDirectory: true)
+                try FileManager.default.createDirectory(at: extractDir, withIntermediateDirectories: true)
+                try FileManager.default.copyItem(at: sourceURL, to: localZip)
 
-            guard let appURL = Self.findAppBundle(in: extractDir) else {
-                try? FileManager.default.removeItem(at: staging)
-                errorMessage = "No valid AOTY.app bundle was found inside that .zip file."
-                return
+                try await runProcess("/usr/bin/ditto", ["-xk", localZip.path, extractDir.path])
+
+                guard let found = Self.findAppBundle(in: extractDir) else {
+                    try? FileManager.default.removeItem(at: staging)
+                    errorMessage = "No valid AOTY.app bundle was found inside that .zip file."
+                    return
+                }
+                appURL = found
             }
 
             let plistURL = appURL.appendingPathComponent("Contents/Info.plist")
@@ -172,6 +187,13 @@ final class MacUpdater: ObservableObject {
         }
     }
 
+    private static func isValidAppBundle(_ url: URL) -> Bool {
+        let plist = url.appendingPathComponent("Contents/Info.plist")
+        guard let info = NSDictionary(contentsOf: plist) as? [String: Any],
+              let execName = info["CFBundleExecutable"] as? String else { return false }
+        return FileManager.default.isExecutableFile(atPath: url.appendingPathComponent("Contents/MacOS/\(execName)").path)
+    }
+
     private static func findAppBundle(in root: URL) -> URL? {
         let fm = FileManager.default
         guard let e = fm.enumerator(
@@ -191,12 +213,9 @@ final class MacUpdater: ObservableObject {
             guard url.pathExtension == "app" else { continue }
             e.skipDescendants()
 
+            guard isValidAppBundle(url) else { continue }
             let plist = url.appendingPathComponent("Contents/Info.plist")
-            guard let info = NSDictionary(contentsOf: plist) as? [String: Any],
-                  let execName = info["CFBundleExecutable"] as? String,
-                  fm.isExecutableFile(atPath: url.appendingPathComponent("Contents/MacOS/\(execName)").path) else {
-                continue
-            }
+            let info = NSDictionary(contentsOf: plist) as? [String: Any] ?? [:]
             if let bundleID = info["CFBundleIdentifier"] as? String, bundleID == expectedID {
                 return url
             }
@@ -228,7 +247,7 @@ final class MacUpdater: ObservableObject {
                         cont.resume(throwing: NSError(
                             domain: "MacUpdater",
                             code: Int(proc.terminationStatus),
-                            userInfo: [NSLocalizedDescriptionKey: msg?.isEmpty == false ? msg! : "Unzip failed (exit \(proc.terminationStatus))."]
+                            userInfo: [NSLocalizedDescriptionKey: msg?.isEmpty == false ? msg! : "Copy/unzip failed (exit \(proc.terminationStatus))."]
                         ))
                     }
                 } catch {
@@ -241,7 +260,7 @@ final class MacUpdater: ObservableObject {
 
 struct MacUpdateSettingsSection: View {
     @ObservedObject private var updater = MacUpdater.shared
-    @State private var pickingZip = false
+    @State private var pickingUpdate = false
     @State private var dropTargeted = false
 
     var body: some View {
@@ -256,10 +275,10 @@ struct MacUpdateSettingsSection: View {
             }
 
             Button {
-                pickingZip = true
+                pickingUpdate = true
             } label: {
                 HStack {
-                    Label("Install Update from .zip…", systemImage: "arrow.down.doc")
+                    Label("Install Update (.zip or .app)…", systemImage: "arrow.down.doc")
                     Spacer()
                     if updater.busy {
                         ProgressView().controlSize(.small)
@@ -270,7 +289,9 @@ struct MacUpdateSettingsSection: View {
             .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
                 guard let provider = providers.first else { return false }
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                    guard let url, url.pathExtension.lowercased() == "zip" else { return }
+                    guard let url else { return }
+                    let ext = url.pathExtension.lowercased()
+                    guard ext == "zip" || ext == "app" else { return }
                     Task { @MainActor in
                         await updater.prepareUpdate(from: url)
                     }
@@ -286,9 +307,9 @@ struct MacUpdateSettingsSection: View {
         } header: {
             Text("App Updates")
         } footer: {
-            Text("Pick or drop an AOTY-macOS .zip package to replace the app in \(updater.defaultTargetURL.path) and relaunch.")
+            Text("Pick or drop a downloaded AOTY.app or .zip to replace \(updater.defaultTargetURL.path) and relaunch.")
         }
-        .fileImporter(isPresented: $pickingZip, allowedContentTypes: [.zip]) { result in
+        .fileImporter(isPresented: $pickingUpdate, allowedContentTypes: [.zip, .applicationBundle]) { result in
             if case let .success(url) = result {
                 Task { await updater.prepareUpdate(from: url) }
             }
