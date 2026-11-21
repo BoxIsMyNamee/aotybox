@@ -1,0 +1,33 @@
+{
+  "name": "AOTYbox",
+  "identifier": "com.harper.aotyclient.source",
+  "subtitle": "Builds of the AOTY client",
+  "website": "https://github.com/BoxIsMyNamee/aotybox",
+  "apps": [
+    {
+      "name": "AOTY",
+      "bundleIdentifier": "com.harper.aotyclient",
+      "developerName": "Harper",
+      "subtitle": "Album of the Year client",
+      "localizedDescription": "Native client for albumoftheyear.org.",
+      "iconURL": "https://raw.githubusercontent.com/BoxIsMyNamee/aotybox/main/icon.png",
+      "versions": [
+        {
+          "version": "0.1.196",
+          "buildVersion": "196",
+          "date": "2026-11-21T07:49:19Z",
+          "localizedDescription": "macOS desktop redesign: permanent top search bar, album card grids, Upcoming on Home, page padding, and Profile separator fix",
+          "downloadURL": "https://raw.githubusercontent.com/BoxIsMyNamee/aotybox/source/AOTYClient.ipa",
+          "size": 2307775,
+          "minOSVersion": "17.0"
+        }
+      ],
+      "version": "0.1.196",
+      "versionDate": "2026-11-21T07:49:19Z",
+      "versionDescription": "macOS desktop redesign: permanent top search bar, album card grids, Upcoming on Home, page padding, and Profile separator fix",
+      "downloadURL": "https://raw.githubusercontent.com/BoxIsMyNamee/aotybox/source/AOTYClient.ipa",
+      "size": 2307775
+    }
+  ],
+  "news": []
+}
