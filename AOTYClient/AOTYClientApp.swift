@@ -243,7 +243,7 @@ private struct MacToolbarSearchField: View {
             }
         }
         .padding(.horizontal, 12)
-        .frame(width: 320, height: 30)
+        .frame(width: 430, height: 30)
         .glassEffect(.regular, in: Capsule())
     }
 }
