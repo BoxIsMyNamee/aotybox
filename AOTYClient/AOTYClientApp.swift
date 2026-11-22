@@ -169,7 +169,8 @@ struct AOTYClientApp: App {
         }
         #if os(macOS)
         .defaultSize(width: 1160, height: 780)
-
+        #endif
+        #if os(macOS)
         Settings {
             SettingsView(isWindow: true)
                 .tint(Color(hex: accentHex))
