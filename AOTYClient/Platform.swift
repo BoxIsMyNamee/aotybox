@@ -205,7 +205,7 @@ extension ToolbarItemPlacement {
         #if os(iOS)
         .topBarTrailing
         #else
-        .primaryAction
+        .automatic
         #endif
     }
 }

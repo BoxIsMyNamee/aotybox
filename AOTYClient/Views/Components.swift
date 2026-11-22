@@ -99,9 +99,9 @@ extension AlbumRow {
 }
 
 #if os(macOS)
-/// Responsive desktop album grid: 4–5 large cards per row on a typical Mac window.
+/// Responsive desktop album grid: 4–5 large cards per row on a Mac window.
 let macAlbumGridColumns: [GridItem] = [
-    GridItem(.adaptive(minimum: 185, maximum: 235), spacing: 24, alignment: .top)
+    GridItem(.adaptive(minimum: 220, maximum: 280), spacing: 28, alignment: .top)
 ]
 
 /// Desktop AOTY-style album card for Releases, Charts, Artist, and Search grids on macOS.
@@ -124,23 +124,27 @@ struct MacAlbumCard<Value: Hashable>: View {
     var body: some View {
         Button { push(value) } label: {
             VStack(alignment: .leading, spacing: 8) {
-                CachedImage(url: cover, maxPixel: 512) {
-                    Rectangle().fill(.quaternary.opacity(0.5))
-                }
-                .aspectRatio(1, contentMode: .fill)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(hovered ? 0.22 : 0.08), lineWidth: 1))
-                .overlay(alignment: .topLeading) {
-                    if let rank {
-                        Text("#\(rank)")
-                            .font(.caption.weight(.bold).monospacedDigit())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(.black.opacity(0.75), in: Capsule())
-                            .padding(8)
+                Color.clear
+                    .aspectRatio(1, contentMode: .fit)
+                    .overlay {
+                        CachedImage(url: cover, maxPixel: 512) {
+                            Rectangle().fill(.quaternary.opacity(0.5))
+                        }
                     }
-                }
-                .shadow(color: .black.opacity(hovered ? 0.35 : 0.18), radius: hovered ? 10 : 5, y: 3)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(hovered ? 0.22 : 0.08), lineWidth: 1))
+                    .overlay(alignment: .topLeading) {
+                        if let rank {
+                            Text("#\(rank)")
+                                .font(.caption.weight(.bold).monospacedDigit())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(.black.opacity(0.75), in: Capsule())
+                                .padding(8)
+                        }
+                    }
+                    .shadow(color: .black.opacity(hovered ? 0.35 : 0.18), radius: hovered ? 10 : 5, y: 3)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(artist)

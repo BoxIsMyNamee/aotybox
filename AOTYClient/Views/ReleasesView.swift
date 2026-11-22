@@ -23,6 +23,7 @@ struct ReleasesView: View {
     var body: some View {
         AppStack {
             VStack(spacing: 0) {
+                #if os(iOS)
                 HStack(alignment: .center) {
                     AOTYLogo().frame(height: 30)
                     Spacer()
@@ -33,11 +34,6 @@ struct ReleasesView: View {
                     .padding(.horizontal, 8)
                     .glassEffect(.regular, in: Capsule())
                 }
-                #if os(macOS)
-                .padding(.horizontal, 64)
-                .padding(.top, 12)
-                .padding(.bottom, 16)
-                #else
                 .padding(.horizontal)
                 .padding(.top, 4)
                 .padding(.bottom, 12)
@@ -67,8 +63,16 @@ struct ReleasesView: View {
                 .padding(.bottom, 8)
                 #endif
             }
+            #if os(macOS)
+            .tabLogo(backTitle: singles ? "Singles" : "Releases")
+            .toolbar {
+                ToolbarItem { ListenButton() }
+                ToolbarItem { NotificationBell() }
+            }
+            #else
             .navigationTitle(singles ? "Singles" : "Releases")
             .hideNavBar()
+            #endif
             .onChange(of: singles) { if singles && feed == .upcoming { feed = .new } }
         }
     }

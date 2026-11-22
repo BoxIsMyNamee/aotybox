@@ -36,6 +36,7 @@ struct ProfileView: View {
             }
             .navigationTitle("Profile")
             .inlineNavTitle()
+            #if os(iOS)
             .toolbar {
                 ToolbarItem(placement: .platformTopBarTrailing) {
                     Button { showSettings = true } label: { Image(systemName: "gearshape") }
@@ -43,6 +44,7 @@ struct ProfileView: View {
                 }
             }
             .sheet(isPresented: $showSettings) { SettingsView().accentTint() }
+            #endif
             .sheet(isPresented: $showLogin, onDismiss: { Task { await detect() } }) {
                 AOTYWebSheet(url: AOTYSession.home, title: "Sign in").accentTint()
             }

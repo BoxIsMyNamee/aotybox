@@ -11,7 +11,11 @@ extension View {
             .toolbar {
                 ToolbarItem(placement: .platformTopBarLeading) {
                     Text(title)
+                        #if os(macOS)
+                        .font(.title2.bold())
+                        #else
                         .font(.largeTitle.bold())
+                        #endif
                         .lineLimit(1)
                         .fixedSize()
                         .accessibilityAddTraits(.isHeader)
@@ -32,10 +36,14 @@ extension View {
                         if let img = PlatformImage(named: "aoty-logo") {
                             Image(platformImage: img).renderingMode(.template).resizable().scaledToFit()
                         } else {
-                            Text("AOTY").font(.largeTitle.bold())
+                            Text("AOTY").font(.title2.bold())
                         }
                     }
+                    #if os(macOS)
+                    .frame(height: 22)
+                    #else
                     .frame(height: 30)
+                    #endif
                     .foregroundStyle(.primary)
                     .accessibilityLabel("Album of the Year")
                     .accessibilityAddTraits(.isHeader)

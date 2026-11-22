@@ -169,11 +169,18 @@ struct AOTYClientApp: App {
         }
         #if os(macOS)
         .defaultSize(width: 1160, height: 780)
+
+        Settings {
+            SettingsView(isWindow: true)
+                .tint(Color(hex: accentHex))
+                .preferredColorScheme(Appearance(rawValue: appearance)?.scheme)
+        }
         #endif
     }
 }
 
 struct SettingsView: View {
+    var isWindow = false
     @State private var showLogin = false
     @State private var cacheBytes: Int64?
     @AppStorage(Appearance.key) private var appearance = Appearance.dark.rawValue
@@ -275,9 +282,11 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .task { cacheBytes = await CacheSize.total() }
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                        .keyboardShortcut(.cancelAction)
+                if !isWindow {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                            .keyboardShortcut(.cancelAction)
+                    }
                 }
             }
             .sheet(isPresented: $showLogin) {
