@@ -281,6 +281,77 @@ final class MacUpdater: ObservableObject {
         }
     }
 
+    private static let latestUpdateURL = URL(string: "https://raw.githubusercontent.com/BoxIsMyNamee/aotybox/source/AOTY-macOS-arm64.aotyupdate")!
+    private static let latestSourceJSONURL = URL(string: "https://raw.githubusercontent.com/BoxIsMyNamee/aotybox/source/source.json")!
+
+    @Published var latestRemoteBuild: String?
+    @Published var checkingRemote = false
+
+    func checkLatestBuild() async {
+        guard !checkingRemote else { return }
+        checkingRemote = true
+        defer { checkingRemote = false }
+        var req = URLRequest(url: Self.latestSourceJSONURL)
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        guard let (data, _) = try? await URLSession.shared.data(for: req),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let apps = json["apps"] as? [[String: Any]],
+              let versions = apps.first?["versions"] as? [[String: Any]],
+              let latest = versions.first else { return }
+        if let b = latest["buildVersion"] as? String {
+            latestRemoteBuild = b
+        } else if let v = latest["version"] as? String {
+            latestRemoteBuild = v
+        }
+    }
+
+    func downloadAndPrepareLatest() async {
+        busy = true
+        errorMessage = nil
+        let tempFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AOTY-latest-\(UUID().uuidString).aotyupdate")
+        do {
+            var req = URLRequest(url: Self.latestUpdateURL)
+            req.cachePolicy = .reloadIgnoringLocalCacheData
+            let (downloadedURL, response) = try await URLSession.shared.download(for: req)
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                busy = false
+                errorMessage = "GitHub returned HTTP \(http.statusCode) while downloading the update."
+                return
+            }
+            try? FileManager.default.removeItem(at: tempFile)
+            try FileManager.default.moveItem(at: downloadedURL, to: tempFile)
+            await prepareUpdate(from: tempFile)
+            try? FileManager.default.removeItem(at: tempFile)
+        } catch {
+            busy = false
+            try? FileManager.default.removeItem(at: tempFile)
+            errorMessage = "Download failed: \(error.localizedDescription)"
+        }
+    }
+
+    func findLatestInDownloads() -> URL? {
+        guard let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else { return nil }
+        guard let urls = try? FileManager.default.contentsOfDirectory(
+            at: downloads,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return nil }
+        let candidates = urls.filter { u in
+            let name = u.lastPathComponent.lowercased()
+            let ext = u.pathExtension.lowercased()
+            if ext == "aotyupdate" { return true }
+            if ext == "zip" && name.contains("aoty") { return true }
+            if ext == "app" && name.hasPrefix("aoty") { return true }
+            return false
+        }
+        return candidates.max { a, b in
+            let da = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            let db = (try? b.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            return da < db
+        }
+    }
+
     func pickUpdateFile() {
         let panel = NSOpenPanel()
         panel.title = "Choose AOTY Update Package"
@@ -288,13 +359,31 @@ final class MacUpdater: ObservableObject {
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
         panel.treatsFilePackagesAsDirectories = false
-        var types: [UTType] = [.zip, .applicationBundle]
+        var types: [UTType] = [.zip, .applicationBundle, .data]
         if let custom = UTType(filenameExtension: "aotyupdate") {
             types.insert(custom, at: 0)
         }
         panel.allowedContentTypes = types
-        if panel.runModal() == .OK, let url = panel.url {
-            Task { await prepareUpdate(from: url) }
+
+        let handleChoice: (NSApplication.ModalResponse) -> Void = { [weak self, weak panel] response in
+            guard let self else { return }
+            if response == .OK, let url = panel?.url {
+                Task { @MainActor in
+                    await self.prepareUpdate(from: url)
+                }
+            } else if response == .abort, let fallback = self.findLatestInDownloads() {
+                // If macOS's Open/Save Panel XPC service failed to connect, automatically fall back
+                // to the newest AOTY update package in ~/Downloads.
+                Task { @MainActor in
+                    await self.prepareUpdate(from: fallback)
+                }
+            }
+        }
+
+        if let win = NSApp.keyWindow ?? NSApp.mainWindow {
+            panel.beginSheetModal(for: win, completionHandler: handleChoice)
+        } else {
+            panel.begin(completionHandler: handleChoice)
         }
     }
 }
@@ -302,10 +391,14 @@ final class MacUpdater: ObservableObject {
 struct MacUpdateSettingsSection: View {
     @ObservedObject private var updater = MacUpdater.shared
     @State private var dropTargeted = false
+    @State private var recentDownload: URL?
 
     var body: some View {
         Section {
             LabeledContent("Version", value: "\(updater.currentVersion) (Build \(updater.currentBuild))")
+            if let remote = updater.latestRemoteBuild {
+                LabeledContent("Latest on GitHub", value: "Build \(remote)")
+            }
             LabeledContent("Location", value: updater.isInApplications ? "Applications" : Bundle.main.bundleURL.deletingLastPathComponent().lastPathComponent)
 
             if !updater.isInApplications {
@@ -315,15 +408,34 @@ struct MacUpdateSettingsSection: View {
             }
 
             Button {
-                updater.pickUpdateFile()
+                Task { await updater.downloadAndPrepareLatest() }
             } label: {
                 HStack {
-                    Label("Install Update Package…", systemImage: "arrow.down.doc")
+                    Label(
+                        updater.latestRemoteBuild.map { "Download & Install Latest (Build \($0))" } ?? "Download & Install Latest from GitHub",
+                        systemImage: "icloud.and.arrow.down"
+                    )
                     Spacer()
                     if updater.busy {
                         ProgressView().controlSize(.small)
                     }
                 }
+            }
+            .disabled(updater.busy)
+
+            if let recent = recentDownload {
+                Button {
+                    Task { await updater.prepareUpdate(from: recent) }
+                } label: {
+                    Label("Install \(recent.lastPathComponent) from Downloads", systemImage: "shippingbox")
+                }
+                .disabled(updater.busy)
+            }
+
+            Button {
+                updater.pickUpdateFile()
+            } label: {
+                Label("Choose Update File or Drag Here…", systemImage: "folder")
             }
             .disabled(updater.busy)
             .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
@@ -347,7 +459,11 @@ struct MacUpdateSettingsSection: View {
         } header: {
             Text("App Updates")
         } footer: {
-            Text("Pick or drop an .aotyupdate, .zip, or AOTY.app file to replace \(updater.defaultTargetURL.path) and relaunch.")
+            Text("Click 'Download & Install Latest' to update in one click, or drag an .aotyupdate / .zip / AOTY.app file onto this section.")
+        }
+        .task {
+            recentDownload = updater.findLatestInDownloads()
+            await updater.checkLatestBuild()
         }
         .alert(item: $updater.pending) { update in
             Alert(
