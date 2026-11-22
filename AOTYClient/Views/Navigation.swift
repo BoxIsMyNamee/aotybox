@@ -41,13 +41,13 @@ extension View {
             .navigationDestination(for: LearnAlbumRoute.self) { LearnAlbumView(artist: $0.artist, album: $0.album, cover: $0.cover) }
             .navigationDestination(for: UserRoute.self) { u in
                 UserProfileView(username: u.username, fallbackAvatar: u.avatar, fallbackName: u.name, fallbackColor: u.nameColor, isMe: false)
-                    .navigationTitle(u.name).inlineNavTitle()
+                    .navigationTitle("Profile").inlineNavTitle()
             }
             .navigationDestination(for: ProfileReviewsRoute.self) { ProfileReviewsView(username: $0.username) }
             .navigationDestination(for: ProfileRatingsRoute.self) { ProfileRatingsView(username: $0.username, path: $0.path, isMe: $0.isMe) }
             .navigationDestination(for: FollowUser.self) { u in
                 UserProfileView(username: u.username, fallbackAvatar: u.avatar, fallbackName: u.name, fallbackColor: u.nameColor, isMe: false)
-                    .navigationTitle(u.name).inlineNavTitle()
+                    .navigationTitle("Profile").inlineNavTitle()
             }
     }
 }
