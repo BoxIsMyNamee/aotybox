@@ -29,18 +29,18 @@ struct UserReviewsView: View {
 
     var body: some View {
         Group {
-            if range == nil {
+            if rangeLabel == nil {
                 SlidingPager(items: Sort.allCases, selection: $sort) { s in
-                    UserReviewsPage(slug: slug, title: title, sort: s, rangeLabel: nil, artist: artist, cover: cover)
+                    UserReviewsSortList(slug: slug, title: title, sort: s, rangeLabel: nil, artist: artist, cover: cover)
                         .id("\(slug)-\(s.rawValue)")
                 }
             } else {
-                UserReviewsPage(slug: slug, title: title, sort: sort, rangeLabel: rangeLabel, artist: artist, cover: cover)
+                UserReviewsSortList(slug: slug, title: title, sort: sort, rangeLabel: rangeLabel, artist: artist, cover: cover)
             }
         }
         .safeAreaInset(edge: .bottom) {
             // Sort switcher floating at the bottom, like Releases and Charts.
-            if range == nil {
+            if rangeLabel == nil {
                 GlassSegmented(selection: $sort, items: Sort.allCases.map { ($0, $0.rawValue) })
                     .frame(maxWidth: 320)
                     .padding(.bottom, 8)
@@ -54,7 +54,7 @@ struct UserReviewsView: View {
     }
 }
 
-private struct UserReviewsPage: View {
+private struct UserReviewsSortList: View {
     let slug: String
     let title: String
     let sort: UserReviewsView.Sort
