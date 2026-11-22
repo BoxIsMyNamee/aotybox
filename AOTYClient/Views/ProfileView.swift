@@ -44,6 +44,10 @@ struct ProfileView: View {
                 }
             }
             .sheet(isPresented: $showSettings) { SettingsView().accentTint() }
+            #else
+            .toolbar {
+                MacSearchToolbarItem()
+            }
             #endif
             .sheet(isPresented: $showLogin, onDismiss: { Task { await detect() } }) {
                 AOTYWebSheet(url: AOTYSession.home, title: "Sign in").accentTint()

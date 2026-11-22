@@ -12,13 +12,7 @@ struct AOTYClientApp: App {
     @AppStorage("didOnboard") private var didOnboard = false
     @State private var showWelcome = false
     #if os(macOS)
-    @State private var macSearchQuery = ""
-    @State private var macSearchSubmitted = ""
-    @State private var macSearchForceOpen = false
-
-    private var macSearchActive: Bool {
-        !macSearchQuery.trimmingCharacters(in: .whitespaces).isEmpty || !macSearchSubmitted.isEmpty || macSearchForceOpen
-    }
+    @StateObject private var macSearch = MacSearch.shared
     #endif
 
     var body: some Scene {
@@ -27,42 +21,20 @@ struct AOTYClientApp: App {
             #if os(macOS)
             TabView(selection: Binding(get: { tab == 2 ? 0 : tab }, set: { new in
                 tab = new
-                macSearchQuery = ""
-                macSearchSubmitted = ""
-                macSearchForceOpen = false
+                macSearch.clear()
             })) {
                 ReleasesView().tabItem { Label("Releases", systemImage: "square.stack") }.tag(0)
                 ChartsView().tabItem { Label("Charts", systemImage: "chart.bar") }.tag(1)
                 ProfileView().tabItem { Label("Profile", systemImage: "person.crop.circle") }.tag(3)
                 ProofView().tabItem { Label("Notes", systemImage: "text.badge.checkmark") }.tag(4)
             }
-            .toolbar {
-                ToolbarSpacer(.fixed)
-                ToolbarItem(placement: .primaryAction) {
-                    MacToolbarSearchField(
-                        text: $macSearchQuery,
-                        onSubmit: {
-                            let q = macSearchQuery.trimmingCharacters(in: .whitespaces)
-                            if !q.isEmpty { macSearchSubmitted = q }
-                        },
-                        onClear: {
-                            macSearchQuery = ""
-                            macSearchSubmitted = ""
-                            macSearchForceOpen = false
-                        }
-                    )
-                }
-                .sharedBackgroundVisibility(.hidden)
-            }
-            if macSearchActive {
+            if macSearch.active {
                 MacSearchOverlay(
-                    query: $macSearchQuery,
-                    submitted: $macSearchSubmitted,
-                    forceOpen: $macSearchForceOpen
+                    query: $macSearch.query,
+                    submitted: $macSearch.submitted,
+                    forceOpen: $macSearch.forceOpen
                 ) {
-                    macSearchQuery = ""
-                    macSearchSubmitted = ""
-                    macSearchForceOpen = false
+                    macSearch.clear()
                 }
                 .zIndex(1)
             }
@@ -137,7 +109,7 @@ struct AOTYClientApp: App {
                         .flatMap { String(data: $0, encoding: .utf8) } ?? items.first(where: { $0.name == "url" })?.value
                     if let raw, let link = URL(string: raw) {
                         #if os(macOS)
-                        macSearchForceOpen = true
+                        macSearch.forceOpen = true
                         #else
                         tab = 2
                         #endif
@@ -169,7 +141,7 @@ struct AOTYClientApp: App {
                 let artist = items.first(where: { $0.name == "artist" })?.value ?? ""
                 let album = items.first(where: { $0.name == "album" })?.value
                 #if os(macOS)
-                macSearchForceOpen = true
+                macSearch.forceOpen = true
                 #else
                 tab = 2
                 #endif
@@ -200,6 +172,45 @@ struct AOTYClientApp: App {
 }
 
 #if os(macOS)
+@MainActor
+final class MacSearch: ObservableObject {
+    static let shared = MacSearch()
+    @Published var query = ""
+    @Published var submitted = ""
+    @Published var forceOpen = false
+
+    var active: Bool {
+        !query.trimmingCharacters(in: .whitespaces).isEmpty || !submitted.isEmpty || forceOpen
+    }
+
+    func submit() {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        if !q.isEmpty { submitted = q }
+    }
+
+    func clear() {
+        query = ""
+        submitted = ""
+        forceOpen = false
+    }
+}
+
+/// Reusable trailing search pill placed AFTER tab-specific toolbar buttons so buttons always sit to its left.
+struct MacSearchToolbarItem: ToolbarContent {
+    @ObservedObject private var search = MacSearch.shared
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            MacToolbarSearchField(
+                text: $search.query,
+                onSubmit: { search.submit() },
+                onClear: { search.clear() }
+            )
+        }
+        .sharedBackgroundVisibility(.hidden)
+    }
+}
+
 /// Fixed-width glass search pill for the macOS toolbar so its length never shifts across tabs
 /// and adjacent toolbar buttons stay in their own separate pills.
 private struct MacToolbarSearchField: View {

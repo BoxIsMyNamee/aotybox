@@ -33,7 +33,7 @@ struct ChartsView: View {
             }
             .tabTitle(period == "all" ? "All Time" : "Best of \(period)")
             .toolbar {
-                ToolbarItem {
+                ToolbarItem(placement: .automatic) {
                     Menu {
                         Picker("Year", selection: $period) {
                             ForEach(periods, id: \.self) { Text($0 == "all" ? "All time" : $0).tag($0) }
@@ -42,6 +42,7 @@ struct ChartsView: View {
                 }
                 #if os(macOS)
                 ToolbarSpacer(.fixed)
+                MacSearchToolbarItem()
                 #endif
             }
         }

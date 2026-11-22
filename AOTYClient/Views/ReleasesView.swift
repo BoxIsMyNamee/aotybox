@@ -70,6 +70,7 @@ struct ReleasesView: View {
                 ToolbarSpacer(.fixed)
                 ToolbarItem(placement: .automatic) { NotificationBell() }
                 ToolbarSpacer(.fixed)
+                MacSearchToolbarItem()
             }
             #else
             .navigationTitle(singles ? "Singles" : "Releases")

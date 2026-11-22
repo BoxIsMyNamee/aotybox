@@ -50,6 +50,9 @@ struct ProofView: View {
                     Spacer()
                     Button("Done") { focus = nil }
                 }
+                #if os(macOS)
+                MacSearchToolbarItem()
+                #endif
             }
             .sheet(isPresented: $showAISettings) { NavigationStack { AISettingsView() }.accentTint() }
         }

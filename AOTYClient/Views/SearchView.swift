@@ -297,6 +297,7 @@ struct MacSearchOverlay: View {
     var body: some View {
         AppStack {
             MacSearchBody(query: $query, submitted: $submitted, forceOpen: $forceOpen, onClose: onClose)
+                .toolbar { MacSearchToolbarItem() }
         }
         .background(Color.platformBackground)
     }
