@@ -47,14 +47,7 @@ struct SwipeRow: ViewModifier {
         #if os(iOS)
         return base.gesture(HorizontalPan(onChange: handleChange, onEnd: { _ in handleEnd() }))
         #else
-        return base.gesture(
-            DragGesture(minimumDistance: 20)
-                .onChanged { v in
-                    if !dragging && abs(v.translation.width) <= abs(v.translation.height) * 1.3 { return }
-                    handleChange(v.translation.width)
-                }
-                .onEnded { _ in handleEnd() }
-        )
+        return base
         #endif
     }
 

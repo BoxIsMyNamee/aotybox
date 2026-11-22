@@ -44,7 +44,10 @@ extension PlatformImage {
         #if os(iOS)
         preparingForDisplay() ?? self
         #else
-        self
+        if let cg = cgImageValue {
+            return Self.fromCGImage(cg)
+        }
+        return self
         #endif
     }
 
@@ -52,7 +55,9 @@ extension PlatformImage {
         #if os(iOS)
         UIImage(cgImage: cg)
         #else
-        NSImage(cgImage: cg, size: NSSize(width: cg.width, height: cg.height))
+        let img = NSImage(size: NSSize(width: cg.width, height: cg.height))
+        img.addRepresentation(NSBitmapImageRep(cgImage: cg))
+        return img
         #endif
     }
 
@@ -153,7 +158,7 @@ extension Color {
         #if os(iOS)
         Color(.secondarySystemGroupedBackground)
         #else
-        Color(nsColor: .controlBackgroundColor)
+        Color.primary.opacity(0.065)
         #endif
     }
 
@@ -161,7 +166,7 @@ extension Color {
         #if os(iOS)
         Color(.tertiarySystemFill)
         #else
-        Color.secondary.opacity(0.16)
+        Color.primary.opacity(0.09)
         #endif
     }
 }

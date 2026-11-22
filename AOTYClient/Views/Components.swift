@@ -150,7 +150,7 @@ struct MacAlbumCard<Value: Hashable>: View {
                     }
                     .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(hovered ? 0.22 : 0.08), lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(hovered ? 0.28 : 0.08), lineWidth: 1))
                     .overlay(alignment: .topLeading) {
                         if let rank {
                             Text("#\(rank)")
@@ -161,7 +161,6 @@ struct MacAlbumCard<Value: Hashable>: View {
                                 .padding(8)
                         }
                     }
-                    .shadow(color: .black.opacity(hovered ? 0.35 : 0.18), radius: hovered ? 10 : 5, y: 3)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(artist)
@@ -389,6 +388,13 @@ struct UserReviewRow: View {
         .padding(.vertical, 4)
         #endif
         .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            guard let id = review.reviewId else { return }
+            let store = LikeStore.shared
+            let isLiked = store.liked(id, default: review.liked ?? false)
+            let count = store.count(id, default: review.likes ?? 0)
+            Task { _ = await store.toggle(id: id, liked: isLiked, count: count) }
+        }
         .onTapGesture { if review.url != nil { showFull = true } }
         .reviewShareMenu(shareData)
         .heartSwipe(reviewID: review.reviewId, liked: review.liked ?? false, likes: review.likes ?? 0, learn: learn,

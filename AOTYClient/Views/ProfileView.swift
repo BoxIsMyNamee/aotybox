@@ -590,14 +590,22 @@ struct UserProfileView: View {
                     .foregroundStyle(.tertiary)
             }
             #if os(macOS)
-            .padding(14)
+            .padding(.horizontal, 18).padding(.vertical, 12)
+            .frame(maxWidth: 460)
             #else
             .padding(10)
             #endif
-            .background(Color.platformSecondaryGroupedBackground, in: RoundedRectangle(cornerRadius: 12))
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+            .background(Color.platformSecondaryGroupedBackground, in: RoundedRectangle(cornerRadius: 14))
+            #if os(macOS)
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.08), lineWidth: 1))
+            #endif
+            .contentShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)
+        #if os(macOS)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.top, 4)
+        #endif
         .contextMenu {
             Button {
                 push(SongRoute(artist: now.artist, title: now.title, album: now.album, cover: now.cover))
@@ -896,8 +904,15 @@ struct ProfileReviewRow: View {
         #else
         .padding(.vertical, 4)
         #endif
-        // The whole review (art, title, text) opens the album; buttons inside keep their own taps.
+        // The whole review (art, title, text) opens the album; double-clicking likes the review.
         .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            guard !own, let id = review.reviewId ?? Int(review.id) else { return }
+            let store = LikeStore.shared
+            let isLiked = store.liked(id, default: review.liked ?? false)
+            let count = store.count(id, default: review.likes ?? 0)
+            Task { _ = await store.toggle(id: id, liked: isLiked, count: count) }
+        }
         .onTapGesture { if let s = review.slug { push(AlbumRoute(slug: s, title: review.album)) } }
         .reviewShareMenu(shareData)
         .heartSwipe(reviewID: review.reviewId ?? Int(review.id), liked: review.liked ?? false, likes: review.likes ?? 0, enabled: !own,

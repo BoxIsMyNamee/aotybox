@@ -22,10 +22,26 @@ private struct PushKey: EnvironmentKey {
     static let defaultValue = PushAction { _ in }
 }
 
+private struct NavigationDepthKey: EnvironmentKey {
+    static let defaultValue: Int = 0
+}
+
+private struct PopNavigationKey: EnvironmentKey {
+    static let defaultValue: () -> Void = {}
+}
+
 extension EnvironmentValues {
     var push: PushAction {
         get { self[PushKey.self] }
         set { self[PushKey.self] = newValue }
+    }
+    var navigationDepth: Int {
+        get { self[NavigationDepthKey.self] }
+        set { self[NavigationDepthKey.self] = newValue }
+    }
+    var popNavigation: () -> Void {
+        get { self[PopNavigationKey.self] }
+        set { self[PopNavigationKey.self] = newValue }
     }
 }
 
@@ -62,12 +78,64 @@ extension View {
 struct AppStack<Content: View>: View {
     @State private var path = NavigationPath()
     @ViewBuilder var content: () -> Content
+    #if os(macOS)
+    @State private var backMonitor: MacHorizontalSwipeMonitor?
+    @State private var backDragX: CGFloat = 0
+    #endif
 
     var body: some View {
         NavigationStack(path: $path) {
             content().appDestinations()
         }
+        #if os(macOS)
+        .offset(x: backDragX)
+        #endif
         .environment(\.push, PushAction { value in path.append(value) })
+        .environment(\.navigationDepth, path.count)
+        .environment(\.popNavigation, {
+            if !path.isEmpty { path.removeLast() }
+        })
+        #if os(macOS)
+        .onAppear {
+            let m = MacHorizontalSwipeMonitor(
+                onDrag: { dx in
+                    guard !path.isEmpty else {
+                        if backDragX != 0 { backDragX = 0 }
+                        return
+                    }
+                    // When swiping right on a pushed page, visibly slide the page slightly to the right before popping.
+                    if dx > 0 {
+                        backDragX = min(dx * 0.35, 110)
+                    } else {
+                        backDragX = 0
+                    }
+                },
+                onEnd: { dx, velocityX in
+                    guard !path.isEmpty else {
+                        backDragX = 0
+                        return
+                    }
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                        backDragX = 0
+                    }
+                    // If a bottom GlassSegmented is active on the current screen, it handles the pop so we don't pop twice.
+                    guard MacHorizontalSwipeMonitor.activeGlassCount == 0 else { return }
+                    let projected = dx + velocityX * 0.18
+                    if dx > 55 || projected > 85 {
+                        Haptic.selection()
+                        path.removeLast()
+                    }
+                }
+            )
+            m.start()
+            backMonitor = m
+        }
+        .onDisappear {
+            backMonitor?.stop()
+            backMonitor = nil
+            backDragX = 0
+        }
+        #endif
     }
 }
 

@@ -32,25 +32,27 @@ struct SongView: View {
     private var nothingOnGenius: Bool { !loading && hit == nil }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
+        SlidingPager(items: Tab.allCases, selection: $tab) { currentTab in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    header
 
-                if loading && tab != .ask {
-                    ProgressView("Looking up on Genius…").frame(maxWidth: .infinity).padding(.top, 40)
-                } else {
-                    switch tab {
-                    case .lyrics: lyricsView
-                    case .about: aboutView
-                    case .comments: commentsView
-                    case .ask: SongChatView(context: aiContext, thread: chat, nothingOnGenius: nothingOnGenius)
+                    if loading && currentTab != .ask {
+                        ProgressView("Looking up on Genius…").frame(maxWidth: .infinity).padding(.top, 40)
+                    } else {
+                        switch currentTab {
+                        case .lyrics: lyricsView
+                        case .about: aboutView
+                        case .comments: commentsView
+                        case .ask: SongChatView(context: aiContext, thread: chat, nothingOnGenius: nothingOnGenius)
+                        }
                     }
                 }
+                .padding()
             }
-            .padding()
+            .scrollDismissesKeyboard(.interactively)
+            .macPagePadding()
         }
-        .scrollDismissesKeyboard(.interactively)
-        .macPagePadding()
         // Section switcher floats at the bottom like the other pages; it steps aside while typing.
         .safeAreaInset(edge: .bottom) {
             if !keyboardUp {

@@ -165,13 +165,16 @@ struct AlbumDetailView: View {
                     }
                     #if os(macOS)
                     HStack(spacing: 14) {
+                        let accent = Color(hex: UserDefaults.standard.string(forKey: Theme.key) ?? Theme.defaultHex)
                         Button {
                             push(Learn.route(artist: a.artist, album: a.title, song: nil, isSingle: isSingle(a), cover: a.coverURL))
                         } label: {
                             Label("Learn about this \(isSingle(a) ? "Song" : "Album")", systemImage: "magnifyingglass")
                                 .font(.body.weight(.semibold))
-                                .padding(.horizontal, 18).padding(.vertical, 10)
+                                .foregroundStyle(accent)
+                                .padding(.horizontal, 20).padding(.vertical, 11)
                                 .background(Color.platformSecondaryGroupedBackground, in: Capsule())
+                                .overlay(Capsule().strokeBorder(.white.opacity(0.1), lineWidth: 1))
                         }
                         .buttonStyle(.plain)
 
@@ -180,12 +183,14 @@ struct AlbumDetailView: View {
                         } label: {
                             Label("Listen on \(MusicAppLink.name)", systemImage: "play.circle")
                                 .font(.body.weight(.semibold))
-                                .padding(.horizontal, 18).padding(.vertical, 10)
+                                .foregroundStyle(accent)
+                                .padding(.horizontal, 20).padding(.vertical, 11)
                                 .background(Color.platformSecondaryGroupedBackground, in: Capsule())
+                                .overlay(Capsule().strokeBorder(.white.opacity(0.1), lineWidth: 1))
                         }
                         .buttonStyle(.plain)
                     }
-                    .padding(.top, 4)
+                    .padding(.top, 6)
                     #endif
                 }
                 .frame(maxWidth: .infinity)
@@ -216,8 +221,10 @@ struct AlbumDetailView: View {
                         .id(me)      // a refresh brings in the latest score / review
                         .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
                         #if os(macOS)
-                        .padding(18)
-                        .background(Color.platformSecondaryGroupedBackground, in: RoundedRectangle(cornerRadius: 16))
+                        .padding(20)
+                        .background(Color.platformSecondaryGroupedBackground, in: RoundedRectangle(cornerRadius: 18))
+                        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.white.opacity(0.08), lineWidth: 1))
+                        .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         #endif
                 }

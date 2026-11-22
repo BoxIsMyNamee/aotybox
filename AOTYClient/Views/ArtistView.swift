@@ -73,7 +73,7 @@ struct ArtistView: View {
                     GlassSegmented(selection: $category, items: Category.allCases.map { ($0, $0.short) })
                     Button { showFilters = true } label: {
                         FloatingIcon(symbol: "line.3.horizontal.decrease")
-                            .foregroundStyle(extrasOn.isEmpty ? Color.primary : Color.accentColor)
+                            .foregroundStyle(extrasOn.isEmpty ? Color.primary : Color(hex: UserDefaults.standard.string(forKey: Theme.key) ?? Theme.defaultHex))
                     }
                     .floatingGlass()
                 }
@@ -146,7 +146,7 @@ struct ArtistView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(on ? Color.primary : Color.white)
                 .padding(.horizontal, 16).frame(height: 32)
-                .background(on ? AnyShapeStyle(Color.platformTertiaryFill) : AnyShapeStyle(Color.accentColor), in: Capsule())
+                .background(on ? AnyShapeStyle(Color.platformTertiaryFill) : AnyShapeStyle(Color(hex: UserDefaults.standard.string(forKey: Theme.key) ?? Theme.defaultHex)), in: Capsule())
                 .contentTransition(.interpolate)
         }
         .buttonStyle(.plain)

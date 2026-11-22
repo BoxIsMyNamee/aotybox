@@ -40,6 +40,9 @@ struct ProofView: View {
                     results
                 }
                 .padding(.horizontal)
+                #if os(macOS)
+                .padding(.top, 24)
+                #endif
                 .padding(.bottom, 24)
             }
             .scrollDismissesKeyboard(.interactively)

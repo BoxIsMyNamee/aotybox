@@ -73,14 +73,35 @@ struct HeartButton: View {
             if count > 0 {
                 Button { if reviewID != nil { showLikers = true } } label: {
                     Text("\(count)").monospacedDigit().foregroundStyle(.secondary)
+                        #if os(macOS)
+                        .font(.subheadline.weight(.medium))
+                        .padding(.vertical, 5).padding(.horizontal, 6)
+                        #else
                         .padding(.vertical, 4).padding(.trailing, 4)
+                        #endif
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Liked by \(count). Show who")
+                #if os(macOS)
+                .help("Liked by \(count) — click to view")
+                #endif
             }
         }
+        #if os(macOS)
+        .font(.subheadline)
+        .contextMenu {
+            if count > 0, reviewID != nil {
+                Button {
+                    showLikers = true
+                } label: {
+                    Label("Liked By (\(count))…", systemImage: "heart.text.square")
+                }
+            }
+        }
+        #else
         .font(.caption)
+        #endif
         .sheet(isPresented: $showLikers) {
             if let reviewID { LikersSheet(reviewID: reviewID, count: count) }
         }
@@ -216,10 +237,37 @@ struct LikersSheet: View {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
+            #if os(macOS)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("Liked By")
+                            .font(.headline)
+                        Spacer()
+                        Button("Done") { dismiss() }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            .keyboardShortcut(.cancelAction)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.platformSecondaryGroupedBackground)
+                    Divider()
+                }
+            }
+            #else
             .navigationTitle("Liked By")
             .inlineNavTitle()
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            #endif
         }
+        #if os(macOS)
+        .frame(minWidth: 420, idealWidth: 460, minHeight: 360, idealHeight: 460)
+        #endif
         .presentationDetents(count > 6 ? [.medium, .large] : [.medium])
         .task {
             if let list = await AOTYAPI.shared.reviewLikers(reviewID) {

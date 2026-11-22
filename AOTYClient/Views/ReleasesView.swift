@@ -39,14 +39,10 @@ struct ReleasesView: View {
                 .padding(.bottom, 12)
                 #endif
 
-                // Every feed stays alive (instant switching); only the selected one shows.
-                ZStack {
-                    ForEach(feeds) { f in
-                        FeedList(feed: f, singles: singles)
-                            .id("\(f.rawValue)-\(singles)")
-                            .opacity(f == feed ? 1 : 0)
-                            .allowsHitTesting(f == feed)
-                    }
+                // Mission Control-style sliding pages; each feed loads lazily on first visit and stays cached.
+                SlidingPager(items: feeds, selection: $feed) { f in
+                    FeedList(feed: f, singles: singles)
+                        .id("\(f.rawValue)-\(singles)")
                 }
             }
             .safeAreaInset(edge: .bottom) {

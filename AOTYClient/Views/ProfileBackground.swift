@@ -193,17 +193,21 @@ struct ProfileBackgroundLayer: View {
     var body: some View {
         FocusedFillImage(image: image, focusX: focusX, focusY: focusY, zoom: zoom)
             .overlay {
+                #if os(macOS)
+                LinearGradient(stops: [.init(color: .black.opacity(0.05), location: 0),
+                                       .init(color: .black.opacity(0.35), location: 0.42),
+                                       .init(color: Color.platformBackground, location: 0.88),
+                                       .init(color: Color.platformBackground, location: 1)],
+                               startPoint: .top, endPoint: .bottom)
+                #else
                 LinearGradient(stops: [.init(color: .black.opacity(0.05), location: 0),
                                        .init(color: .black.opacity(0.35), location: 0.45),
                                        .init(color: Color.platformBackground, location: 1)],
                                startPoint: .top, endPoint: .bottom)
+                #endif
             }
             .clipped()
-            #if os(macOS)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-            #else
             .padding(.horizontal, -40)
-            #endif
     }
 }
 

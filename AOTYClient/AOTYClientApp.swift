@@ -13,6 +13,8 @@ struct AOTYClientApp: App {
     @State private var showWelcome = false
     #if os(macOS)
     @StateObject private var macSearch = MacSearch.shared
+    @State private var threeFingerMonitor: MacThreeFingerTabMonitor?
+    private let macTabs = [0, 1, 3, 4]
     #endif
 
     var body: some Scene {
@@ -58,7 +60,24 @@ struct AOTYClientApp: App {
             }
             .tint(Color(hex: accentHex))
             .preferredColorScheme(Appearance(rawValue: appearance)?.scheme)
-            .onAppear { Appearance.apply(appearance) }
+            .onAppear {
+                Appearance.apply(appearance)
+                #if os(macOS)
+                if threeFingerMonitor == nil {
+                    let m = MacThreeFingerTabMonitor { delta in
+                        let current = tab == 2 ? 0 : tab
+                        guard let idx = macTabs.firstIndex(of: current) else { return }
+                        let next = idx + delta
+                        guard macTabs.indices.contains(next) else { return }
+                        Haptic.selection()
+                        tab = macTabs[next]
+                        macSearch.clear()
+                    }
+                    m.start()
+                    threeFingerMonitor = m
+                }
+                #endif
+            }
             .onChange(of: appearance) { Appearance.apply(appearance) }
             .background(HiddenScraperHost().frame(width: 2, height: 2).allowsHitTesting(false))
             .sheet(item: $scraper.challenge) { ChallengeSheet(url: $0.url).accentTint() }

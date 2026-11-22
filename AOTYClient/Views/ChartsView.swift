@@ -18,13 +18,9 @@ struct ChartsView: View {
 
     var body: some View {
         AppStack {
-            ZStack {
-                ForEach(Source.allCases) { s in
-                    ChartList(source: s, period: period)
-                        .id("\(s.rawValue)-\(period)")
-                        .opacity(s == source ? 1 : 0)
-                        .allowsHitTesting(s == source)
-                }
+            SlidingPager(items: Source.allCases, selection: $source) { s in
+                ChartList(source: s, period: period)
+                    .id("\(s.rawValue)-\(period)")
             }
             .safeAreaInset(edge: .bottom) {
                 GlassSegmented(selection: $source, items: Source.allCases.map { ($0, $0.label) })

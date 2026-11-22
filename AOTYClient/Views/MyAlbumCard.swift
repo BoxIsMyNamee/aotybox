@@ -8,6 +8,8 @@ struct MyAlbumCard: View {
     let slug: String?
     var album: ShareAlbum? = nil
     @AppStorage("profileUsername") private var myUsername = ""
+    @AppStorage(Theme.key) private var accentHex = Theme.defaultHex
+    private var accent: Color { Color(hex: accentHex) }
     @State private var scoreText = ""
     @State private var reviewText = ""
     @State private var busy: String?          // which action is running
@@ -124,34 +126,49 @@ struct MyAlbumCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             if let review = shownReview, !review.isEmpty, !editing {
-                Text(linkified(review)).font(.body).foregroundStyle(.primary)
-                    .lineLimit(expanded ? nil : 14)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 8)   // match the gap below it, above the Listen/Like/Save row
-                    .transaction { $0.animation = nil }
-                if isCut {
-                    Button { Task { if !(await loadFull()) { error = "Couldn't load the rest of your review." } } } label: {
-                        HStack(spacing: 4) {
-                            Text("Show more")
-                            if loadingFull { ProgressView().controlSize(.mini) }
-                            else { Image(systemName: "chevron.down").font(.caption2.weight(.bold)) }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(linkified(review))
+                        #if os(macOS)
+                        .font(.system(size: 16))
+                        .lineSpacing(4)
+                        #else
+                        .font(.body)
+                        #endif
+                        .foregroundStyle(.primary)
+                        .lineLimit(expanded ? nil : 14)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .transaction { $0.animation = nil }
+                    if isCut {
+                        Button { Task { if !(await loadFull()) { error = "Couldn't load the rest of your review." } } } label: {
+                            HStack(spacing: 4) {
+                                Text("Show more")
+                                if loadingFull { ProgressView().controlSize(.mini) }
+                                else { Image(systemName: "chevron.down").font(.caption2.weight(.bold)) }
+                            }
+                            .padding(.vertical, 2)
+                            .contentShape(Rectangle())
                         }
-                        .padding(.vertical, 2)
-                        .contentShape(Rectangle())
-                    }
-                    .font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
-                } else if review.count > 700 {
-                    Button { instantly { expanded.toggle() } } label: {
-                        HStack(spacing: 4) {
-                            Text(expanded ? "Show less" : "Show more")
-                            Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption2.weight(.bold))
+                        .font(.subheadline.weight(.semibold)).buttonStyle(.borderless)
+                    } else if review.count > 700 {
+                        Button { instantly { expanded.toggle() } } label: {
+                            HStack(spacing: 4) {
+                                Text(expanded ? "Show less" : "Show more")
+                                Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption2.weight(.bold))
+                            }
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.vertical, 2)
+                            .contentShape(Rectangle())
                         }
-                        .font(.subheadline.weight(.semibold))
-                        .padding(.vertical, 2)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.borderless)
                     }
-                    .buttonStyle(.borderless)
                 }
+                #if os(macOS)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.platformTertiaryFill, in: RoundedRectangle(cornerRadius: 12))
+                #else
+                .padding(.top, 8)   // match the gap below it, above the Listen/Like/Save row
+                #endif
             } else if editing || (box.canReview ?? true) {
                 reviewComposer
             }
@@ -183,7 +200,13 @@ struct MyAlbumCard: View {
                             Label("Edit", systemImage: "pencil").font(.subheadline.weight(.medium))
                                 .lineLimit(1).fixedSize()
                                 .foregroundStyle(.secondary)
-                                .padding(.vertical, 6).contentShape(Rectangle())
+                                #if os(macOS)
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .background(Color.platformTertiaryFill, in: Capsule())
+                                #else
+                                .padding(.vertical, 6)
+                                #endif
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .disabled(loadingFull)
@@ -310,7 +333,7 @@ struct MyAlbumCard: View {
                     if busy == "post" { ProgressView().controlSize(.small).tint(.white) } else { Text(editing ? "Save" : "Post").bold() }
                 }
                 .frame(width: 76, height: 34)
-                .background(reviewText.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 ? Color.accentColor : Color.gray.opacity(0.4),
+                .background(reviewText.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 ? accent : Color.gray.opacity(0.4),
                             in: Capsule())
                 .foregroundStyle(.white)
             }
@@ -376,17 +399,26 @@ struct MyAlbumCard: View {
                 } else { forgetPage() }
             }
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
                 Image(systemName: flag ? (icon == "plus" ? "checkmark" : icon == "heart" ? "heart.fill" : icon) : icon)
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(flag ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(flag ? accent : Color.secondary)
                     .contentTransition(.symbolEffect(.replace))
                 Text(flag ? on : title)
+                    #if os(macOS)
+                    .font(.subheadline.weight(.medium))
+                    #else
                     .font(.caption.weight(.medium))
+                    #endif
                     .lineLimit(1).fixedSize()
-                    .foregroundStyle(flag ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(flag ? accent : Color.secondary)
             }
+            #if os(macOS)
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(flag ? accent.opacity(0.16) : Color.platformTertiaryFill, in: Capsule())
+            #else
             .padding(.vertical, 6)
+            #endif
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
