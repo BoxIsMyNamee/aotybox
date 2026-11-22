@@ -116,7 +116,15 @@ struct LearnAlbumView: View {
         .navigationTitle(album)
         .inlineNavTitle()
         .toolbar {
-            if let u = info?.url { Button { openURL(u) } label: { Image(systemName: "arrow.up.right.square") } }
+            if let u = info?.url {
+                ToolbarItem(placement: .automatic) {
+                    Button { openURL(u) } label: { Image(systemName: "arrow.up.right.square") }
+                }
+            }
+            #if os(macOS)
+            ToolbarSpacer(.fixed)
+            MacSearchToolbarItem()
+            #endif
         }
         .onAppear { chat.attach(ChatThread.key("album", artist, album)) }
         .task { await load() }

@@ -34,9 +34,17 @@ struct AlbumDetailView: View {
         .inlineNavTitle()
         .toolbar {
             if let album, let url = URL(string: album.url) {
-                ShareLink(item: url)
-                Button { openURL(url) } label: { Image(systemName: "safari") }
+                ToolbarItem(placement: .automatic) {
+                    ShareLink(item: url)
+                }
+                ToolbarItem(placement: .automatic) {
+                    Button { openURL(url) } label: { Image(systemName: "safari") }
+                }
             }
+            #if os(macOS)
+            ToolbarSpacer(.fixed)
+            MacSearchToolbarItem()
+            #endif
         }
         .task { await load() }
         .platformFullScreenCover(isPresented: $showCover) {

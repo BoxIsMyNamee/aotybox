@@ -216,7 +216,7 @@ extension View {
         #if os(iOS)
         navigationBarTitleDisplayMode(.inline)
         #else
-        self
+        toolbar(removing: .title)
         #endif
     }
 

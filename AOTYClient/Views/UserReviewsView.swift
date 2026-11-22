@@ -77,6 +77,9 @@ struct UserReviewsView: View {
         .environment(\.swipeRowBackground, Color.platformSecondaryGroupedBackground)
         .navigationTitle(rangeLabel.map { "Rated \($0)" } ?? "User Reviews")
         .inlineNavTitle()
+        #if os(macOS)
+        .toolbar { MacSearchToolbarItem() }
+        #endif
         .refreshable { await reload() }
         .task(id: sort) { await reload() }
     }

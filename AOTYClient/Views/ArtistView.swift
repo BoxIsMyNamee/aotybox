@@ -64,6 +64,9 @@ struct ArtistView: View {
         }
         .navigationTitle(artist?.name ?? fallbackName)
         .inlineNavTitle()
+        #if os(macOS)
+        .toolbar { MacSearchToolbarItem() }
+        #endif
         .safeAreaInset(edge: .bottom) {
             if artist != nil {
                 HStack(spacing: 12) {
@@ -74,8 +77,13 @@ struct ArtistView: View {
                     }
                     .floatingGlass()
                 }
+                #if os(macOS)
+                .frame(maxWidth: 420)
+                .padding(.bottom, 14)
+                #else
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
+                #endif
             }
         }
         .sheet(isPresented: $showFilters) {

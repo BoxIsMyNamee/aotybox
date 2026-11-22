@@ -42,12 +42,18 @@ extension View {
             .navigationDestination(for: UserRoute.self) { u in
                 UserProfileView(username: u.username, fallbackAvatar: u.avatar, fallbackName: u.name, fallbackColor: u.nameColor, isMe: false)
                     .navigationTitle("Profile").inlineNavTitle()
+                    #if os(macOS)
+                    .toolbar { MacSearchToolbarItem() }
+                    #endif
             }
             .navigationDestination(for: ProfileReviewsRoute.self) { ProfileReviewsView(username: $0.username) }
             .navigationDestination(for: ProfileRatingsRoute.self) { ProfileRatingsView(username: $0.username, path: $0.path, isMe: $0.isMe) }
             .navigationDestination(for: FollowUser.self) { u in
                 UserProfileView(username: u.username, fallbackAvatar: u.avatar, fallbackName: u.name, fallbackColor: u.nameColor, isMe: false)
                     .navigationTitle("Profile").inlineNavTitle()
+                    #if os(macOS)
+                    .toolbar { MacSearchToolbarItem() }
+                    #endif
             }
     }
 }

@@ -744,6 +744,9 @@ struct ProfileRatingsView: View {
         .macPagePadding()
         .navigationTitle("Ratings")
         .inlineNavTitle()
+        #if os(macOS)
+        .toolbar { MacSearchToolbarItem() }
+        #endif
         .refreshable { await reload() }
         .task { if ratings.isEmpty { await reload() } }
     }
@@ -952,6 +955,10 @@ struct ProfileReviewsView: View {
                     }
                 } label: { Image(systemName: "arrow.up.arrow.down") }
             }
+            #if os(macOS)
+            ToolbarSpacer(.fixed)
+            MacSearchToolbarItem()
+            #endif
         }
         // AOTY's reviews pages don't sort, so the app loads them all and sorts here.
         .onChange(of: sort) { if sort != .newest { Task { await loadAll() } } }

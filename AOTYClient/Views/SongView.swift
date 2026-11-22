@@ -69,9 +69,15 @@ struct SongView: View {
         .inlineNavTitle()
         .toolbar {
             if let url = song?.url ?? hit?.url {
-                Button { openURL(url) } label: { Image(systemName: "arrow.up.right.square") }
-                    .accessibilityLabel("Open on Genius")
+                ToolbarItem(placement: .automatic) {
+                    Button { openURL(url) } label: { Image(systemName: "arrow.up.right.square") }
+                        .accessibilityLabel("Open on Genius")
+                }
             }
+            #if os(macOS)
+            ToolbarSpacer(.fixed)
+            MacSearchToolbarItem()
+            #endif
         }
         .sheet(item: $selectedRef) { ref in AnnotationSheet(referent: ref).presentationDetents([.medium, .large]).accentTint() }
         .onAppear { chat.attach(ChatThread.key("song", artist, title)) }
