@@ -66,10 +66,9 @@ struct ReleasesView: View {
             #if os(macOS)
             .tabLogo(backTitle: singles ? "Singles" : "Releases")
             .toolbar {
-                ToolbarItemGroup(placement: .automatic) {
-                    ListenButton()
-                    NotificationBell()
-                }
+                ToolbarItem(placement: .automatic) { ListenButton() }
+                ToolbarSpacer(.fixed)
+                ToolbarItem(placement: .automatic) { NotificationBell() }
                 ToolbarSpacer(.fixed)
             }
             #else

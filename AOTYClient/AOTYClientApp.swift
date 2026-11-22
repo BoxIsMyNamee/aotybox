@@ -52,6 +52,7 @@ struct AOTYClientApp: App {
                         }
                     )
                 }
+                .sharedBackgroundVisibility(.hidden)
             }
             if macSearchActive {
                 MacSearchOverlay(
@@ -230,8 +231,9 @@ private struct MacToolbarSearchField: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 10)
-        .frame(width: 240, height: 28)
+        .padding(.horizontal, 12)
+        .frame(width: 320, height: 30)
+        .glassEffect(.regular, in: Capsule())
     }
 }
 #endif
