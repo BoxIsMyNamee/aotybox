@@ -256,11 +256,27 @@ final class MacUpdater: ObservableObject {
             }
         }
     }
+
+    func pickUpdateFile() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose AOTY Update Package"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.treatsFilePackagesAsDirectories = false
+        var types: [UTType] = [.zip, .applicationBundle]
+        if let custom = UTType(filenameExtension: "aotyupdate") {
+            types.insert(custom, at: 0)
+        }
+        panel.allowedContentTypes = types
+        if panel.runModal() == .OK, let url = panel.url {
+            Task { await prepareUpdate(from: url) }
+        }
+    }
 }
 
 struct MacUpdateSettingsSection: View {
     @ObservedObject private var updater = MacUpdater.shared
-    @State private var pickingUpdate = false
     @State private var dropTargeted = false
 
     var body: some View {
@@ -275,10 +291,10 @@ struct MacUpdateSettingsSection: View {
             }
 
             Button {
-                pickingUpdate = true
+                updater.pickUpdateFile()
             } label: {
                 HStack {
-                    Label("Install Update (.zip or .app)…", systemImage: "arrow.down.doc")
+                    Label("Install Update Package…", systemImage: "arrow.down.doc")
                     Spacer()
                     if updater.busy {
                         ProgressView().controlSize(.small)
@@ -291,7 +307,7 @@ struct MacUpdateSettingsSection: View {
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
                     guard let url else { return }
                     let ext = url.pathExtension.lowercased()
-                    guard ext == "zip" || ext == "app" else { return }
+                    guard ext == "aotyupdate" || ext == "zip" || ext == "app" else { return }
                     Task { @MainActor in
                         await updater.prepareUpdate(from: url)
                     }
@@ -307,12 +323,7 @@ struct MacUpdateSettingsSection: View {
         } header: {
             Text("App Updates")
         } footer: {
-            Text("Pick or drop a downloaded AOTY.app or .zip to replace \(updater.defaultTargetURL.path) and relaunch.")
-        }
-        .fileImporter(isPresented: $pickingUpdate, allowedContentTypes: [.zip, .applicationBundle]) { result in
-            if case let .success(url) = result {
-                Task { await updater.prepareUpdate(from: url) }
-            }
+            Text("Pick or drop an .aotyupdate, .zip, or AOTY.app file to replace \(updater.defaultTargetURL.path) and relaunch.")
         }
         .alert(item: $updater.pending) { update in
             Alert(
