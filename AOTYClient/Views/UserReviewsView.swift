@@ -26,6 +26,52 @@ struct UserReviewsView: View {
     }
 
     @State private var sort: Sort = .best
+
+    var body: some View {
+        Group {
+            if range == nil {
+                SlidingPager(items: Sort.allCases, selection: $sort) { s in
+                    UserReviewsPage(slug: slug, title: title, sort: s, rangeLabel: nil, artist: artist, cover: cover)
+                        .id("\(slug)-\(s.rawValue)")
+                }
+            } else {
+                UserReviewsPage(slug: slug, title: title, sort: sort, rangeLabel: rangeLabel, artist: artist, cover: cover)
+            }
+        }
+        .safeAreaInset(edge: .bottom) {
+            // Sort switcher floating at the bottom, like Releases and Charts.
+            if range == nil {
+                GlassSegmented(selection: $sort, items: Sort.allCases.map { ($0, $0.rawValue) })
+                    .frame(maxWidth: 320)
+                    .padding(.bottom, 8)
+            }
+        }
+        .navigationTitle(rangeLabel.map { "Rated \($0)" } ?? "User Reviews")
+        .inlineNavTitle()
+        #if os(macOS)
+        .toolbar { MacSearchToolbarItem() }
+        #endif
+    }
+}
+
+private struct UserReviewsPage: View {
+    let slug: String
+    let title: String
+    let sort: UserReviewsView.Sort
+    var rangeLabel: String? = nil
+    var artist: String? = nil
+    var cover: URL? = nil
+    @Environment(\.push) private var push
+
+    private var range: ClosedRange<Double>? {
+        guard let rangeLabel else { return nil }
+        let nums = rangeLabel.split(whereSeparator: { !$0.isNumber }).compactMap { Double($0) }
+        guard let lo = nums.first else { return nil }
+        return lo...(nums.count > 1 ? nums[1] + 0.999 : lo + 0.999)
+    }
+    private var sortParam: String { range.map { $0.lowerBound < 60 ? "worst" : "best" } ?? sort.param }
+    private func inRange(_ r: UserReview) -> Bool { range.map { r.rating.map($0.contains) ?? false } ?? true }
+
     @State private var reviews: [UserReview] = []
     @State private var distribution: [DistributionRow] = []
     @State private var total: Int?
@@ -66,25 +112,9 @@ struct UserReviewsView: View {
         }
         .insetGroupedListStyle()
         .macPagePadding()
-        #if os(macOS)
-        .offset(x: range == nil ? MacPagerDragState.shared.dragOffset : 0)
-        #endif
-        .safeAreaInset(edge: .bottom) {
-            // Sort switcher floating at the bottom, like Releases and Charts.
-            if range == nil {
-                GlassSegmented(selection: $sort, items: Sort.allCases.map { ($0, $0.rawValue) })
-                    .frame(maxWidth: 320)
-                    .padding(.bottom, 8)
-            }
-        }
         .environment(\.swipeRowBackground, Color.platformSecondaryGroupedBackground)
-        .navigationTitle(rangeLabel.map { "Rated \($0)" } ?? "User Reviews")
-        .inlineNavTitle()
-        #if os(macOS)
-        .toolbar { MacSearchToolbarItem() }
-        #endif
         .refreshable { await reload() }
-        .task(id: sort) { await reload() }
+        .task { if reviews.isEmpty { await reload() } }
     }
 
     private func reload() async {

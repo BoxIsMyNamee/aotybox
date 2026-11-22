@@ -58,19 +58,15 @@ struct GlassSegmented<T: Hashable>: View {
         .shadow(color: .black.opacity(0.32), radius: 10, y: 4)
         #if os(macOS)
         .onAppear {
-            MacHorizontalSwipeMonitor.activeGlassCount += 1
             let m = MacHorizontalSwipeMonitor(
+                isGlass: true,
                 onDrag: { dx in
-                    // When deep inside a pushed page, swiping right pops back instead of sliding tabs.
-                    if navDepth > 0 && dx > 0 {
-                        MacPagerDragState.shared.isDragging = false
-                        MacPagerDragState.shared.dragOffset = 0
-                        return
-                    }
                     let idx = items.firstIndex(where: { $0.0 == selection }) ?? 0
+                    // When on the first segment of a pushed screen (idx == 0) and swiping right (dx > 0),
+                    // let the page rubber-band slightly right to hint back-navigation.
                     var adjusted = dx
                     if (idx == 0 && dx > 0) || (idx == items.count - 1 && dx < 0) {
-                        adjusted = dx * 0.25 // rubber-band at edges
+                        adjusted = dx * 0.25
                     }
                     MacPagerDragState.shared.isDragging = true
                     MacPagerDragState.shared.dragOffset = adjusted
@@ -80,14 +76,16 @@ struct GlassSegmented<T: Hashable>: View {
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
                         MacPagerDragState.shared.dragOffset = 0
                     }
+                    let idx = items.firstIndex(where: { $0.0 == selection }) ?? 0
                     let projected = dx + velocityX * 0.18
-                    // Deep in navigation stack: 2-finger swipe right goes back to previous page.
-                    if navDepth > 0 && (dx > 55 || projected > 85) {
+                    // On a pushed screen (Learn, User Reviews): swiping right when on the first bottom tab pops back!
+                    // Otherwise swiping left/right switches across the bottom tabs (`Lyrics <-> About <-> Comments <-> Ask AI` or `Popular <-> Recent <-> Lowest`).
+                    if navDepth > 0 && idx == 0 && (dx > 55 || projected > 85) {
                         Haptic.selection()
                         popNavigation()
                         return
                     }
-                    if abs(dx) > 65 || abs(projected) > 105 {
+                    if abs(dx) > 55 || abs(projected) > 95 {
                         step(projected < 0 ? 1 : -1)
                     }
                 }
@@ -96,7 +94,6 @@ struct GlassSegmented<T: Hashable>: View {
             swipeMonitor = m
         }
         .onDisappear {
-            MacHorizontalSwipeMonitor.activeGlassCount = max(0, MacHorizontalSwipeMonitor.activeGlassCount - 1)
             MacPagerDragState.shared.isDragging = false
             MacPagerDragState.shared.dragOffset = 0
             swipeMonitor?.stop()
@@ -146,7 +143,9 @@ struct SlidingPager<T: Hashable & Identifiable, Page: View>: View {
                     page(item)
                         .frame(width: containerWidth)
                         .offset(x: CGFloat(idx - selectedIndex) * containerWidth + dragState.dragOffset)
-                        .allowsHitTesting(isCurrent && !dragState.isDragging)
+                        // Never disable hit-testing on the current page: disabling allowsHitTesting on macOS
+                        // drops NSScrollView's active 2-finger vertical scroll sequence!
+                        .allowsHitTesting(isCurrent)
                 }
             }
         }
@@ -169,10 +168,15 @@ struct SlidingPager<T: Hashable & Identifiable, Page: View>: View {
 #if os(macOS)
 /// Detects two-finger horizontal trackpad swipes (`scrollWheel`) with live drag tracking for
 /// Mission Control-style page sliding and swipe-right back navigation.
+/// Uses a lifo stack for `GlassSegmented` monitors so pushed pages with a bottom switcher (like Learn or User Reviews)
+/// override the root tab's bottom switcher without fighting each other.
 @MainActor
 final class MacHorizontalSwipeMonitor {
-    static var activeGlassCount: Int = 0
+    private static var glassStack: [UUID] = []
+    static var hasActiveGlass: Bool { !glassStack.isEmpty }
 
+    private let id = UUID()
+    private let isGlass: Bool
     private let onDrag: @MainActor (CGFloat) -> Void
     private let onEnd: @MainActor (CGFloat, CGFloat) -> Void
     private var monitor: Any?
@@ -182,15 +186,21 @@ final class MacHorizontalSwipeMonitor {
     private var lockedHorizontal: Bool? = nil
 
     init(
+        isGlass: Bool,
         onDrag: @escaping @MainActor (CGFloat) -> Void,
         onEnd: @escaping @MainActor (CGFloat, CGFloat) -> Void
     ) {
+        self.isGlass = isGlass
         self.onDrag = onDrag
         self.onEnd = onEnd
     }
 
     func start() {
         guard monitor == nil else { return }
+        if isGlass {
+            Self.glassStack.removeAll { $0 == id }
+            Self.glassStack.append(id)
+        }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
             self?.handle(event)
             return event
@@ -198,16 +208,27 @@ final class MacHorizontalSwipeMonitor {
     }
 
     func stop() {
+        if isGlass {
+            Self.glassStack.removeAll { $0 == id }
+        }
         if let monitor {
             NSEvent.removeMonitor(monitor)
             self.monitor = nil
         }
     }
 
+    private var isTopResponder: Bool {
+        if isGlass {
+            return Self.glassStack.last == id
+        } else {
+            return Self.glassStack.isEmpty
+        }
+    }
+
     private func handle(_ event: NSEvent) {
+        guard isTopResponder else { return }
         guard event.momentumPhase.isEmpty else { return }
         guard let win = event.window, win == NSApp.keyWindow, win.attachedSheet == nil else { return }
-        // Ignore 2-finger scrollWheel if 3+ fingers are currently touching the trackpad.
         if MacThreeFingerTabMonitor.isThreeFingerActive {
             if lockedHorizontal == true {
                 onDrag(0)
@@ -246,8 +267,8 @@ final class MacHorizontalSwipeMonitor {
 
         if lockedHorizontal == nil {
             let dist = hypot(sumX, sumY)
-            guard dist > 10 else { return }
-            lockedHorizontal = abs(sumX) > abs(sumY) * 1.35
+            guard dist > 12 else { return }
+            lockedHorizontal = abs(sumX) > abs(sumY) * 1.4
         }
 
         if lockedHorizontal == true {
@@ -256,27 +277,47 @@ final class MacHorizontalSwipeMonitor {
     }
 }
 
-/// Detects three-finger left/right trackpad swipes to switch between the top-level tabs.
-/// Enables indirect trackpad touches (`allowedTouchTypes = [.indirect]`) on the key window's views
-/// and listens for both `.swipe` events and 3-finger `NSTouch` trackpad movements.
+/// Shared horizontal drag state for 3-finger top-level tab switching on macOS so top tabs
+/// visibly slide side-by-side in lockstep with your 3 fingers (Mission Control style).
+@MainActor
+final class MacTopTabDragState: ObservableObject {
+    static let shared = MacTopTabDragState()
+    @Published var dragOffset: CGFloat = 0
+    @Published var isDragging: Bool = false
+}
+
+/// Detects three-finger left/right trackpad swipes to switch between the top-level tabs with
+/// live Mission Control-style horizontal drag tracking.
+/// Enables indirect trackpad touches ONLY on the root `contentView` (never on `NSScrollView` subviews,
+/// which would break standard 2-finger vertical scrolling).
 @MainActor
 final class MacThreeFingerTabMonitor {
     static var isThreeFingerActive = false
 
+    private let onDrag: @MainActor (CGFloat) -> Void
+    private let onEnd: @MainActor (CGFloat, CGFloat) -> Void
     private let onStep: @MainActor (Int) -> Void
     private var monitor: Any?
     private var startX: CGFloat?
     private var startY: CGFloat?
-    private var fired = false
+    private var lastX: CGFloat = 0
+    private var velocityX: CGFloat = 0
+    private var lockedHorizontal: Bool? = nil
     private var lastFireTime: TimeInterval = 0
 
-    init(onStep: @escaping @MainActor (Int) -> Void) {
+    init(
+        onDrag: @escaping @MainActor (CGFloat) -> Void,
+        onEnd: @escaping @MainActor (CGFloat, CGFloat) -> Void,
+        onStep: @escaping @MainActor (Int) -> Void
+    ) {
+        self.onDrag = onDrag
+        self.onEnd = onEnd
         self.onStep = onStep
     }
 
     func start() {
         guard monitor == nil else { return }
-        Self.enableIndirectTouchesOnAllWindows()
+        Self.enableIndirectTouchesOnRootWindowViews()
         let mask: NSEvent.EventTypeMask = [.swipe, .beginGesture, .gesture, .endGesture, .scrollWheel, .mouseMoved]
         monitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
             self?.handle(event)
@@ -291,56 +332,43 @@ final class MacThreeFingerTabMonitor {
         }
     }
 
-    static func enableIndirectTouchesOnAllWindows() {
+    static func enableIndirectTouchesOnRootWindowViews() {
         for win in NSApp.windows {
-            enableIndirectTouches(on: win.contentView)
-            enableIndirectTouches(on: win.contentView?.superview)
-        }
-    }
-
-    private static func enableIndirectTouches(on view: NSView?) {
-        guard let view else { return }
-        if !view.allowedTouchTypes.contains(.indirect) {
-            view.allowedTouchTypes.insert(.indirect)
-            view.wantsRestingTouches = true
-        }
-        for sub in view.subviews {
-            if !sub.allowedTouchTypes.contains(.indirect) {
-                sub.allowedTouchTypes.insert(.indirect)
-                sub.wantsRestingTouches = true
+            if let cv = win.contentView, !cv.allowedTouchTypes.contains(.indirect) {
+                cv.allowedTouchTypes.insert(.indirect)
             }
         }
     }
 
-    private func fire(_ step: Int) {
+    private func fireStep(_ step: Int) {
         let now = ProcessInfo.processInfo.systemUptime
-        guard now - lastFireTime > 0.28 else { return }
+        guard now - lastFireTime > 0.25 else { return }
         lastFireTime = now
-        fired = true
         onStep(step)
     }
 
     private func handle(_ event: NSEvent) {
         guard let win = event.window, win == NSApp.keyWindow, win.attachedSheet == nil else { return }
-        Self.enableIndirectTouches(on: win.contentView)
-        Self.enableIndirectTouches(on: win.contentView?.superview)
+        if let cv = win.contentView, !cv.allowedTouchTypes.contains(.indirect) {
+            cv.allowedTouchTypes.insert(.indirect)
+        }
 
         if event.type == .swipe {
             guard abs(event.deltaX) > abs(event.deltaY) else { return }
             if event.deltaX < 0 {
-                fire(1)
+                fireStep(1)
             } else if event.deltaX > 0 {
-                fire(-1)
+                fireStep(-1)
             }
             return
         }
 
-        // Inspect active trackpad touches (`in: nil` returns all indirect touches once allowedTouchTypes includes .indirect).
         let touches = event.touches(matching: [.began, .moved, .stationary, .touching], in: nil)
         processTouches(touches)
     }
 
     func processTouches(_ touches: Set<NSTouch>) {
+        let winWidth = NSApp.keyWindow?.frame.width ?? 1160
         if touches.count == 3 {
             Self.isThreeFingerActive = true
             let avgX = touches.reduce(CGFloat(0)) { $0 + $1.normalizedPosition.x } / 3.0
@@ -348,47 +376,59 @@ final class MacThreeFingerTabMonitor {
             if startX == nil {
                 startX = avgX
                 startY = avgY
-                fired = false
+                lastX = avgX
+                velocityX = 0
+                lockedHorizontal = nil
+                return
             }
 
-            if !fired, let sx = startX, let sy = startY {
-                let dx = avgX - sx
-                let dy = avgY - sy
-                if abs(dx) > 0.08 && abs(dx) > abs(dy) * 1.3 {
-                    // Fingers moving left (dx < 0) moves to the next top tab (+1); fingers moving right (-1).
-                    fire(dx < 0 ? 1 : -1)
-                }
+            guard let sx = startX, let sy = startY else { return }
+            let dxNorm = avgX - sx
+            let dyNorm = avgY - sy
+            velocityX = (avgX - lastX) * winWidth * 14
+            lastX = avgX
+
+            if lockedHorizontal == nil {
+                let dist = hypot(dxNorm, dyNorm)
+                guard dist > 0.015 else { return }
+                lockedHorizontal = abs(dxNorm) > abs(dyNorm) * 1.2
+            }
+
+            if lockedHorizontal == true {
+                let pixelDX = dxNorm * winWidth * 2.2
+                onDrag(pixelDX)
             }
         } else if touches.count != 3 {
+            if lockedHorizontal == true, let sx = startX {
+                let totalDX = (lastX - sx) * winWidth * 2.2
+                onEnd(totalDX, velocityX)
+                lastFireTime = ProcessInfo.processInfo.systemUptime
+            }
             if touches.count < 3 {
                 Self.isThreeFingerActive = false
             }
             startX = nil
             startY = nil
-            fired = false
+            velocityX = 0
+            lockedHorizontal = nil
         }
     }
 }
 
 /// Transparent background `NSView` with `allowedTouchTypes = [.indirect]` so macOS routes raw
-/// multi-finger trackpad touch events to the window even when system 3-finger swipe gestures are customized.
+/// multi-finger trackpad touch events to the window without interfering with `NSScrollView`.
 struct MacThreeFingerTouchHost: NSViewRepresentable {
     var monitor: MacThreeFingerTabMonitor?
 
     func makeNSView(context: Context) -> TouchNSView {
         let v = TouchNSView()
         v.allowedTouchTypes = [.indirect]
-        v.wantsRestingTouches = true
         return v
     }
 
     func updateNSView(_ nsView: TouchNSView, context: Context) {
         nsView.monitor = monitor
         nsView.allowedTouchTypes = [.indirect]
-        nsView.wantsRestingTouches = true
-        DispatchQueue.main.async {
-            MacThreeFingerTabMonitor.enableIndirectTouchesOnAllWindows()
-        }
     }
 
     final class TouchNSView: NSView {
@@ -397,8 +437,7 @@ struct MacThreeFingerTouchHost: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             allowedTouchTypes = [.indirect]
-            wantsRestingTouches = true
-            MacThreeFingerTabMonitor.enableIndirectTouchesOnAllWindows()
+            MacThreeFingerTabMonitor.enableIndirectTouchesOnRootWindowViews()
         }
 
         override func touchesBegan(with event: NSEvent) {

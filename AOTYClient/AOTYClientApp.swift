@@ -13,8 +13,33 @@ struct AOTYClientApp: App {
     @State private var showWelcome = false
     #if os(macOS)
     @StateObject private var macSearch = MacSearch.shared
+    @StateObject private var topTabDrag = MacTopTabDragState.shared
     @State private var threeFingerMonitor: MacThreeFingerTabMonitor?
+    @State private var topTabSlideX: CGFloat = 0
     private let macTabs = [0, 1, 3, 4]
+
+    private var selectedMacTabIndex: Int {
+        macTabs.firstIndex(of: tab == 2 ? 0 : tab) ?? 0
+    }
+
+    private func switchMacTopTab(to nextTab: Int, direction: Int) {
+        guard nextTab != tab else { return }
+        Haptic.selection()
+        macSearch.clear()
+        let w = NSApp.keyWindow?.frame.width ?? 1160
+        // Disable TabView's default fade transaction and slide the new tab in from the swipe direction (Mission Control style).
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) {
+            tab = nextTab
+            topTabDrag.isDragging = false
+            topTabDrag.dragOffset = 0
+            topTabSlideX = CGFloat(direction) * w
+        }
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+            topTabSlideX = 0
+        }
+    }
     #endif
 
     var body: some Scene {
@@ -22,13 +47,29 @@ struct AOTYClientApp: App {
             ZStack {
             #if os(macOS)
             TabView(selection: Binding(get: { tab == 2 ? 0 : tab }, set: { new in
-                tab = new
-                macSearch.clear()
+                let oldIdx = selectedMacTabIndex
+                let newIdx = macTabs.firstIndex(of: new) ?? 0
+                if new != tab, oldIdx != newIdx {
+                    switchMacTopTab(to: new, direction: newIdx > oldIdx ? 1 : -1)
+                } else {
+                    var t = Transaction()
+                    t.disablesAnimations = true
+                    withTransaction(t) { tab = new }
+                    macSearch.clear()
+                }
             })) {
-                ReleasesView().tabItem { Label("Releases", systemImage: "square.stack") }.tag(0)
-                ChartsView().tabItem { Label("Charts", systemImage: "chart.bar") }.tag(1)
-                ProfileView().tabItem { Label("Profile", systemImage: "person.crop.circle") }.tag(3)
-                ProofView().tabItem { Label("Notes", systemImage: "text.badge.checkmark") }.tag(4)
+                ReleasesView()
+                    .offset(x: topTabDrag.dragOffset + topTabSlideX)
+                    .tabItem { Label("Releases", systemImage: "square.stack") }.tag(0)
+                ChartsView()
+                    .offset(x: topTabDrag.dragOffset + topTabSlideX)
+                    .tabItem { Label("Charts", systemImage: "chart.bar") }.tag(1)
+                ProfileView()
+                    .offset(x: topTabDrag.dragOffset + topTabSlideX)
+                    .tabItem { Label("Profile", systemImage: "person.crop.circle") }.tag(3)
+                ProofView()
+                    .offset(x: topTabDrag.dragOffset + topTabSlideX)
+                    .tabItem { Label("Notes", systemImage: "text.badge.checkmark") }.tag(4)
             }
             if macSearch.active {
                 MacSearchOverlay(
@@ -64,15 +105,37 @@ struct AOTYClientApp: App {
                 Appearance.apply(appearance)
                 #if os(macOS)
                 if threeFingerMonitor == nil {
-                    let m = MacThreeFingerTabMonitor { delta in
-                        let current = tab == 2 ? 0 : tab
-                        guard let idx = macTabs.firstIndex(of: current) else { return }
-                        let next = idx + delta
-                        guard macTabs.indices.contains(next) else { return }
-                        Haptic.selection()
-                        tab = macTabs[next]
-                        macSearch.clear()
-                    }
+                    let m = MacThreeFingerTabMonitor(
+                        onDrag: { dx in
+                            let idx = selectedMacTabIndex
+                            var adjusted = dx
+                            if (idx == 0 && dx > 0) || (idx == macTabs.count - 1 && dx < 0) {
+                                adjusted = dx * 0.25 // rubber-band at first/last top tab
+                            }
+                            topTabDrag.isDragging = true
+                            topTabDrag.dragOffset = adjusted
+                        },
+                        onEnd: { dx, velocityX in
+                            let idx = selectedMacTabIndex
+                            let projected = dx + velocityX * 0.18
+                            let delta = projected < 0 ? 1 : -1
+                            let nextIdx = idx + delta
+                            if (abs(dx) > 95 || abs(projected) > 150), macTabs.indices.contains(nextIdx) {
+                                switchMacTopTab(to: macTabs[nextIdx], direction: delta)
+                            } else {
+                                topTabDrag.isDragging = false
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                                    topTabDrag.dragOffset = 0
+                                }
+                            }
+                        },
+                        onStep: { delta in
+                            let idx = selectedMacTabIndex
+                            let next = idx + delta
+                            guard macTabs.indices.contains(next) else { return }
+                            switchMacTopTab(to: macTabs[next], direction: delta)
+                        }
+                    )
                     m.start()
                     threeFingerMonitor = m
                 }

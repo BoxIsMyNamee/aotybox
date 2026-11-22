@@ -98,6 +98,7 @@ struct AppStack<Content: View>: View {
         #if os(macOS)
         .onAppear {
             let m = MacHorizontalSwipeMonitor(
+                isGlass: false,
                 onDrag: { dx in
                     guard !path.isEmpty else {
                         if backDragX != 0 { backDragX = 0 }
@@ -118,8 +119,6 @@ struct AppStack<Content: View>: View {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
                         backDragX = 0
                     }
-                    // If a bottom GlassSegmented is active on the current screen, it handles the pop so we don't pop twice.
-                    guard MacHorizontalSwipeMonitor.activeGlassCount == 0 else { return }
                     let projected = dx + velocityX * 0.18
                     if dx > 55 || projected > 85 {
                         Haptic.selection()
