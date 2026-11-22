@@ -207,6 +207,14 @@ final class MacHorizontalSwipeMonitor {
     private func handle(_ event: NSEvent) {
         guard event.momentumPhase.isEmpty else { return }
         guard let win = event.window, win == NSApp.keyWindow, win.attachedSheet == nil else { return }
+        // Ignore 2-finger scrollWheel if 3+ fingers are currently touching the trackpad.
+        if MacThreeFingerTabMonitor.isThreeFingerActive {
+            if lockedHorizontal == true {
+                onDrag(0)
+                lockedHorizontal = false
+            }
+            return
+        }
 
         if event.phase == .began {
             sumX = 0
@@ -249,16 +257,18 @@ final class MacHorizontalSwipeMonitor {
 }
 
 /// Detects three-finger left/right trackpad swipes to switch between the top-level tabs.
-/// Supports both macOS `.swipe` events and raw 3-finger trackpad touch gestures.
+/// Enables indirect trackpad touches (`allowedTouchTypes = [.indirect]`) on the key window's views
+/// and listens for both `.swipe` events and 3-finger `NSTouch` trackpad movements.
 @MainActor
 final class MacThreeFingerTabMonitor {
+    static var isThreeFingerActive = false
+
     private let onStep: @MainActor (Int) -> Void
     private var monitor: Any?
     private var startX: CGFloat?
     private var startY: CGFloat?
-    private var lastX: CGFloat = 0
-    private var lastY: CGFloat = 0
     private var fired = false
+    private var lastFireTime: TimeInterval = 0
 
     init(onStep: @escaping @MainActor (Int) -> Void) {
         self.onStep = onStep
@@ -266,7 +276,9 @@ final class MacThreeFingerTabMonitor {
 
     func start() {
         guard monitor == nil else { return }
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.swipe, .beginGesture, .gesture, .endGesture]) { [weak self] event in
+        Self.enableIndirectTouchesOnAllWindows()
+        let mask: NSEvent.EventTypeMask = [.swipe, .beginGesture, .gesture, .endGesture, .scrollWheel, .mouseMoved]
+        monitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
             self?.handle(event)
             return event
         }
@@ -279,21 +291,58 @@ final class MacThreeFingerTabMonitor {
         }
     }
 
+    static func enableIndirectTouchesOnAllWindows() {
+        for win in NSApp.windows {
+            enableIndirectTouches(on: win.contentView)
+            enableIndirectTouches(on: win.contentView?.superview)
+        }
+    }
+
+    private static func enableIndirectTouches(on view: NSView?) {
+        guard let view else { return }
+        if !view.allowedTouchTypes.contains(.indirect) {
+            view.allowedTouchTypes.insert(.indirect)
+            view.wantsRestingTouches = true
+        }
+        for sub in view.subviews {
+            if !sub.allowedTouchTypes.contains(.indirect) {
+                sub.allowedTouchTypes.insert(.indirect)
+                sub.wantsRestingTouches = true
+            }
+        }
+    }
+
+    private func fire(_ step: Int) {
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - lastFireTime > 0.28 else { return }
+        lastFireTime = now
+        fired = true
+        onStep(step)
+    }
+
     private func handle(_ event: NSEvent) {
         guard let win = event.window, win == NSApp.keyWindow, win.attachedSheet == nil else { return }
+        Self.enableIndirectTouches(on: win.contentView)
+        Self.enableIndirectTouches(on: win.contentView?.superview)
 
         if event.type == .swipe {
             guard abs(event.deltaX) > abs(event.deltaY) else { return }
             if event.deltaX < 0 {
-                onStep(1)
+                fire(1)
             } else if event.deltaX > 0 {
-                onStep(-1)
+                fire(-1)
             }
             return
         }
 
-        let touches = event.touches(matching: .touching, in: nil)
+        // Inspect active trackpad touches (`in: nil` returns all indirect touches once allowedTouchTypes includes .indirect).
+        let touches = event.touches(matching: [.began, .moved, .stationary, .touching], in: nil)
+        processTouches(touches)
+    }
+
+    func processTouches(_ touches: Set<NSTouch>) {
         if touches.count == 3 {
+            Self.isThreeFingerActive = true
             let avgX = touches.reduce(CGFloat(0)) { $0 + $1.normalizedPosition.x } / 3.0
             let avgY = touches.reduce(CGFloat(0)) { $0 + $1.normalizedPosition.y } / 3.0
             if startX == nil {
@@ -301,22 +350,75 @@ final class MacThreeFingerTabMonitor {
                 startY = avgY
                 fired = false
             }
-            lastX = avgX
-            lastY = avgY
 
             if !fired, let sx = startX, let sy = startY {
-                let dx = lastX - sx
-                let dy = lastY - sy
-                if abs(dx) > 0.14 && abs(dx) > abs(dy) * 1.5 {
-                    fired = true
-                    // Fingers moving left (dx < 0) switches to the next top tab (+1); moving right (-1).
-                    onStep(dx < 0 ? 1 : -1)
+                let dx = avgX - sx
+                let dy = avgY - sy
+                if abs(dx) > 0.08 && abs(dx) > abs(dy) * 1.3 {
+                    // Fingers moving left (dx < 0) moves to the next top tab (+1); fingers moving right (-1).
+                    fire(dx < 0 ? 1 : -1)
                 }
             }
-        } else if touches.count < 3 {
+        } else if touches.count != 3 {
+            if touches.count < 3 {
+                Self.isThreeFingerActive = false
+            }
             startX = nil
             startY = nil
             fired = false
+        }
+    }
+}
+
+/// Transparent background `NSView` with `allowedTouchTypes = [.indirect]` so macOS routes raw
+/// multi-finger trackpad touch events to the window even when system 3-finger swipe gestures are customized.
+struct MacThreeFingerTouchHost: NSViewRepresentable {
+    var monitor: MacThreeFingerTabMonitor?
+
+    func makeNSView(context: Context) -> TouchNSView {
+        let v = TouchNSView()
+        v.allowedTouchTypes = [.indirect]
+        v.wantsRestingTouches = true
+        return v
+    }
+
+    func updateNSView(_ nsView: TouchNSView, context: Context) {
+        nsView.monitor = monitor
+        nsView.allowedTouchTypes = [.indirect]
+        nsView.wantsRestingTouches = true
+        DispatchQueue.main.async {
+            MacThreeFingerTabMonitor.enableIndirectTouchesOnAllWindows()
+        }
+    }
+
+    final class TouchNSView: NSView {
+        weak var monitor: MacThreeFingerTabMonitor?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            allowedTouchTypes = [.indirect]
+            wantsRestingTouches = true
+            MacThreeFingerTabMonitor.enableIndirectTouchesOnAllWindows()
+        }
+
+        override func touchesBegan(with event: NSEvent) {
+            super.touchesBegan(with: event)
+            monitor?.processTouches(event.touches(matching: [.began, .moved, .stationary, .touching], in: nil))
+        }
+
+        override func touchesMoved(with event: NSEvent) {
+            super.touchesMoved(with: event)
+            monitor?.processTouches(event.touches(matching: [.began, .moved, .stationary, .touching], in: nil))
+        }
+
+        override func touchesEnded(with event: NSEvent) {
+            super.touchesEnded(with: event)
+            monitor?.processTouches(event.touches(matching: [.began, .moved, .stationary, .touching], in: nil))
+        }
+
+        override func touchesCancelled(with event: NSEvent) {
+            super.touchesCancelled(with: event)
+            monitor?.processTouches([])
         }
     }
 }

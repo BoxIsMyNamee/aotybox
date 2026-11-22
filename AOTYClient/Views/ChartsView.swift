@@ -35,6 +35,7 @@ struct ChartsView: View {
                             ForEach(periods, id: \.self) { Text($0 == "all" ? "All time" : $0).tag($0) }
                         }
                     } label: { Label("Year", systemImage: "calendar") }
+                    .menuIndicator(.hidden)
                 }
                 #if os(macOS)
                 ToolbarSpacer(.fixed)

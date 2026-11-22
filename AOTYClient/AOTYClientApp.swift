@@ -80,6 +80,9 @@ struct AOTYClientApp: App {
             }
             .onChange(of: appearance) { Appearance.apply(appearance) }
             .background(HiddenScraperHost().frame(width: 2, height: 2).allowsHitTesting(false))
+            #if os(macOS)
+            .background(MacThreeFingerTouchHost(monitor: threeFingerMonitor).allowsHitTesting(false))
+            #endif
             .sheet(item: $scraper.challenge) { ChallengeSheet(url: $0.url).accentTint() }
             .background {
                 // First run: one sign-in sheet (which also gets you past Cloudflare) instead of

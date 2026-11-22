@@ -129,7 +129,12 @@ final class MacUpdater: ObservableObject {
 
         if needsAdmin {
             let adminScript = """
-            while kill -0 \(pid) 2>/dev/null; do sleep 0.15; done
+            kill -TERM \(pid) 2>/dev/null || true
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+                kill -0 \(pid) 2>/dev/null || break
+                sleep 0.15
+            done
+            kill -KILL \(pid) 2>/dev/null || true
             rm -rf \(q(targetApp.path))
             /usr/bin/ditto \(q(sourceApp.path)) \(q(targetApp.path))
             /usr/bin/xattr -dr com.apple.quarantine \(q(targetApp.path)) 2>/dev/null || true
@@ -155,7 +160,7 @@ final class MacUpdater: ObservableObject {
                         self.errorMessage = (err[NSAppleScript.errorMessage] as? String) ?? "Administrator permission was cancelled."
                         if let stagingDir { try? FileManager.default.removeItem(at: stagingDir) }
                     } else {
-                        NSApp.terminate(nil)
+                        Self.forceQuitApp()
                     }
                 }
             }
@@ -163,7 +168,13 @@ final class MacUpdater: ObservableObject {
         }
 
         let script = """
-        while kill -0 \(pid) 2>/dev/null; do sleep 0.15; done
+        sleep 0.25
+        kill -TERM \(pid) 2>/dev/null || true
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+            kill -0 \(pid) 2>/dev/null || break
+            sleep 0.15
+        done
+        kill -KILL \(pid) 2>/dev/null || true
         rm -rf \(q(targetApp.path))
         /usr/bin/ditto \(q(sourceApp.path)) \(q(targetApp.path))
         /usr/bin/xattr -dr com.apple.quarantine \(q(targetApp.path)) 2>/dev/null || true
@@ -180,10 +191,23 @@ final class MacUpdater: ObservableObject {
 
         do {
             try proc.run()
-            NSApp.terminate(nil)
+            Self.forceQuitApp()
         } catch {
             if let stagingDir { try? FileManager.default.removeItem(at: stagingDir) }
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private static func forceQuitApp() {
+        UserDefaults.standard.synchronize()
+        for win in NSApp.windows {
+            if let sheet = win.attachedSheet {
+                win.endSheet(sheet)
+            }
+        }
+        NSApp.terminate(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            exit(0)
         }
     }
 

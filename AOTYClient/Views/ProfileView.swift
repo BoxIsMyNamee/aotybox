@@ -238,12 +238,15 @@ struct UserProfileView: View {
         .refreshable { await refresh() }
         .toolbar {
             if isMe {
-                ToolbarItem(placement: .platformTopBarLeading) { Menu {
-                    Button { showFullProfile = true } label: { Label("Open full profile", systemImage: "safari") }
-                    Button { Task { await refresh() } } label: { Label("Refresh", systemImage: "arrow.clockwise") }
-                    if let onChangeUser { Button(action: onChangeUser) { Label("Not you? Set username", systemImage: "person.crop.circle.badge.questionmark") } }
-                    if let onAutoDetect { Button(action: onAutoDetect) { Label("Detect automatically", systemImage: "wand.and.stars") } }
-                } label: { Image(systemName: "ellipsis") } }
+                ToolbarItem(placement: .platformTopBarLeading) {
+                    Menu {
+                        Button { showFullProfile = true } label: { Label("Open full profile", systemImage: "safari") }
+                        Button { Task { await refresh() } } label: { Label("Refresh", systemImage: "arrow.clockwise") }
+                        if let onChangeUser { Button(action: onChangeUser) { Label("Not you? Set username", systemImage: "person.crop.circle.badge.questionmark") } }
+                        if let onAutoDetect { Button(action: onAutoDetect) { Label("Detect automatically", systemImage: "wand.and.stars") } }
+                    } label: { Image(systemName: "ellipsis") }
+                    .menuIndicator(.hidden)
+                }
             }
         }
         .platformFullScreenCover(isPresented: $showAvatar) {
@@ -472,7 +475,16 @@ struct UserProfileView: View {
             }
         }
         .padding(.vertical, 10)
+        #if os(macOS)
+        .background {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+                .overlay(RoundedRectangle(cornerRadius: 12).fill(Color.black.opacity(0.45)))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.14), lineWidth: 1))
+        }
+        #else
         .background(Color.platformSecondaryGroupedBackground, in: RoundedRectangle(cornerRadius: 12))
+        #endif
     }
 
     @ViewBuilder private func statCell(_ s: ProfileStat) -> some View {
@@ -527,7 +539,16 @@ struct UserProfileView: View {
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 7)
+                            #if os(macOS)
+                            .background {
+                                Capsule()
+                                    .fill(.ultraThinMaterial)
+                                    .overlay(Capsule().fill(Color.black.opacity(0.45)))
+                                    .overlay(Capsule().strokeBorder(.white.opacity(0.14), lineWidth: 1))
+                            }
+                            #else
                             .background(Color.platformSecondaryGroupedBackground, in: Capsule())
+                            #endif
                             .contentShape(Capsule())
                         }
                         .buttonStyle(.plain)
@@ -592,12 +613,15 @@ struct UserProfileView: View {
             #if os(macOS)
             .padding(.horizontal, 18).padding(.vertical, 12)
             .frame(maxWidth: 460)
+            .background {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(.ultraThinMaterial)
+                    .overlay(RoundedRectangle(cornerRadius: 14).fill(Color.black.opacity(0.45)))
+                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.14), lineWidth: 1))
+            }
             #else
             .padding(10)
-            #endif
             .background(Color.platformSecondaryGroupedBackground, in: RoundedRectangle(cornerRadius: 14))
-            #if os(macOS)
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.08), lineWidth: 1))
             #endif
             .contentShape(RoundedRectangle(cornerRadius: 14))
         }

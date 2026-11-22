@@ -37,6 +37,9 @@ struct AlbumDetailView: View {
                 ToolbarItem(placement: .automatic) {
                     ShareLink(item: url)
                 }
+                #if os(macOS)
+                ToolbarSpacer(.fixed)
+                #endif
                 ToolbarItem(placement: .automatic) {
                     Button { openURL(url) } label: { Image(systemName: "safari") }
                 }
