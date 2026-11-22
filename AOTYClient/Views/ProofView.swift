@@ -61,32 +61,107 @@ struct ProofView: View {
     // MARK: Editor
 
     private var editor: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(text.isEmpty ? "Your review" : "\(ProofStats.words(in: text).count) words")
-                    .font(.caption).foregroundStyle(.secondary)
+                    #if os(macOS)
+                    .font(.subheadline.weight(.medium))
+                    #else
+                    .font(.caption)
+                    #endif
+                    .foregroundStyle(.secondary)
                 Spacer()
                 if !text.isEmpty {
                     Button("Clear", role: .destructive) { text = ""; resetResults(); matchedAlbum = nil }
+                        #if os(macOS)
+                        .font(.subheadline.weight(.semibold))
+                        #else
                         .font(.caption.weight(.semibold))
+                        #endif
                 }
             }
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $text)
                     .focused($focus, equals: .text)
+                    #if os(macOS)
+                    .font(.system(size: 16))
+                    .padding(14)
+                    #else
                     .font(.callout)
-                    .scrollContentBackground(.hidden)
                     .padding(8)
+                    #endif
+                    .scrollContentBackground(.hidden)
                 if text.isEmpty {
                     Text("Paste your review here…")
-                        .font(.callout).foregroundStyle(.tertiary)
+                        #if os(macOS)
+                        .font(.system(size: 16))
+                        .padding(.horizontal, 19).padding(.vertical, 22)
+                        #else
+                        .font(.callout)
                         .padding(.horizontal, 13).padding(.vertical, 16)
+                        #endif
+                        .foregroundStyle(.tertiary)
                         .allowsHitTesting(false)
                 }
             }
+            #if os(macOS)
+            .frame(minHeight: 320)
+            #else
             .frame(height: 200)
+            #endif
             .background(Color.platformSecondaryBackground, in: RoundedRectangle(cornerRadius: 14))
 
+            #if os(macOS)
+            HStack(spacing: 12) {
+                Button {
+                    if let s = PlatformPasteboard.string, !s.isEmpty { text = s; resetResults() }
+                } label: {
+                    Label("Paste", systemImage: "doc.on.clipboard")
+                        .font(.body.weight(.medium))
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(Color.platformSecondaryBackground, in: Capsule())
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    if checking { job?.cancel(); job = nil; checking = false; stage = nil; return }
+                    job = Task { await check() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if checking { ProgressView().controlSize(.small) }
+                        if checking {
+                            TimelineView(.periodic(from: stageStart, by: 1)) { ctx in
+                                let secs = Int(ctx.date.timeIntervalSince(stageStart))
+                                Text((stage ?? "Checking") + (secs >= 3 ? " · \(secs)s" : "")).font(.headline).monospacedDigit()
+                            }
+                        } else {
+                            Label("Proof Review", systemImage: "checkmark.circle.fill")
+                                .font(.headline)
+                        }
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 28).padding(.vertical, 10)
+                    .background(Color.green.opacity((text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !checking) ? 0.4 : 1), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !checking)
+
+                Button {
+                    PlatformPasteboard.copy(text)
+                    copied = true
+                    Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
+                } label: {
+                    Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+                        .font(.body.weight(.medium))
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(Color.platformSecondaryBackground, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(text.isEmpty)
+
+                Spacer()
+            }
+            #else
             HStack(spacing: 10) {
                 Button {
                     if let s = PlatformPasteboard.string, !s.isEmpty { text = s; resetResults() }
@@ -136,8 +211,14 @@ struct ProofView: View {
                 .disabled(text.isEmpty)
                 .frame(maxWidth: .infinity)
             }
+            #endif
             Text(checking ? "Tap again to stop." : "Proof only points things out. It never rewrites your review.")
-                .font(.caption).foregroundStyle(.secondary)
+                #if os(macOS)
+                .font(.subheadline)
+                #else
+                .font(.caption)
+                #endif
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -151,17 +232,32 @@ struct ProofView: View {
     }
 
     private var albumField: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Album (optional)").font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Album (optional)")
+                #if os(macOS)
+                .font(.subheadline.weight(.medium))
+                #else
+                .font(.caption)
+                #endif
+                .foregroundStyle(.secondary)
             TextField("e.g. the weeknd after hours", text: $albumQuery)
                 .focused($focus, equals: .album)
+                #if os(macOS)
+                .textFieldStyle(.plain)
+                .font(.system(size: 16))
+                #endif
                 .noAutocap()
                 .autocorrectionDisabled()
-                .padding(12)
+                .padding(14)
                 .background(Color.platformSecondaryBackground, in: RoundedRectangle(cornerRadius: 12))
                 .onChange(of: albumQuery) { matchedAlbum = nil }
             Text(matchedAlbum ?? "With an album, Proof checks that every track name you mention is in quotes, like 'blinding lights'.")
-                .font(.caption).foregroundStyle(.secondary)
+                #if os(macOS)
+                .font(.subheadline)
+                #else
+                .font(.caption)
+                #endif
+                .foregroundStyle(.secondary)
         }
     }
 

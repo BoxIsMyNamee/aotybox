@@ -102,36 +102,90 @@ struct AlbumDetailView: View {
         List {
             // Header
             Section {
-                VStack(spacing: 12) {
-                    Cover(url: a.coverURL, size: 240).shadow(radius: 8)
+                VStack(spacing: 14) {
+                    Cover(url: a.coverURL, size: 256).shadow(radius: 10)
                         .tapAndHold(tap: { showCover = true }, hold: { showChat = true })
                         .accessibilityLabel("View cover art")
                         .accessibilityHint("Hold to ask the AI about this \(isSingle(a) ? "single" : "album")")
-                    VStack(spacing: 4) {
-                        Text(a.title).font(.title2.bold()).multilineTextAlignment(.center)
+                    VStack(spacing: 5) {
+                        Text(a.title)
+                            #if os(macOS)
+                            .font(.largeTitle.bold())
+                            #else
+                            .font(.title2.bold())
+                            #endif
+                            .multilineTextAlignment(.center)
                         Button { push(ArtistRoute(path: artistPath(a) ?? "", name: a.artist)) } label: {
-                            Text(a.artist).font(.headline).foregroundStyle(.tint)
+                            Text(a.artist)
+                                #if os(macOS)
+                                .font(.title3.weight(.semibold))
+                                #else
+                                .font(.headline)
+                                #endif
+                                .foregroundStyle(.tint)
                         }
                         .buttonStyle(.plain)
                         Text([a.datePublished, a.format, a.label].compactMap { $0 }.joined(separator: " · "))
-                            .font(.caption).foregroundStyle(.tertiary).multilineTextAlignment(.center)
+                            #if os(macOS)
+                            .font(.subheadline)
+                            #else
+                            .font(.caption)
+                            #endif
+                            .foregroundStyle(.tertiary).multilineTextAlignment(.center)
                     }
-                    HStack(spacing: 28) {
+                    HStack(spacing: 32) {
                         ScoreBadge(label: "Critic", score: a.criticScore, count: a.criticCount)
                         ScoreBadge(label: "User", score: a.userScore, count: a.userCount)
                     }
                     if let r = a.criticRanking ?? a.userRanking {
                         Text("#\(r.rank) of \(r.year.map(String.init) ?? "the year")")
-                            .font(.caption.weight(.semibold)).foregroundStyle(.tint)
+                            #if os(macOS)
+                            .font(.subheadline.weight(.semibold))
+                            #else
+                            .font(.caption.weight(.semibold))
+                            #endif
+                            .foregroundStyle(.tint)
                     }
                     if let genres = a.genres, !genres.isEmpty {
-                        Text(genres.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary)
+                        Text(genres.joined(separator: ", "))
+                            #if os(macOS)
+                            .font(.subheadline)
+                            #else
+                            .font(.caption)
+                            #endif
+                            .foregroundStyle(.secondary)
                     }
+                    #if os(macOS)
+                    HStack(spacing: 14) {
+                        Button {
+                            push(Learn.route(artist: a.artist, album: a.title, song: nil, isSingle: isSingle(a), cover: a.coverURL))
+                        } label: {
+                            Label("Learn about this \(isSingle(a) ? "Song" : "Album")", systemImage: "magnifyingglass")
+                                .font(.body.weight(.semibold))
+                                .padding(.horizontal, 18).padding(.vertical, 10)
+                                .background(Color.platformSecondaryGroupedBackground, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            Task { await MusicAppLink.open(artist: a.artist, album: a.title, song: nil, appleMusicURL: appleMusicLink(a)) }
+                        } label: {
+                            Label("Listen on \(MusicAppLink.name)", systemImage: "play.circle")
+                                .font(.body.weight(.semibold))
+                                .padding(.horizontal, 18).padding(.vertical, 10)
+                                .background(Color.platformSecondaryGroupedBackground, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.top, 4)
+                    #endif
                 }
                 .frame(maxWidth: .infinity)
                 .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
 
+            #if os(iOS)
             Section {
                 Button {
                     push(Learn.route(artist: a.artist, album: a.title, song: nil, isSingle: isSingle(a), cover: a.coverURL))
@@ -145,6 +199,7 @@ struct AlbumDetailView: View {
                     Label("Listen on \(MusicAppLink.name)", systemImage: "play.circle")
                 }
             }
+            #endif
 
             // Your score, review, and Listened / Like / Save (signed in)
             if let me = a.me, me.albumID != nil {
@@ -152,6 +207,11 @@ struct AlbumDetailView: View {
                     MyAlbumCard(box: me, slug: slug, album: ShareAlbum(title: a.title, artist: a.artist, cover: a.coverURL))
                         .id(me)      // a refresh brings in the latest score / review
                         .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 14, trailing: 16))
+                        #if os(macOS)
+                        .padding(18)
+                        .background(Color.platformSecondaryGroupedBackground, in: RoundedRectangle(cornerRadius: 16))
+                        .listRowSeparator(.hidden)
+                        #endif
                 }
             }
 
@@ -162,18 +222,51 @@ struct AlbumDetailView: View {
                     ForEach(showAllTracks ? trackList : Array(trackList.prefix(8))) { t in
                         NavRow(value: SongRoute(artist: a.artist, title: t.title, album: a.title, cover: a.coverURL, artistPath: artistPath(a)),
                                artist: a.artist, album: a.title, song: t.title, appleMusicURL: appleMusicLink(a), cover: a.coverURL) {
-                            HStack {
-                                Text("\(t.number)").foregroundStyle(.secondary).monospacedDigit().frame(width: 24, alignment: .trailing)
-                                VStack(alignment: .leading) {
-                                    Text(t.title).foregroundStyle(.primary)
+                            HStack(spacing: 12) {
+                                Text("\(t.number)")
+                                    #if os(macOS)
+                                    .font(.title3.monospacedDigit())
+                                    #endif
+                                    .foregroundStyle(.secondary).monospacedDigit().frame(width: 28, alignment: .trailing)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(t.title)
+                                        #if os(macOS)
+                                        .font(.title3.weight(.medium))
+                                        #endif
+                                        .foregroundStyle(.primary)
                                     if let f = t.features, !f.isEmpty {
-                                        Text("feat. " + f.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary)
+                                        Text("feat. " + f.joined(separator: ", "))
+                                            #if os(macOS)
+                                            .font(.subheadline)
+                                            #else
+                                            .font(.caption)
+                                            #endif
+                                            .foregroundStyle(.secondary)
                                     }
                                 }
                                 Spacer()
-                                if let r = t.rating { Text(String(Int(r.rounded()))).font(.caption.weight(.semibold).monospacedDigit()).foregroundStyle(scoreColor(r)) }
-                                if let l = t.length { Text(l).font(.caption.monospacedDigit()).foregroundStyle(.tertiary) }
+                                if let r = t.rating {
+                                    Text(String(Int(r.rounded())))
+                                        #if os(macOS)
+                                        .font(.subheadline.weight(.semibold).monospacedDigit())
+                                        #else
+                                        .font(.caption.weight(.semibold).monospacedDigit())
+                                        #endif
+                                        .foregroundStyle(scoreColor(r))
+                                }
+                                if let l = t.length {
+                                    Text(l)
+                                        #if os(macOS)
+                                        .font(.subheadline.monospacedDigit())
+                                        #else
+                                        .font(.caption.monospacedDigit())
+                                        #endif
+                                        .foregroundStyle(.tertiary)
+                                }
                             }
+                            #if os(macOS)
+                            .padding(.vertical, 4)
+                            #endif
                         }
                     }
                     if trackList.count > 8 {
@@ -212,33 +305,60 @@ struct AlbumDetailView: View {
             if let reviews = a.reviews, !reviews.isEmpty {
                 Section("Critic Reviews") {
                     ForEach(reviews.prefix(15)) { r in
-                        HStack(alignment: .top, spacing: 12) {
+                        HStack(alignment: .top, spacing: 14) {
                             CachedImage(url: r.image.flatMap(URL.init(string:))) {
                                 RoundedRectangle(cornerRadius: 6).fill(.quaternary)
                                     .overlay(Text(String(r.publication.prefix(1))).font(.caption.bold()).foregroundStyle(.secondary))
                             }
+                            #if os(macOS)
+                            .frame(width: 48, height: 48)
+                            #else
                             .frame(width: 36, height: 36)
+                            #endif
                             .clipShape(RoundedRectangle(cornerRadius: 6))
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: 6) {
                                 HStack {
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(r.publication).font(.subheadline.weight(.semibold))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(r.publication)
+                                            #if os(macOS)
+                                            .font(.headline)
+                                            #else
+                                            .font(.subheadline.weight(.semibold))
+                                            #endif
                                         if let author = r.author, !author.isEmpty {
-                                            Text(author).font(.caption2).foregroundStyle(.tertiary)
+                                            Text(author)
+                                                #if os(macOS)
+                                                .font(.caption)
+                                                #else
+                                                .font(.caption2)
+                                                #endif
+                                                .foregroundStyle(.tertiary)
                                         }
                                     }
                                     Spacer()
                                     if let s = r.score {
                                         Text(String(Int(s.rounded())))
+                                            #if os(macOS)
+                                            .font(.title3.bold().monospacedDigit())
+                                            #else
                                             .font(.headline.monospacedDigit())
-                                            .padding(.horizontal, 8).padding(.vertical, 3)
+                                            #endif
+                                            .padding(.horizontal, 10).padding(.vertical, 4)
                                             .background(scoreColor(s).opacity(0.25), in: RoundedRectangle(cornerRadius: 6))
                                     }
                                 }
-                                if !r.text.isEmpty { Text(r.text).font(.callout).foregroundStyle(.secondary).lineLimit(5) }
+                                if !r.text.isEmpty {
+                                    Text(r.text)
+                                        #if os(macOS)
+                                        .font(.system(size: 15))
+                                        #else
+                                        .font(.callout)
+                                        #endif
+                                        .foregroundStyle(.secondary).lineLimit(5)
+                                }
                             }
                         }
-                        .padding(.vertical, 2)
+                        .padding(.vertical, 4)
                         .contentShape(Rectangle())
                         .onTapGesture { if let s = r.url, let u = URL(string: s) { openURL(u) } }
                     }

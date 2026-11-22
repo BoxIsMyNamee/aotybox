@@ -550,21 +550,37 @@ struct UserProfileView: View {
         Button {
             push(SongRoute(artist: now.artist, title: now.title, album: now.album, cover: now.cover))
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 14) {
+                #if os(macOS)
+                Cover(url: now.cover, size: 60)
+                #else
                 Cover(url: now.cover, size: 42)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 5) {
+                #endif
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
                         EqualizerBars(playing: true)
                         Text("Listening on Last.fm")
                     }
+                    #if os(macOS)
+                    .font(.caption.weight(.semibold))
+                    #else
                     .font(.caption2.weight(.semibold))
+                    #endif
                     .foregroundStyle(.tint)
                     Text(now.title)
+                        #if os(macOS)
+                        .font(.title3.weight(.semibold))
+                        #else
                         .font(.subheadline.weight(.semibold))
+                        #endif
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                     Text(now.artist)
+                        #if os(macOS)
+                        .font(.subheadline)
+                        #else
                         .font(.caption)
+                        #endif
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -573,7 +589,11 @@ struct UserProfileView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
+            #if os(macOS)
+            .padding(14)
+            #else
             .padding(10)
+            #endif
             .background(Color.platformSecondaryGroupedBackground, in: RoundedRectangle(cornerRadius: 12))
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
@@ -791,17 +811,41 @@ struct ProfileReviewRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 16) {
+                #if os(macOS)
+                Cover(url: review.coverURL, size: 96)
+                #else
                 Cover(url: review.coverURL, size: 76)
-                VStack(alignment: .leading, spacing: 2) {
+                #endif
+                VStack(alignment: .leading, spacing: 4) {
                     Button { push(ArtistRoute(path: "", name: review.artist)) } label: {
-                        Text(review.artist).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                        Text(review.artist)
+                            #if os(macOS)
+                            .font(.headline.weight(.medium))
+                            #else
+                            .font(.subheadline)
+                            #endif
+                            .foregroundStyle(.secondary).lineLimit(1)
                     }
                     .buttonStyle(.plain)
-                    Text(review.album).font(.headline).lineLimit(3)
+                    Text(review.album)
+                        #if os(macOS)
+                        .font(.title3.bold())
+                        #else
+                        .font(.headline)
+                        #endif
+                        .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
-                    if let d = review.date { Text(d).font(.caption).foregroundStyle(.tertiary) }
+                    if let d = review.date {
+                        Text(d)
+                            #if os(macOS)
+                            .font(.subheadline)
+                            #else
+                            .font(.caption)
+                            #endif
+                            .foregroundStyle(.tertiary)
+                    }
                 }
                 .layoutPriority(1)
                 Spacer(minLength: 8)
@@ -810,9 +854,14 @@ struct ProfileReviewRow: View {
 
             if !review.text.isEmpty {
                 let hasMore = review.text.count > 280 || review.isTruncated == true
-                HStack(alignment: .lastTextBaseline, spacing: 8) {
+                HStack(alignment: .lastTextBaseline, spacing: 10) {
                     Text(linkified(bodyText))
+                        #if os(macOS)
+                        .font(.system(size: 16))
+                        .lineSpacing(4)
+                        #else
                         .font(.callout)
+                        #endif
                         .foregroundStyle(.secondary)
                         .lineLimit(expanded ? nil : 6)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -831,11 +880,19 @@ struct ProfileReviewRow: View {
                     Spacer()
                     heart
                 }
+                #if os(macOS)
+                .font(.subheadline.weight(.semibold))
+                #else
                 .font(.caption.weight(.semibold))
+                #endif
                 .buttonStyle(.borderless) }
             }
         }
+        #if os(macOS)
+        .padding(.vertical, 10)
+        #else
         .padding(.vertical, 4)
+        #endif
         // The whole review (art, title, text) opens the album; buttons inside keep their own taps.
         .contentShape(Rectangle())
         .onTapGesture { if let s = review.slug { push(AlbumRoute(slug: s, title: review.album)) } }

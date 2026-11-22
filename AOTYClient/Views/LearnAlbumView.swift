@@ -19,15 +19,42 @@ struct LearnAlbumView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(spacing: 18) {
+                    #if os(macOS)
+                    Cover(url: cover, size: 124)
+                    #else
                     Cover(url: cover, size: 96)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(album).font(.title3.bold()).lineLimit(3)
-                        Text(artist).font(.subheadline).foregroundStyle(.secondary)
-                        if let d = info?.releaseDate { Text(d).font(.caption).foregroundStyle(.tertiary) }
+                    #endif
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(album)
+                            #if os(macOS)
+                            .font(.largeTitle.bold())
+                            #else
+                            .font(.title3.bold())
+                            #endif
+                            .lineLimit(3)
+                        Text(artist)
+                            #if os(macOS)
+                            .font(.title3.weight(.semibold))
+                            #else
+                            .font(.subheadline)
+                            #endif
+                            .foregroundStyle(.secondary)
+                        if let d = info?.releaseDate {
+                            Text(d)
+                                #if os(macOS)
+                                .font(.subheadline)
+                                #else
+                                .font(.caption)
+                                #endif
+                                .foregroundStyle(.tertiary)
+                        }
                     }
                 }
+                #if os(macOS)
+                .padding(.vertical, 6)
+                #endif
                 switch tab {
                 case .about:
                     if loading { ProgressView().frame(maxWidth: .infinity) }
@@ -43,13 +70,21 @@ struct LearnAlbumView: View {
                         VStack(spacing: 0) {
                             ForEach(tracks) { t in
                                 Button { push(SongRoute(artist: artist, title: t.title, album: album, cover: cover)) } label: {
-                                    HStack {
-                                        Text("\(t.number)").foregroundStyle(.secondary).monospacedDigit().frame(width: 24, alignment: .trailing)
-                                        Text(t.title).foregroundStyle(.primary).multilineTextAlignment(.leading)
+                                    HStack(spacing: 12) {
+                                        Text("\(t.number)")
+                                            #if os(macOS)
+                                            .font(.title3.monospacedDigit())
+                                            #endif
+                                            .foregroundStyle(.secondary).monospacedDigit().frame(width: 28, alignment: .trailing)
+                                        Text(t.title)
+                                            #if os(macOS)
+                                            .font(.title3.weight(.medium))
+                                            #endif
+                                            .foregroundStyle(.primary).multilineTextAlignment(.leading)
                                         Spacer()
                                         Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
                                     }
-                                    .padding(.vertical, 10)
+                                    .padding(.vertical, 12)
                                     .contentShape(Rectangle())
                                 }
                                 .buttonStyle(.plain)
@@ -68,8 +103,13 @@ struct LearnAlbumView: View {
         .safeAreaInset(edge: .bottom) {
             if !keyboardUp {
                 GlassSegmented(selection: $tab, items: Tab.allCases.map { ($0, $0.rawValue) })
+                    #if os(macOS)
+                    .frame(maxWidth: 440)
+                    .padding(.bottom, 14)
+                    #else
                     .padding(.horizontal, 40)
                     .padding(.bottom, 8)
+                    #endif
             }
         }
         .trackKeyboard($keyboardUp)

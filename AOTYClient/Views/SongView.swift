@@ -55,8 +55,13 @@ struct SongView: View {
         .safeAreaInset(edge: .bottom) {
             if !keyboardUp {
                 GlassSegmented(selection: $tab, items: Tab.allCases.map { ($0, $0.rawValue) })
+                    #if os(macOS)
+                    .frame(maxWidth: 520)
+                    .padding(.bottom, 14)
+                    #else
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
+                    #endif
             }
         }
         .trackKeyboard($keyboardUp)
@@ -97,21 +102,56 @@ struct SongView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 18) {
+            #if os(macOS)
+            Cover(url: song?.art ?? hit?.art ?? albumCover, size: 124)
+            #else
             Cover(url: song?.art ?? hit?.art ?? albumCover, size: 84)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(song?.title ?? title).font(.title3.bold()).lineLimit(2)
+            #endif
+            VStack(alignment: .leading, spacing: 5) {
+                Text(song?.title ?? title)
+                    #if os(macOS)
+                    .font(.largeTitle.bold())
+                    #else
+                    .font(.title3.bold())
+                    #endif
+                    .lineLimit(2)
                 Button { pushArtist(ArtistRoute(path: artistPath ?? "", name: artist)) } label: {
-                    Text(song?.artist ?? artist).font(.subheadline).foregroundStyle(.tint)
+                    Text(song?.artist ?? artist)
+                        #if os(macOS)
+                        .font(.title3.weight(.semibold))
+                        #else
+                        .font(.subheadline)
+                        #endif
+                        .foregroundStyle(.tint)
                 }
                 .buttonStyle(.plain)
-                if let a = song?.album ?? album { Text(a).font(.caption).foregroundStyle(.tertiary) }
-                if let d = song?.releaseDate { Text(d).font(.caption).foregroundStyle(.tertiary) }
+                if let a = song?.album ?? album {
+                    Text(a)
+                        #if os(macOS)
+                        .font(.subheadline)
+                        #else
+                        .font(.caption)
+                        #endif
+                        .foregroundStyle(.tertiary)
+                }
+                if let d = song?.releaseDate {
+                    Text(d)
+                        #if os(macOS)
+                        .font(.subheadline)
+                        #else
+                        .font(.caption)
+                        #endif
+                        .foregroundStyle(.tertiary)
+                }
                 if albumMissing { Text("Couldn't find it on AOTY.").font(.caption).foregroundStyle(.secondary) }
             }
             Spacer()
             if findingAlbum { ProgressView() }
         }
+        #if os(macOS)
+        .padding(.vertical, 6)
+        #endif
         .contentShape(Rectangle())
         .onTapGesture { Task { await openAlbum() } }
         .accessibilityAddTraits(.isButton)
@@ -122,15 +162,26 @@ struct SongView: View {
 
     @ViewBuilder private var lyricsView: some View {
         if let lyrics, !lyrics.segments.isEmpty {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 22) {
                 ForEach(Array(stanzas(lyrics.segments).enumerated()), id: \.offset) { _, stanza in
                     Text(attributed(stanza))
+                        #if os(macOS)
+                        .font(.system(size: 18))
+                        .lineSpacing(7)
+                        #else
                         .font(.body)
                         .lineSpacing(4)
+                        #endif
                         .textSelection(.enabled)
                 }
                 if !referents.isEmpty {
-                    Text("Tap a highlighted line to read its annotation.").font(.caption).foregroundStyle(.tertiary)
+                    Text("Tap a highlighted line to read its annotation.")
+                        #if os(macOS)
+                        .font(.subheadline)
+                        #else
+                        .font(.caption)
+                        #endif
+                        .foregroundStyle(.tertiary)
                 }
             }
             .environment(\.openURL, OpenURLAction { url in
@@ -180,7 +231,11 @@ struct SongView: View {
         }
         // Section labels like [Chorus] in bold.
         if let range = result.range(of: #"^\[[^\]]+\]"#, options: .regularExpression) {
+            #if os(macOS)
+            result[range].font = .system(size: 18, weight: .bold)
+            #else
             result[range].font = .body.bold()
+            #endif
             result[range].foregroundColor = .secondary
         }
         return result
@@ -293,18 +348,24 @@ struct SongView: View {
 
 struct AnnotationSheet: View {
     let referent: GeniusClient.Referent
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 18) {
                     Text(referent.fragment)
+                        #if os(macOS)
+                        .font(.title3.italic())
+                        .padding(16)
+                        #else
                         .font(.callout.italic())
                         .padding(12)
+                        #endif
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
                     ForEach(referent.annotations) { a in
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 10) {
                             GeniusRichText(text: a.body)
                             HStack(spacing: 10) {
                                 if a.verified { Label("Verified", systemImage: "checkmark.seal.fill").foregroundStyle(.tint) }
@@ -312,16 +373,32 @@ struct AnnotationSheet: View {
                                 Spacer()
                                 Label("\(a.votes)", systemImage: "arrow.up")
                             }
-                            .font(.caption).foregroundStyle(.secondary)
+                            #if os(macOS)
+                            .font(.subheadline)
+                            #else
+                            .font(.caption)
+                            #endif
+                            .foregroundStyle(.secondary)
                         }
                         if a != referent.annotations.last { Divider() }
                     }
                 }
-                .padding()
+                .padding(20)
             }
             .navigationTitle("Genius Annotation")
             .inlineNavTitle()
+            #if os(macOS)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
+                }
+            }
+            #endif
         }
+        #if os(macOS)
+        .frame(minWidth: 560, idealWidth: 640, minHeight: 360, idealHeight: 480)
+        #endif
     }
 }
 
@@ -383,7 +460,7 @@ struct SongChatView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             if !AISettings.isConfigured {
                 VStack(alignment: .leading, spacing: 8) {
                     Label("Connect an AI to ask about this \(subject)", systemImage: "sparkles").font(.headline)
@@ -417,33 +494,67 @@ struct SongChatView: View {
                         }
                     }
                 }
-                HStack(alignment: .bottom, spacing: 8) {
+                HStack(alignment: .center, spacing: 10) {
                     TextField("Ask about this \(subject)…", text: Bindable(thread).input, axis: .vertical)
                         .lineLimit(1...5)
+                        #if os(macOS)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 16))
+                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .background(Color.platformSecondaryBackground, in: RoundedRectangle(cornerRadius: 12))
+                        #else
                         .textFieldStyle(.roundedBorder)
+                        #endif
                         .focused($focused)
                         .onSubmit { ask() }
                     Button { ask() } label: {
-                        Image(systemName: "arrow.up.circle.fill").font(.title2)
+                        Image(systemName: "arrow.up.circle.fill")
+                            #if os(macOS)
+                            .font(.system(size: 28))
+                            #else
+                            .font(.title2)
+                            #endif
                     }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tint)
                     .disabled(thread.input.trimmingCharacters(in: .whitespaces).isEmpty || thinking)
                 }
-                Text("Answers come from \(AISettings.provider.name) and may be wrong.").font(.caption2).foregroundStyle(.tertiary)
+                Text("Answers come from \(AISettings.provider.name) and may be wrong.")
+                    #if os(macOS)
+                    .font(.caption)
+                    #else
+                    .font(.caption2)
+                    #endif
+                    .foregroundStyle(.tertiary)
             }
         }
     }
 
     private func bubble(_ m: ChatMessage) -> some View {
-        VStack(alignment: m.role == .user ? .trailing : .leading, spacing: 6) {
+        VStack(alignment: m.role == .user ? .trailing : .leading, spacing: 8) {
             Text(LocalizedStringKey(m.text))
-                .textSelection(.enabled)
+                #if os(macOS)
+                .font(.system(size: 16))
+                .lineSpacing(5)
+                .padding(16)
+                #else
                 .padding(10)
+                #endif
+                .textSelection(.enabled)
                 .background(m.role == .user ? AnyShapeStyle(.tint.opacity(0.25)) : AnyShapeStyle(.quaternary.opacity(0.5)),
-                            in: RoundedRectangle(cornerRadius: 12))
+                            in: RoundedRectangle(cornerRadius: 14))
             if !m.sources.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     ForEach(m.sources.prefix(5), id: \.url) { s in
-                        Link(destination: s.url) { Label(s.title, systemImage: "link").font(.caption).lineLimit(1) }
+                        Link(destination: s.url) {
+                            Label(s.title, systemImage: "link")
+                                #if os(macOS)
+                                .font(.subheadline)
+                                #else
+                                .font(.caption)
+                                #endif
+                                .lineLimit(1)
+                        }
                     }
                 }
             }
@@ -454,7 +565,12 @@ struct SongChatView: View {
                         .font(.footnote).foregroundStyle(.secondary).buttonStyle(.borderless)
                 } else if m.id == messages.last?.id {
                     Button { retry() } label: { Label("Ask again", systemImage: "arrow.clockwise") }
-                        .font(.footnote).foregroundStyle(.secondary).buttonStyle(.borderless)
+                        #if os(macOS)
+                        .font(.subheadline)
+                        #else
+                        .font(.footnote)
+                        #endif
+                        .foregroundStyle(.secondary).buttonStyle(.borderless)
                 }
             }
         }
@@ -591,11 +707,18 @@ struct GeniusRichText: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             ForEach(pieces, id: \.self) { piece in
                 switch piece {
                 case .text(let t):
-                    Text(linkified(t)).font(.body).textSelection(.enabled)
+                    Text(linkified(t))
+                        #if os(macOS)
+                        .font(.system(size: 16))
+                        .lineSpacing(5)
+                        #else
+                        .font(.body)
+                        #endif
+                        .textSelection(.enabled)
                 case .image(let u):
                     CachedImage(url: u, contentMode: .fit) {
                         RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.04)).frame(height: 180)

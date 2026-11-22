@@ -7,14 +7,31 @@ struct ScoreBadge: View {
     var count: Int? = nil
 
     var body: some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 3) {
             Text(score.map { String(Int($0.rounded())) } ?? "NR")
+                #if os(macOS)
+                .font(.system(.title2, design: .rounded).weight(.bold).monospacedDigit())
+                .frame(minWidth: 54, minHeight: 38)
+                #else
                 .font(.system(.headline, design: .rounded).monospacedDigit())
-                .foregroundStyle(.white)
                 .frame(minWidth: 40, minHeight: 28)
-                .background(color, in: RoundedRectangle(cornerRadius: 6))
-            Text(label).font(.caption2).foregroundStyle(.secondary)
-            Text(count.map { "\($0)" } ?? " ").font(.caption2).foregroundStyle(.tertiary)
+                #endif
+                .foregroundStyle(.white)
+                .background(color, in: RoundedRectangle(cornerRadius: 8))
+            Text(label)
+                #if os(macOS)
+                .font(.caption.weight(.medium))
+                #else
+                .font(.caption2)
+                #endif
+                .foregroundStyle(.secondary)
+            Text(count.map { "\($0)" } ?? " ")
+                #if os(macOS)
+                .font(.caption)
+                #else
+                .font(.caption2)
+                #endif
+                .foregroundStyle(.tertiary)
         }
     }
 
@@ -293,16 +310,33 @@ struct UserReviewRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Button {
                     if let slug = review.userSlug { push(UserRoute(username: slug, name: review.username, avatar: review.avatar, nameColor: review.nameColor)) }
                 } label: {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 12) {
+                        #if os(macOS)
+                        Avatar(url: review.avatarURL, name: review.username, size: 46)
+                        #else
                         Avatar(url: review.avatarURL, name: review.username)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(review.username).font(.subheadline.weight(.semibold))
+                        #endif
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(review.username)
+                                #if os(macOS)
+                                .font(.headline)
+                                #else
+                                .font(.subheadline.weight(.semibold))
+                                #endif
                                 .foregroundStyle(review.nameColor.map { Color(hex: $0) } ?? .primary)
-                            if let d = review.date { Text(d).font(.caption2).foregroundStyle(.tertiary) }
+                            if let d = review.date {
+                                Text(d)
+                                    #if os(macOS)
+                                    .font(.caption)
+                                    #else
+                                    .font(.caption2)
+                                    #endif
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
                     }
                     .contentShape(Rectangle())
@@ -312,26 +346,48 @@ struct UserReviewRow: View {
                 Spacer()
                 if let r = review.rating {
                     Text(String(Int(r.rounded())))
+                        #if os(macOS)
+                        .font(.title3.bold().monospacedDigit())
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        #else
                         .font(.headline.monospacedDigit())
                         .padding(.horizontal, 8).padding(.vertical, 3)
+                        #endif
                         .background(scoreColor(r).opacity(0.25), in: RoundedRectangle(cornerRadius: 6))
                 }
             }
             let hasMore = review.isTruncated == true || (lineLimit != nil && review.text.count > 280)
-            HStack(alignment: .lastTextBaseline, spacing: 8) {
-                Text(linkified(review.text)).font(.callout).foregroundStyle(.secondary).lineLimit(lineLimit)
+            HStack(alignment: .lastTextBaseline, spacing: 10) {
+                Text(linkified(review.text))
+                    #if os(macOS)
+                    .font(.system(size: 15.5))
+                    .lineSpacing(3)
+                    #else
+                    .font(.callout)
+                    #endif
+                    .foregroundStyle(.secondary).lineLimit(lineLimit)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if !hasMore { actions }
             }
             if hasMore {
                 HStack {
-                    Text("Read full review").font(.caption.weight(.semibold)).foregroundStyle(.tint)
+                    Text("Read full review")
+                        #if os(macOS)
+                        .font(.subheadline.weight(.semibold))
+                        #else
+                        .font(.caption.weight(.semibold))
+                        #endif
+                        .foregroundStyle(.tint)
                     Spacer()
                     actions
                 }
             }
         }
+        #if os(macOS)
+        .padding(.vertical, 8)
+        #else
         .padding(.vertical, 4)
+        #endif
         .contentShape(Rectangle())
         .onTapGesture { if review.url != nil { showFull = true } }
         .reviewShareMenu(shareData)
