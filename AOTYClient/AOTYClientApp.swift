@@ -13,27 +13,20 @@ struct AOTYClientApp: App {
     @State private var showWelcome = false
     #if os(macOS)
     @StateObject private var macSearch = MacSearch.shared
+    @StateObject private var topTabDrag = MacTopTabDragState.shared
     @State private var threeFingerMonitor: MacThreeFingerTabMonitor?
-    @State private var topTabSlideX: CGFloat = 0
     private let macTabs = [0, 1, 3, 4]
 
     private var selectedMacTabIndex: Int {
         macTabs.firstIndex(of: tab == 2 ? 0 : tab) ?? 0
     }
 
-    private func switchMacTopTab(to nextTab: Int, direction: Int) {
+    private func switchMacTopTab(to nextTab: Int, direction: Int, initialDrag: CGFloat = 0) {
         guard nextTab != tab else { return }
         Haptic.selection()
         macSearch.clear()
-        // Slide the incoming tab in from the swipe direction (Mission Control style).
-        var t = Transaction()
-        t.disablesAnimations = true
-        withTransaction(t) {
+        topTabDrag.performSlideTransition(direction: direction, initialDrag: initialDrag) {
             tab = nextTab
-            topTabSlideX = CGFloat(direction) * 420
-        }
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
-            topTabSlideX = 0
         }
     }
     #endif
@@ -57,7 +50,14 @@ struct AOTYClientApp: App {
                 ProfileView().tabItem { Label("Profile", systemImage: "person.crop.circle") }.tag(3)
                 ProofView().tabItem { Label("Notes", systemImage: "text.badge.checkmark") }.tag(4)
             }
-            .environment(\.topTabSlideOffset, topTabSlideX)
+            .environment(\.topTabSlideOffset, topTabDrag.dragOffset + topTabDrag.incomingOffset)
+            if let snap = topTabDrag.outgoingSnapshot {
+                Image(nsImage: snap)
+                    .resizable()
+                    .allowsHitTesting(false)
+                    .offset(x: topTabDrag.outgoingOffset)
+                    .zIndex(0.5)
+            }
             if macSearch.active {
                 MacSearchOverlay(
                     query: $macSearch.query,
@@ -93,13 +93,34 @@ struct AOTYClientApp: App {
                 #if os(macOS)
                 if threeFingerMonitor == nil {
                     let m = MacThreeFingerTabMonitor(
-                        onDrag: { _ in },
-                        onEnd: { _, _ in },
+                        onDrag: { dx in
+                            let idx = selectedMacTabIndex
+                            var adjusted = dx
+                            if (idx == 0 && dx > 0) || (idx == macTabs.count - 1 && dx < 0) {
+                                adjusted = dx * 0.25 // rubber-band at first/last top tab
+                            }
+                            topTabDrag.isDragging = true
+                            topTabDrag.dragOffset = adjusted
+                        },
+                        onEnd: { dx, velocityX in
+                            let idx = selectedMacTabIndex
+                            let projected = dx + velocityX * 0.16
+                            let delta = projected < 0 ? 1 : -1
+                            let nextIdx = idx + delta
+                            if (abs(dx) > 70 || abs(projected) > 120), macTabs.indices.contains(nextIdx) {
+                                switchMacTopTab(to: macTabs[nextIdx], direction: delta, initialDrag: topTabDrag.dragOffset)
+                            } else {
+                                topTabDrag.isDragging = false
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                                    topTabDrag.dragOffset = 0
+                                }
+                            }
+                        },
                         onStep: { delta in
                             let idx = selectedMacTabIndex
                             let next = idx + delta
                             guard macTabs.indices.contains(next) else { return }
-                            switchMacTopTab(to: macTabs[next], direction: delta)
+                            switchMacTopTab(to: macTabs[next], direction: delta, initialDrag: topTabDrag.dragOffset)
                         }
                     )
                     m.start()

@@ -270,16 +270,74 @@ final class MacHorizontalSwipeMonitor {
     }
 }
 
-/// Shared horizontal drag state for 3-finger top-level tab switching on macOS.
+/// Shared horizontal drag & transition state for 3-finger top-level tab switching on macOS.
+/// While 3 fingers move across the trackpad, `dragOffset` moves the active tab in real time;
+/// when switching tabs, a snapshot of the outgoing tab slides out side-by-side with the incoming tab
+/// so the transition looks just like macOS Mission Control / Spaces with zero jarring jump.
 @MainActor
 final class MacTopTabDragState: ObservableObject {
     static let shared = MacTopTabDragState()
     @Published var dragOffset: CGFloat = 0
     @Published var isDragging: Bool = false
+    @Published var outgoingSnapshot: NSImage? = nil
+    @Published var outgoingOffset: CGFloat = 0
+    @Published var incomingOffset: CGFloat = 0
+    private var cleanupToken = UUID()
+
+    /// Captures the current window content area (below the toolbar) so the outgoing top tab can
+    /// slide away seamlessly alongside the incoming top tab.
+    func captureContentSnapshot() -> NSImage? {
+        guard let win = NSApp.keyWindow,
+              let cv = win.contentView else { return nil }
+        let bounds = cv.bounds
+        guard bounds.width > 10, bounds.height > 10,
+              let rep = cv.bitmapImageRepForCachingDisplay(in: bounds) else { return nil }
+        cv.cacheDisplay(in: bounds, to: rep)
+        let img = NSImage(size: bounds.size)
+        img.addRepresentation(rep)
+        return img
+    }
+
+    func performSlideTransition(direction: Int, initialDrag: CGFloat, switchTab: () -> Void) {
+        let w = max(NSApp.keyWindow?.contentView?.bounds.width ?? 1160, 400)
+        let startDrag = initialDrag
+        // The captured snapshot already shows the outgoing tab at `startDrag`, so start its additional offset at 0.
+        let snap = captureContentSnapshot()
+        let token = UUID()
+        cleanupToken = token
+
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) {
+            isDragging = false
+            dragOffset = 0
+            outgoingSnapshot = snap
+            outgoingOffset = 0
+            // Position the incoming tab adjacent to the outgoing tab's current drag position.
+            incomingOffset = CGFloat(direction) * w + startDrag
+            switchTab()
+        }
+
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) {
+            outgoingOffset = -CGFloat(direction) * w - startDrag
+            incomingOffset = 0
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) { [weak self] in
+            guard let self, self.cleanupToken == token else { return }
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) {
+                self.outgoingSnapshot = nil
+                self.outgoingOffset = 0
+            }
+        }
+    }
 }
 
-/// Detects three-finger left/right trackpad swipes to switch between the top-level tabs.
-/// Never modifies `window.contentView.allowedTouchTypes` (which breaks `NSScrollView` 2-finger scrolling).
+/// Detects three-finger left/right trackpad swipes to switch between the top-level tabs with
+/// real-time Mission Control drag tracking and zero-wait release transitions.
+/// Never modifies `window.contentView.allowedTouchTypes` (preserving `NSScrollView` 2-finger scrolling).
 @MainActor
 final class MacThreeFingerTabMonitor {
     private let onDrag: @MainActor (CGFloat) -> Void
@@ -342,7 +400,7 @@ final class MacThreeFingerTabMonitor {
         }
 
         if event.type == .endGesture {
-            resetTouches()
+            finishGesture()
             return
         }
 
@@ -350,9 +408,12 @@ final class MacThreeFingerTabMonitor {
         processTouches(touches)
     }
 
-    private func resetTouches() {
-        if lockedHorizontal == true {
-            onEnd(0, 0)
+    private func finishGesture() {
+        let winWidth = NSApp.keyWindow?.frame.width ?? 1160
+        if !fired, lockedHorizontal == true, let sx = startX {
+            let totalDX = (lastX - sx) * winWidth * 2.1
+            onEnd(totalDX, velocityX)
+            lastFireTime = ProcessInfo.processInfo.systemUptime
         }
         startX = nil
         startY = nil
@@ -362,6 +423,7 @@ final class MacThreeFingerTabMonitor {
     }
 
     func processTouches(_ touches: Set<NSTouch>) {
+        let winWidth = NSApp.keyWindow?.frame.width ?? 1160
         if touches.count == 3 {
             let avgX = touches.reduce(CGFloat(0)) { $0 + $1.normalizedPosition.x } / 3.0
             let avgY = touches.reduce(CGFloat(0)) { $0 + $1.normalizedPosition.y } / 3.0
@@ -378,13 +440,28 @@ final class MacThreeFingerTabMonitor {
             guard !fired, let sx = startX, let sy = startY else { return }
             let dxNorm = avgX - sx
             let dyNorm = avgY - sy
+            velocityX = (avgX - lastX) * winWidth * 15
             lastX = avgX
 
-            if abs(dxNorm) > 0.08 && abs(dxNorm) > abs(dyNorm) * 1.3 {
-                fireStep(dxNorm < 0 ? 1 : -1)
+            if lockedHorizontal == nil {
+                let dist = hypot(dxNorm, dyNorm)
+                guard dist > 0.012 else { return }
+                lockedHorizontal = abs(dxNorm) > abs(dyNorm) * 1.25
             }
-        } else {
-            resetTouches()
+
+            if lockedHorizontal == true {
+                let pixelDX = dxNorm * winWidth * 2.1
+                onDrag(pixelDX)
+                // If the user swipes far enough across the trackpad (~18% of trackpad width),
+                // trigger the seamless Mission Control slide immediately without waiting for finger lift!
+                if abs(dxNorm) > 0.18 {
+                    fired = true
+                    lastFireTime = ProcessInfo.processInfo.systemUptime
+                    onEnd(pixelDX, velocityX)
+                }
+            }
+        } else if touches.count != 3 {
+            finishGesture()
         }
     }
 }
