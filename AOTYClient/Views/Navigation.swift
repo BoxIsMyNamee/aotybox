@@ -30,6 +30,10 @@ private struct PopNavigationKey: EnvironmentKey {
     static let defaultValue: () -> Void = {}
 }
 
+private struct TopTabSlideOffsetKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
 extension EnvironmentValues {
     var push: PushAction {
         get { self[PushKey.self] }
@@ -42,6 +46,10 @@ extension EnvironmentValues {
     var popNavigation: () -> Void {
         get { self[PopNavigationKey.self] }
         set { self[PopNavigationKey.self] = newValue }
+    }
+    var topTabSlideOffset: CGFloat {
+        get { self[TopTabSlideOffsetKey.self] }
+        set { self[TopTabSlideOffsetKey.self] = newValue }
     }
 }
 
@@ -81,15 +89,17 @@ struct AppStack<Content: View>: View {
     #if os(macOS)
     @State private var backMonitor: MacHorizontalSwipeMonitor?
     @State private var backDragX: CGFloat = 0
+    @Environment(\.topTabSlideOffset) private var topTabSlideOffset
     #endif
 
     var body: some View {
         NavigationStack(path: $path) {
-            content().appDestinations()
+            content()
+                #if os(macOS)
+                .offset(x: backDragX + topTabSlideOffset)
+                #endif
+                .appDestinations()
         }
-        #if os(macOS)
-        .offset(x: backDragX)
-        #endif
         .environment(\.push, PushAction { value in path.append(value) })
         .environment(\.navigationDepth, path.count)
         .environment(\.popNavigation, {
