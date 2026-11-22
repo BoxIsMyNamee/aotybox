@@ -119,10 +119,10 @@ jobs:
           version = {"version": f"0.1.{n}", "buildVersion": n, "date": now, "localizedDescription": notes,
                      "downloadURL": url, "size": size, "minOSVersion": "17.0"}
           src = {
-            "name": "AOTYbox", "identifier": "com.harper.aotyclient.source",
+            "name": "AOTYbox", "identifier": "com.harper.aotybox.source",
             "subtitle": "Builds of the AOTY client", "website": f"https://github.com/{repo}",
             "apps": [{
-              "name": "AOTY", "bundleIdentifier": "com.harper.aotyclient", "developerName": "Harper",
+              "name": "AOTY", "bundleIdentifier": "com.harper.aotybox", "developerName": "Harper",
               "subtitle": "Album of the Year client", "localizedDescription": "Native client for albumoftheyear.org.",
               "iconURL": f"https://raw.githubusercontent.com/{repo}/main/icon.png",
               "versions": [version],

@@ -32,11 +32,11 @@ targets:
       path: Support/Info.plist
       properties:
         CFBundleURLTypes:
-          - CFBundleURLName: com.harper.aotyclient
+          - CFBundleURLName: com.harper.aotybox
             CFBundleURLSchemes: [aotybox]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.harper.aotyclient
+        PRODUCT_BUNDLE_IDENTIFIER: com.harper.aotybox
         GENERATE_INFOPLIST_FILE: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
@@ -65,7 +65,7 @@ targets:
               NSExtensionActivationSupportsWebURLWithMaxCount: 1
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.harper.aotyclient.share
+        PRODUCT_BUNDLE_IDENTIFIER: com.harper.aotybox.share
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: AOTYbox
         TARGETED_DEVICE_FAMILY: "1"
@@ -86,7 +86,7 @@ targets:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.harper.aotyclient.widget
+        PRODUCT_BUNDLE_IDENTIFIER: com.harper.aotybox.widget
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: AOTY
         TARGETED_DEVICE_FAMILY: "1"
@@ -110,13 +110,13 @@ targets:
       path: Support/MacInfo.plist
       properties:
         CFBundleURLTypes:
-          - CFBundleURLName: com.harper.aotyclient
+          - CFBundleURLName: com.harper.aotybox
             CFBundleURLSchemes: [aotybox]
         LSApplicationCategoryType: public.app-category.music
     settings:
       base:
         PRODUCT_NAME: AOTY
-        PRODUCT_BUNDLE_IDENTIFIER: com.harper.aotyclient
+        PRODUCT_BUNDLE_IDENTIFIER: com.harper.aotybox
         GENERATE_INFOPLIST_FILE: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_CFBundleDisplayName: AOTY

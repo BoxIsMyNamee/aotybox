@@ -72,13 +72,13 @@ jobs:
           # First boot runs data migration; give SpringBoard time, then launch with retries.
           sleep 20
           for attempt in 1 2 3; do
-            if xcrun simctl launch "$UDID" com.harper.aotyclient; then echo "launched (attempt $attempt)"; break; fi
+            if xcrun simctl launch "$UDID" com.harper.aotybox; then echo "launched (attempt $attempt)"; break; fi
             echo "launch attempt $attempt failed; retrying"; sleep 15
           done
           xcrun simctl spawn "$UDID" log stream --level error --predicate 'process == "AOTYClient"' > launch.log 2>&1 &
           sleep 25
           echo "--- app output"; tail -40 launch.log || true
-          if xcrun simctl spawn "$UDID" launchctl list | grep -q aotyclient; then
+          if xcrun simctl spawn "$UDID" launchctl list | grep -q aotybox; then
             echo "✅ App still running after 25s"
           else
             echo "❌ App is not running"
@@ -91,8 +91,8 @@ jobs:
           # One screenshot per tab (the app reads -initialTab N), pushed to the ci-screens branch.
           mkdir -p screens
           for t in 0 1 2 3 4; do
-            xcrun simctl terminate "$UDID" com.harper.aotyclient || true
-            xcrun simctl launch "$UDID" com.harper.aotyclient -initialTab $t || true
+            xcrun simctl terminate "$UDID" com.harper.aotybox || true
+            xcrun simctl launch "$UDID" com.harper.aotybox -initialTab $t || true
             sleep 8
             xcrun simctl io "$UDID" screenshot screens/tab$t.png
           done

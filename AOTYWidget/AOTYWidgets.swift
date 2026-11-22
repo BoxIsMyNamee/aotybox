@@ -43,7 +43,7 @@ struct ListenWidget: Widget {
 
 struct ListenControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "com.harper.aotyclient.listen") {
+        StaticControlConfiguration(kind: "com.harper.aotybox.listen") {
             ControlWidgetButton(action: ListenIntent()) {
                 Label("Identify Song", systemImage: "waveform.and.mic")
             }
