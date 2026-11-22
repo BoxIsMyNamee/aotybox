@@ -76,6 +76,7 @@ enum ProfileBackground {
     }
 
     private static func saveKeychain(_ data: Data) {
+        #if os(iOS)
         let base: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: kcService,
@@ -86,9 +87,11 @@ enum ProfileBackground {
         add[kSecValueData as String] = data
         add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
         SecItemAdd(add as CFDictionary, nil)
+        #endif
     }
 
     private static func loadKeychain() -> Data? {
+        #if os(iOS)
         let q: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: kcService,
@@ -99,15 +102,20 @@ enum ProfileBackground {
         var out: CFTypeRef?
         guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess else { return nil }
         return out as? Data
+        #else
+        return nil
+        #endif
     }
 
     private static func deleteKeychain() {
+        #if os(iOS)
         let base: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: kcService,
             kSecAttrAccount as String: kcAccount,
         ]
         SecItemDelete(base as CFDictionary)
+        #endif
     }
 }
 

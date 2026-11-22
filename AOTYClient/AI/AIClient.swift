@@ -4,6 +4,7 @@ import Security
 // MARK: - Keychain (API keys never go in UserDefaults)
 
 enum Keychain {
+    #if os(iOS)
     private static let service = "com.harper.aotyclient.ai"
 
     static func get(_ account: String) -> String? {
@@ -25,6 +26,44 @@ enum Keychain {
         add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
         SecItemAdd(add as CFDictionary, nil)
     }
+    #else
+    // On macOS, ad-hoc signed builds change code-signature identity on every update, which causes
+    // the login Keychain to prompt for the user's password repeatedly. Store keys in a private
+    // 0600 file under Application Support instead so updates never prompt or lose keys.
+    private static let lock = NSLock()
+
+    private static var storeURL: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("com.harper.aotyclient", isDirectory: true)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        return base.appendingPathComponent("secrets.json")
+    }
+
+    private static func readAll() -> [String: String] {
+        guard let data = try? Data(contentsOf: storeURL),
+              let dict = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
+        return dict
+    }
+
+    static func get(_ account: String) -> String? {
+        lock.lock(); defer { lock.unlock() }
+        return readAll()[account]
+    }
+
+    static func set(_ value: String?, for account: String) {
+        lock.lock(); defer { lock.unlock() }
+        var dict = readAll()
+        if let value, !value.isEmpty {
+            dict[account] = value
+        } else {
+            dict.removeValue(forKey: account)
+        }
+        guard let data = try? JSONEncoder().encode(dict) else { return }
+        let url = storeURL
+        try? data.write(to: url, options: .atomic)
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+    #endif
 }
 
 // MARK: - Providers
