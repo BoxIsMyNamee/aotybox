@@ -36,10 +36,22 @@ struct AOTYClientApp: App {
                 ProfileView().tabItem { Label("Profile", systemImage: "person.crop.circle") }.tag(3)
                 ProofView().tabItem { Label("Notes", systemImage: "text.badge.checkmark") }.tag(4)
             }
-            .searchable(text: $macSearchQuery, placement: .toolbar, prompt: "Albums, artists, songs")
-            .onSubmit(of: .search) {
-                let q = macSearchQuery.trimmingCharacters(in: .whitespaces)
-                if !q.isEmpty { macSearchSubmitted = q }
+            .toolbar {
+                ToolbarSpacer(.fixed)
+                ToolbarItem(placement: .primaryAction) {
+                    MacToolbarSearchField(
+                        text: $macSearchQuery,
+                        onSubmit: {
+                            let q = macSearchQuery.trimmingCharacters(in: .whitespaces)
+                            if !q.isEmpty { macSearchSubmitted = q }
+                        },
+                        onClear: {
+                            macSearchQuery = ""
+                            macSearchSubmitted = ""
+                            macSearchForceOpen = false
+                        }
+                    )
+                }
             }
             if macSearchActive {
                 MacSearchOverlay(
@@ -103,6 +115,12 @@ struct AOTYClientApp: App {
             .onReceive(NotificationCenter.default.publisher(for: .musicAppOpenFailed)) { _ in musicLinkFailed = true }
             .onReceive(NotificationCenter.default.publisher(for: .openNotes)) { _ in tab = 4 }
             .onReceive(NotificationCenter.default.publisher(for: ListenRequest.note)) { _ in tab = 0 }
+            .onReceive(NotificationCenter.default.publisher(for: .adjustProfileBackground)) { _ in
+                tab = 3
+                #if os(macOS)
+                NSApp.windows.first(where: { $0.canBecomeMain && $0.title != "Settings" })?.makeKeyAndOrderFront(nil)
+                #endif
+            }
             .onOpenURL { url in
                 // aotybox://listen  → the Lock Screen widget: Releases, then listen.
                 if url.scheme == "aotybox", url.host == "listen" {
@@ -179,6 +197,44 @@ struct AOTYClientApp: App {
         #endif
     }
 }
+
+#if os(macOS)
+/// Fixed-width glass search pill for the macOS toolbar so its length never shifts across tabs
+/// and adjacent toolbar buttons stay in their own separate pills.
+private struct MacToolbarSearchField: View {
+    @Binding var text: String
+    var onSubmit: () -> Void
+    var onClear: () -> Void
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
+            TextField("Albums, artists, songs", text: $text)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .focused($focused)
+                .onSubmit(onSubmit)
+                .onExitCommand {
+                    if !text.isEmpty { onClear() }
+                    focused = false
+                }
+            if !text.isEmpty {
+                Button(action: onClear) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(width: 240, height: 28)
+    }
+}
+#endif
 
 struct SettingsView: View {
     var isWindow = false

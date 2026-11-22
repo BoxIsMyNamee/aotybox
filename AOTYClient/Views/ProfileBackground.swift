@@ -112,20 +112,50 @@ enum ProfileBackground {
 }
 
 /// Fills its frame with the image, cropped around a saved focus point and zoom.
+/// If panned or zoomed past an edge, a blurred copy of the image fills in seamlessly behind it.
 struct FocusedFillImage: View {
     let image: PlatformImage
     var focusX: Double = 0.5
     var focusY: Double = 0.5
     var zoom: Double = 1
 
+    private var offEdge: Bool {
+        zoom < 0.99 || focusX < 0 || focusX > 1 || focusY < 0 || focusY > 1
+    }
+
     var body: some View {
         GeometryReader { geo in
             let size = fittedSize(geo.size)
-            let dx: CGFloat = (geo.size.width - size.width) * CGFloat(focusX)
-            let dy: CGFloat = (geo.size.height - size.height) * CGFloat(focusY)
-            Image(platformImage: image).resizable()
-                .frame(width: size.width, height: size.height)
-                .offset(x: dx, y: dy)
+            let rangeX = max(size.width - geo.size.width, geo.size.width * 0.6)
+            let rangeY = max(size.height - geo.size.height, geo.size.height * 0.6)
+            let centerX = (geo.size.width - size.width) / 2
+            let centerY = (geo.size.height - size.height) / 2
+            let dx: CGFloat = centerX - (CGFloat(focusX) - 0.5) * rangeX
+            let dy: CGFloat = centerY - (CGFloat(focusY) - 0.5) * rangeY
+
+            ZStack(alignment: .topLeading) {
+                Image(platformImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .blur(radius: 34)
+                    .scaleEffect(1.18)
+                    .opacity(0.9)
+
+                Image(platformImage: image)
+                    .resizable()
+                    .frame(width: size.width, height: size.height)
+                    .mask {
+                        if offEdge {
+                            RoundedRectangle(cornerRadius: 12)
+                                .padding(10)
+                                .blur(radius: 14)
+                        } else {
+                            Rectangle()
+                        }
+                    }
+                    .offset(x: dx, y: dy)
+            }
         }
         .clipped()
     }
@@ -134,7 +164,7 @@ struct FocusedFillImage: View {
         let iw: CGFloat = max(image.size.width, 1)
         let ih: CGFloat = max(image.size.height, 1)
         let fill: CGFloat = max(box.width / iw, box.height / ih)
-        let scale: CGFloat = fill * CGFloat(max(zoom, 1))
+        let scale: CGFloat = fill * CGFloat(max(zoom, 0.5))
         return CGSize(width: iw * scale, height: ih * scale)
     }
 }
@@ -161,7 +191,11 @@ struct ProfileBackgroundLayer: View {
                                startPoint: .top, endPoint: .bottom)
             }
             .clipped()
+            #if os(macOS)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            #else
             .padding(.horizontal, -40)
+            #endif
     }
 }
 
@@ -295,28 +329,72 @@ struct PanPinchOverlay: UIViewRepresentable {
     }
 }
 #else
-struct PanPinchOverlay: View {
+/// AppKit mouse/trackpad overlay so macOS List/NSTableView never swallows drag, pinch, or double-click.
+struct PanPinchOverlay: NSViewRepresentable {
     var onPan: (CGSize, CGSize) -> Void
     var onPanEnd: () -> Void
     var onPinch: (CGFloat) -> Void
     var onPinchEnd: () -> Void
     var onDoubleTap: () -> Void
 
-    var body: some View {
-        GeometryReader { geo in
-            Color.clear
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture()
-                        .onChanged { v in onPan(v.translation, geo.size) }
-                        .onEnded { _ in onPanEnd() }
-                )
-                .simultaneousGesture(
-                    MagnifyGesture()
-                        .onChanged { v in onPinch(v.magnification) }
-                        .onEnded { _ in onPinchEnd() }
-                )
-                .onTapGesture(count: 2) { onDoubleTap() }
+    func makeNSView(context: Context) -> PanPinchNSView {
+        let view = PanPinchNSView()
+        view.callbacks = self
+        return view
+    }
+
+    func updateNSView(_ nsView: PanPinchNSView, context: Context) {
+        nsView.callbacks = self
+    }
+
+    final class PanPinchNSView: NSView {
+        var callbacks: PanPinchOverlay?
+        private var dragStart: CGPoint?
+        private var pinchScale: CGFloat = 1
+
+        override var isFlipped: Bool { true }
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+        override func resetCursorRects() {
+            addCursorRect(bounds, cursor: dragStart != nil ? .closedHand : .openHand)
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            if event.clickCount == 2 {
+                callbacks?.onDoubleTap()
+                return
+            }
+            dragStart = convert(event.locationInWindow, from: nil)
+            NSCursor.closedHand.push()
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard let start = dragStart else { return }
+            let p = convert(event.locationInWindow, from: nil)
+            callbacks?.onPan(CGSize(width: p.x - start.x, height: p.y - start.y), bounds.size)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            if dragStart != nil {
+                dragStart = nil
+                NSCursor.pop()
+                callbacks?.onPanEnd()
+            }
+        }
+
+        override func magnify(with event: NSEvent) {
+            switch event.phase {
+            case .began:
+                pinchScale = max(0.2, 1 + event.magnification)
+                callbacks?.onPinch(pinchScale)
+            case .changed:
+                pinchScale = max(0.2, pinchScale * (1 + event.magnification))
+                callbacks?.onPinch(pinchScale)
+            case .ended, .cancelled:
+                pinchScale = 1
+                callbacks?.onPinchEnd()
+            default: break
+            }
         }
     }
 }

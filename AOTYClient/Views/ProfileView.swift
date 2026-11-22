@@ -280,9 +280,21 @@ struct UserProfileView: View {
 
     private var bgAdjustBar: some View {
         VStack(spacing: 8) {
+            #if os(macOS)
+            Text("Drag to move · Pinch or slide to zoom · Double-click to reset")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                Image(systemName: "minus.magnifyingglass").font(.caption).foregroundStyle(.secondary)
+                Slider(value: $bgZoom, in: 0.6...3.0)
+                    .frame(width: 180)
+                Image(systemName: "plus.magnifyingglass").font(.caption).foregroundStyle(.secondary)
+            }
+            #else
             Text("Drag to move · Pinch to zoom · Double-tap to reset")
                 .font(.caption.weight(.medium))
                 .foregroundStyle(.secondary)
+            #endif
             HStack(spacing: 12) {
                 Button("Cancel") {
                     if let s = savedBgState { bgX = s.0; bgY = s.1; bgZoom = s.2 }
@@ -314,9 +326,9 @@ struct UserProfileView: View {
         let iw = max(image.size.width, 1)
         let ih = max(image.size.height, 1)
         let fill = max(box.width / iw, box.height / ih)
-        let scale = fill * CGFloat(max(bgZoom, 1))
-        return CGSize(width: max(0, iw * scale - box.width),
-                      height: max(0, ih * scale - box.height))
+        let scale = fill * CGFloat(max(bgZoom, 0.5))
+        return CGSize(width: max(iw * scale - box.width, box.width * 0.6),
+                      height: max(ih * scale - box.height, box.height * 0.6))
     }
 
     private func pollLastFM(user: String, url: URL) async {
@@ -412,19 +424,19 @@ struct UserProfileView: View {
                         onPan: { translation, box in
                             if bgDragStart == nil { bgDragStart = (bgX, bgY) }
                             guard let start = bgDragStart else { return }
-                            let slack = bgSlack(for: bg, in: CGSize(width: box.width + 80, height: box.height))
+                            let slack = bgSlack(for: bg, in: box)
                             if slack.width > 1 {
-                                bgX = min(max(start.0 - Double(translation.width / slack.width), 0), 1)
+                                bgX = min(max(start.0 - Double(translation.width / slack.width), -0.4), 1.4)
                             }
                             if slack.height > 1 {
-                                bgY = min(max(start.1 - Double(translation.height / slack.height), 0), 1)
+                                bgY = min(max(start.1 - Double(translation.height / slack.height), -0.4), 1.4)
                             }
                         },
                         onPanEnd: { bgDragStart = nil },
                         onPinch: { scale in
                             if bgZoomStart == nil { bgZoomStart = bgZoom }
                             guard let start = bgZoomStart else { return }
-                            bgZoom = min(max(start * Double(scale), 1), 4)
+                            bgZoom = min(max(start * Double(scale), 0.6), 4)
                         },
                         onPinchEnd: { bgZoomStart = nil },
                         onDoubleTap: {

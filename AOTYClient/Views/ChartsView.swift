@@ -33,11 +33,16 @@ struct ChartsView: View {
             }
             .tabTitle(period == "all" ? "All Time" : "Best of \(period)")
             .toolbar {
-                Menu {
-                    Picker("Year", selection: $period) {
-                        ForEach(periods, id: \.self) { Text($0 == "all" ? "All time" : $0).tag($0) }
-                    }
-                } label: { Label("Year", systemImage: "calendar") }
+                ToolbarItem {
+                    Menu {
+                        Picker("Year", selection: $period) {
+                            ForEach(periods, id: \.self) { Text($0 == "all" ? "All time" : $0).tag($0) }
+                        }
+                    } label: { Label("Year", systemImage: "calendar") }
+                }
+                #if os(macOS)
+                ToolbarSpacer(.fixed)
+                #endif
             }
         }
     }
